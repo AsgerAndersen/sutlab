@@ -80,8 +80,6 @@ Do NOT read proactively. Consult only when a specific question requires it, and 
 
 ## Project structure
 
-Always read CLAUDE.md from the main repo: `C:\Users\DstMove\Desktop\claude\projects\sutlab\CLAUDE.md` — not from any worktree copy.
-
 CLAUDE.md is the authoritative record of decisions. Notes are working material — if notes contradict CLAUDE.md, CLAUDE.md wins.
 
 Version control: git, remote on GitHub. Commit logical units of work with descriptive messages.
