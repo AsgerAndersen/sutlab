@@ -5,14 +5,12 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Technology stack
 - Language: Python 3.12
-- Environment: conda env `retrosut` — activate with `conda activate retrosut`
-- Key dependencies: pandas — others to be decided
-- Package install policy: always ask before adding new dependencies
+- Environment: UV — run Python with `uv run python` from the project root. No activation needed.
+- Package install policy: always ask before adding new dependencies; use `uv add`
+- Key dependencies: pandas, openpyxl (Excel for metadata/configuration), pyarrow (parquet support) — others to be decided
 
-## Project goals
-1. Enable inspection of SUT subsections (e.g. extracting all data for a given product)
-2. Calculate and plot standard national accounts aggregates (nominal/real GDP, productivity, etc.)
-3. Usable by colleagues with limited Python experience
+## Current project goals
+*(to be decided)*
 
 ## Current status
 - **Phase**: Planning
@@ -67,8 +65,9 @@ Do NOT read proactively. Consult only when a specific question requires it, and 
 - `docs/reference/` → Standards documents (e.g. SNA 2008). Specific files to be added as needed.
 
 ## Data
-- `data/examples/` → Example SUT data from Statistics Denmark. Parquet files (pandas DataFrames saved with `to_parquet`). Gitignored — do not commit.
-- `data/fixtures/` → Small synthetic data for tests. Not yet created.
+- `data/examples/` → Example SUT data from Statistics Denmark. Parquet files for SUT tables (pandas DataFrames saved with `to_parquet`). Gitignored — do not commit.
+- `data/examples/metadata/` → Metadata for example data (e.g. classifications). Excel files. Gitignored — do not commit.
+- `data/fixtures/` → Small synthetic data for tests. Two levels: minimal (2-3 products, 2 industries, hand-crafted round numbers) and small (aggregated from real data, more realistic). Not yet created.
 
 ## Decisions log
 <!-- Append when a decision is made. Never delete entries. -->
@@ -81,6 +80,8 @@ Do NOT read proactively. Consult only when a specific question requires it, and 
 
 ## Project structure
 
+Always read CLAUDE.md from the main repo: `C:\Users\DstMove\Desktop\claude\projects\sutlab\CLAUDE.md` — not from any worktree copy.
+
 CLAUDE.md is the authoritative record of decisions. Notes are working material — if notes contradict CLAUDE.md, CLAUDE.md wins.
 
 Version control: git, remote on GitHub. Commit logical units of work with descriptive messages.
@@ -88,7 +89,10 @@ Version control: git, remote on GitHub. Commit logical units of work with descri
 Claude can read and write:
 - `sutlab/` → source code
 - `tests/` → tests
-- `notes/` → session notes, organised by topic (append, don't rewrite)
+- `notes/claude/` → session notes, organised by topic (append, don't rewrite)
+
+Claude should NOT read or write:
+- `notes/mine/` → your personal notes
 
 Claude should NOT:
 - Make architectural or structural decisions unilaterally — propose, then wait for approval
@@ -102,11 +106,12 @@ Claude should NOT:
 
 ### Start of every session:
 1. Read this CLAUDE.md in full
-2. Read all files in `notes/`
-3. State briefly: current phase, what was last worked on, what's next
+2. Run Python with `uv run python` from the project root — no activation needed
+3. Read all files in `notes/claude`
+4. State briefly: current phase, what was last worked on, what's next
 
 ### End of every session:
-1. Append a summary to `notes/` (organised by topic, not by session)
+1. Append a summary to `notes/claude/` (organised by topic, not by session)
 2. Update the Decisions log with anything settled this session
 3. Update Open design questions — add newly surfaced ones, remove resolved ones
 4. Update Current status
