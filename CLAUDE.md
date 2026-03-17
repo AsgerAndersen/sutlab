@@ -9,8 +9,8 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 - Package install policy: always ask before adding new dependencies; use `uv add`
 - Key dependencies: pandas, openpyxl (Excel for metadata/configuration), pyarrow (parquet support) — others to be decided
 
-## Current project goals
-*(to be decided)*
+## Project goals
+*(to be decided in Claude Code)*
 
 ## Current status
 - **Phase**: Planning
@@ -55,6 +55,7 @@ These will be added to the data structure when needed — do not anticipate them
 - **Final demand**: The final expenditure components of the use table — household consumption, government consumption, gross fixed capital formation, and exports. Distinct from intermediate use by industries.
 - **Value added**: Output minus intermediate use. Includes compensation of employees, taxes less subsidies on production, and operating surplus.
 - **Basic prices / purchasers' prices**: The two main price bases in a SUT. The difference is accounted for by price layers: wholesale trade margins, retail trade margins, taxes minus subsidies on products (excluding VAT), and VAT. These are Danish-specific price layers — do not assume the simpler SNA treatment.
+- **Transaction codes**: Standardised SNA codes identifying types of economic flows (e.g. P1 output, P2 intermediate consumption, P51G gross fixed capital formation). In a SUT they identify value added components and final demand categories. Never hardcoded — always user-supplied.
 - **Current prices**: SUT values expressed in the prices of the current year t. The monetary tables as compiled.
 - **Previous year's prices**: SUT values for year t revalued at the prices of year t-1. Used as the basis for volume calculations.
 - **Chain-linked volume indices**: Volume time series constructed by linking year-to-year Laspeyres volume indices. Derived from the current and previous year's prices tables — not directly observable in the SUT.
@@ -65,8 +66,8 @@ Do NOT read proactively. Consult only when a specific question requires it, and 
 - `docs/reference/` → Standards documents (e.g. SNA 2008). Specific files to be added as needed.
 
 ## Data
-- `data/examples/` → Example SUT data from Statistics Denmark. Parquet files for SUT tables (pandas DataFrames saved with `to_parquet`). Gitignored — do not commit.
-- `data/examples/metadata/` → Metadata for example data (e.g. classifications). Excel files. Gitignored — do not commit.
+- `data/examples/` → Example SUT data from Statistics Denmark. Parquet files for SUT tables (pandas DataFrames saved with `to_parquet`).
+- `data/examples/metadata/` → Metadata for example data (e.g. classifications). Excel files.
 - `data/fixtures/` → Small synthetic data for tests. Two levels: minimal (2-3 products, 2 industries, hand-crafted round numbers) and small (aggregated from real data, more realistic). Not yet created.
 
 ## Decisions log
@@ -97,7 +98,6 @@ Claude should NOT:
 - Reorganise modules without discussion
 - Add dependencies without asking
 - Write implementation code during planning sessions (small illustrative sketches are fine)
-- Commit or mention committing `data/examples/`
 - Push to GitHub without asking
 
 ## Session instructions
@@ -105,7 +105,7 @@ Claude should NOT:
 ### Start of every session:
 1. Read this CLAUDE.md in full
 2. Run Python with `uv run python` from the project root — no activation needed
-3. Read all files in `notes/claude`
+3. Read all files in `notes/claude/`
 4. State briefly: current phase, what was last worked on, what's next
 
 ### End of every session:

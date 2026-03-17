@@ -1,6 +1,3 @@
-# Data — do not commit
-data/examples/
-
 # Python
 __pycache__/
 *.py[cod]
