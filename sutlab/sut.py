@@ -4,7 +4,7 @@ Core data structures for supply and use tables.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 import pandas as pd
@@ -44,6 +44,9 @@ class SUTColumns:
 
     Parameters
     ----------
+    id : str
+        Column name for the identifier that distinguishes individual SUTs
+        within the collection (e.g. ``'year'`` or ``'quarter'``).
     product : str
         Column name for the product dimension (e.g. ``'nrnr'``).
     transaction : str
@@ -57,6 +60,7 @@ class SUTColumns:
         Column names for all price-value columns.
     """
 
+    id: str
     product: str
     transaction: str
     category: str
@@ -100,35 +104,97 @@ class SUTMetadata:
 @dataclass
 class SUT:
     """
-    A supply and use table for a single year and price basis.
+    A collection of supply and use tables sharing the same structure and metadata.
+
+    The collection typically holds a time series (e.g. one SUT per year), but
+    the id dimension is not required to be temporal. Supply and use are stored
+    as long-format DataFrames containing all members of the collection; each
+    row belongs to one member identified by the id column
+    (``metadata.columns.id``).
+
+    One member of the collection can be designated as the active balancing
+    target via :func:`set_active`. Balancing functions operate on that member
+    only; inspection functions span the full collection.
 
     Parameters
     ----------
-    year : int
-        The reference year of the table (the year whose transactions are
-        recorded).
     price_basis : {"current_year", "previous_year"}
-        The price basis used for valuation. ``"current_year"`` means values
-        are in the prices of ``year`` itself. ``"previous_year"`` means values
-        are revalued at the prices of ``year - 1``, as used for volume
-        calculations.
+        The price basis used for valuation across the whole collection.
+        ``"current_year"`` means values are in the prices of the reference
+        year itself. ``"previous_year"`` means values are revalued at the
+        prices of the preceding year, as used for volume calculations.
     supply : DataFrame
-        Supply table in long format. Columns: product, transaction, category,
-        and the basic-prices column specified in ``metadata.columns.prices``.
-        Supply is valued at basic prices only — price layers are a use-side
-        concept.
+        Supply table in long format. Contains an id column, product,
+        transaction, category, and the basic-prices column specified in
+        ``metadata.columns.prices``. Supply is valued at basic prices only —
+        price layers are a use-side concept. Columns should be ordered: id,
+        product, transaction, category, then price columns. This is not
+        enforced but recommended for readability.
     use : DataFrame
-        Use table in long format. Columns: product, transaction, category,
-        and all price columns specified in ``metadata.columns.prices`` (basic,
-        layers, purchasers).
+        Use table in long format. Contains an id column, product, transaction,
+        category, and all price columns specified in
+        ``metadata.columns.prices`` (basic, layers, purchasers). Columns
+        should be ordered: id, product, transaction, category, then price
+        columns. This is not enforced but recommended for readability.
+    balancing_id : str, int, or None
+        The id value of the member currently being balanced. Set via
+        :func:`set_active`. ``None`` if no member is designated as active.
     metadata : SUTMetadata or None
         Column specifications and optional classification tables. Required by
         functions that need to look up labels or validate codes. If ``None``,
         only functions that operate purely on the data arrays can be used.
     """
 
-    year: int
     price_basis: Literal["current_year", "previous_year"]
     supply: pd.DataFrame
     use: pd.DataFrame
+    balancing_id: str | int | None = None
     metadata: SUTMetadata | None = None
+
+
+def set_active(sut: SUT, balancing_id: str | int) -> SUT:
+    """
+    Return a new SUT with the given id set as the active balancing target.
+
+    The original SUT is not modified. Balancing functions will operate only
+    on rows where the id column matches ``balancing_id``; inspection functions
+    span the full collection.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to update.
+    balancing_id : str or int
+        The id value to mark as the active balancing target. Must exist in
+        the supply table's id column.
+
+    Returns
+    -------
+    SUT
+        A new SUT with ``balancing_id`` set. The underlying data is shared
+        with the original (not copied).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is None — it is needed to identify the id column.
+    ValueError
+        If ``balancing_id`` is not found in the supply table.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call set_active. "
+            "Provide a SUTMetadata with a SUTColumns.id column name."
+        )
+
+    id_col = sut.metadata.columns.id
+    available_ids = sorted(sut.supply[id_col].unique())
+
+    if balancing_id not in available_ids:
+        available_str = ", ".join(str(x) for x in available_ids)
+        raise ValueError(
+            f"ID '{balancing_id}' not found in supply table. "
+            f"Available IDs: {available_str}"
+        )
+
+    return replace(sut, balancing_id=balancing_id)

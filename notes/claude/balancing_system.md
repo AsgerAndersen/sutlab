@@ -37,3 +37,22 @@ where they apply (mainly intermediate use and household consumption).
   - How locks/cells are referenced (product/transaction/category keys?)
   - Whether price-layer share tables (α, β) are part of the SUT object or computed on the fly
   - Full module structure for the balancing system
+
+---
+
+## Session: 2026-03-18 — Data representation settled
+
+### Decisions made
+
+The SUT data structure has been redesigned to support both balancing and inspection
+naturally. See `notes/claude/data_representation.md` for full details.
+
+Key point for balancing: balancing functions will filter `sut.supply` and `sut.use` to
+`sut.balancing_id` rows, operate on those, and return a new SUT with updated DataFrames.
+The rest of the collection (other years) is carried along untouched.
+
+### Still open
+
+- How locks/cells are referenced
+- Whether α/β share tables are stored on the SUT object or computed on the fly
+- Full module structure

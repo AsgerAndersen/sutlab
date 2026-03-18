@@ -33,6 +33,48 @@
 - I/O functions (loading from parquet/Excel)
 - Chain-linking / volume index calculation
 
+---
+
+## Session: 2026-03-18 — SUT as collection, set_active
+
+### Decisions made
+
+**SUT is a collection, not a single-year object.** `supply` and `use` are long-format
+DataFrames spanning multiple members (typically years). An extra id column (name specified
+in `SUTColumns.id`) identifies which rows belong to which member.
+
+**Rationale:** Inspection is naturally multi-year (comparing a year being balanced against
+historical context). Balancing is single-year. A collection keeps both workflows in one
+object.
+
+**`balancing_id` field on `SUT`.** Marks which member is the active balancing target.
+`None` if no member is active.
+
+**`set_active(sut, balancing_id) -> SUT`.** Returns a new SUT with `balancing_id` set.
+Immutable — original is unchanged. Raises informative `ValueError` if the id is not found
+or if `metadata` is None.
+
+**`year` field removed.** The id column subsumes it. The id is not required to be temporal
+(could be a quarter string, a scenario name, etc.).
+
+**`SUTColumns.id` added.** Column name for the identifier dimension.
+
+**Column order convention.** Supply and use DataFrames should follow the order: id,
+product, transaction, category, price columns. Not enforced by the dataclass — I/O
+functions are responsible for establishing this order. Documented in the `SUT` docstring.
+
+### Alternatives considered
+
+- **Two types: SUT (single) + SUTSeries (collection)** — rejected because inspection
+  functions would need the user to inject the work-in-progress SUT into the series before
+  each call, or inspection would miss the latest balancing changes.
+- **Collection with mutable `balancing_id`** — rejected in favour of immutable `set_active`
+  to avoid accidental mutation and to allow two active years to coexist (e.g. for comparison).
+
+### Implementation status
+
+Implemented and tested. 8 tests in `tests/test_sut.py`, all passing.
+
 ### Verification
 Confirmed working:
 ```python
