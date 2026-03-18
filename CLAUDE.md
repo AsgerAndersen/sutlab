@@ -18,22 +18,26 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 <!-- Canonical record of settled decisions. Update when decisions are made, never delete. -->
 
 ### Module structure
-- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `PriceSpec`; and `set_active`
+- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `set_active`
 
 ### Core data representation
 Four dataclasses and one function in `sutlab/sut.py`:
 
-- **`PriceSpec`** — column names for price values: `basic` (basic prices), `purchasers`
-  (purchasers' prices), `layers` (ordered list of intermediate price-layer columns such as
-  wholesale margins, retail margins, taxes, VAT).
-- **`SUTColumns`** — maps conceptual dimensions to actual DataFrame column names: `id`
-  (the identifier column distinguishing individual SUTs in the collection, e.g. `'year'`
-  or `'quarter'`), `product`, `transaction`, `category` (the column-dimension of the SUT
-  matrix — industry for production/intermediate use, consumption function for final demand,
-  empty otherwise), and a `PriceSpec`.
-- **`SUTMetadata`** — holds a `SUTColumns` plus optional classification tables (products,
-  transactions, industries, individual consumption, collective consumption). Functions that
-  need a specific table raise an informative error if it is absent.
+- **`SUTColumns`** — maps conceptual roles to actual DataFrame column names. Required
+  roles: `id` (the identifier column, e.g. `'year'`), `product`, `transaction`, `category`
+  (industry for production/intermediate use, consumption function for final demand),
+  `price_basic`, `price_purchasers`. Optional price-layer roles (all `str | None`):
+  `trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`,
+  `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`. Loaded
+  from a two-column Excel table (`column`, `role`); the dataclass is the internal Python
+  representation.
+- **`SUTClassifications`** — optional classification tables: `classification_names`
+  (dimension → classification system mapping), `products`, `transactions`, `industries`,
+  `individual_consumption`, `collective_consumption`. The `transactions` table includes a
+  `gdp_component` column mapping each transaction code to one of: `output`, `imports`,
+  `intermediate`, `private_consumption`, `government_consumption`, `investment`, `exports`.
+- **`SUTMetadata`** — holds a `SUTColumns` and an optional `SUTClassifications`. Functions
+  that need a specific classification table raise an informative error if it is absent.
 - **`SUT`** — top-level object holding a **collection** of SUTs: `price_basis`
   (`"current_year"` or `"previous_year"`), `supply` DataFrame (long format, all members,
   basic prices only), `use` DataFrame (long format, all members, all price columns),
@@ -42,8 +46,8 @@ Four dataclasses and one function in `sutlab/sut.py`:
 - **`set_active(sut, balancing_id)`** — returns a new `SUT` with `balancing_id` set.
   Does not mutate the original. Raises an informative error if the id is not found.
 
-Column names are never hardcoded — all are specified via `SUTColumns`/`PriceSpec`. Supply
-holds only the basic-prices column; price layers are a use-side concept.
+Column names are never hardcoded — all are specified via `SUTColumns`. Supply holds only
+the basic-prices column; price layers are a use-side concept.
 
 The collection design separates two workflows: **balancing** operates on the single member
 identified by `balancing_id`; **inspection** spans the full collection. This means a
@@ -94,9 +98,10 @@ These will be added to the data structure when needed — do not anticipate them
 <!-- Append when a decision is made. Never delete entries. -->
 - 2026-03-18: Core data representation settled — see Architecture section and `notes/claude/data_representation.md`
 - 2026-03-18: SUT is a collection (multi-member long-format DataFrames) with a `balancing_id` field marking the active member. `set_active` returns a new SUT immutably. Rationale: inspection is naturally multi-year; balancing is single-year; the collection keeps both in one object without forcing the user to pass year arguments to every balancing call or inject a work-in-progress SUT into every inspection call.
+- 2026-03-18: `PriceSpec` eliminated. `SUTColumns` restructured with explicit named fields per price-layer role (fixed list: `trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`, `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`). Loaded from two-column Excel table (`column`, `role`). `SUTClassifications` added as a nested dataclass inside `SUTMetadata`, replacing the five flat classification fields. Transactions classification table includes a `gdp_component` column with a fixed GDP decomposition.
 
 ## Open design questions
-- How should classification metadata be structured for I/O? The internal representation is settled (`SUTMetadata`), but the loading functions (from Excel, parquet, etc.) are not yet designed.
+- How should the Excel I/O loading functions be structured? (loading `SUTColumns` from two-column table, loading `SUTClassifications` from multi-sheet Excel file)
 - What is the full module structure beyond `sut.py`?
 - How are locks/cells referenced in balancing operations? (product/transaction/category keys, or index-based?)
 - Are price-layer share tables (α, β) stored on the SUT object or computed on the fly when needed?

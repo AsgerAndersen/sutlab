@@ -4,43 +4,29 @@ Core data structures for supply and use tables.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import pandas as pd
 
 
 @dataclass
-class PriceSpec:
-    """
-    Column names for the price values in a use table.
-
-    Parameters
-    ----------
-    basic : str
-        Column name for values at basic prices (e.g. ``'bas'``).
-    purchasers : str
-        Column name for values at purchasers' prices (e.g. ``'koeb'``).
-    layers : list of str
-        Ordered list of intermediate price-layer column names — wholesale
-        margins, retail margins, taxes, VAT, etc. (e.g.
-        ``['eng', 'det', 'afg', 'moms']``). May be empty if only basic and
-        purchasers' prices are available.
-    """
-
-    basic: str
-    purchasers: str
-    layers: list[str] = field(default_factory=list)
-
-
-@dataclass
 class SUTColumns:
     """
-    Mapping from conceptual dimensions to actual column names in the DataFrames.
+    Mapping from conceptual roles to actual column names in the DataFrames.
 
     The DataFrames in a :class:`SUT` keep whatever column names they were
     loaded with. This dataclass tells the library which column holds which
     piece of information.
+
+    Each field holds the actual column name string (e.g. ``'nrnr'``) for
+    that conceptual role, or ``None`` if that price layer is not present in
+    the data. Required roles have no default; optional roles default to
+    ``None``.
+
+    This dataclass is typically loaded from a two-column Excel table with
+    columns ``column`` (the actual column name) and ``role`` (the conceptual
+    role from the fixed list below) via the I/O module.
 
     Parameters
     ----------
@@ -56,15 +42,87 @@ class SUTColumns:
         the industry (for production and intermediate use), the consumption
         function (for final demand), or similar. Empty for imports, exports,
         and investment rows (e.g. ``'brch'``).
-    prices : PriceSpec
-        Column names for all price-value columns.
+    price_basic : str
+        Column name for values at basic prices (e.g. ``'bas'``).
+    price_purchasers : str
+        Column name for values at purchasers' prices (e.g. ``'koeb'``).
+        Purchasers' prices equal basic prices plus all price layers.
+    trade_margins : str or None
+        Column name for total trade margins, when not decomposed into
+        wholesale and retail (e.g. ``'mar'``).
+    wholesale_margins : str or None
+        Column name for wholesale trade margins (e.g. ``'eng'``).
+    retail_margins : str or None
+        Column name for retail trade margins (e.g. ``'det'``).
+    transport_margins : str or None
+        Column name for transport margins, if present.
+    product_taxes : str or None
+        Column name for taxes on products excluding VAT (e.g. ``'afg'``).
+    product_subsidies : str or None
+        Column name for subsidies on products, if recorded separately.
+    product_taxes_less_subsidies : str or None
+        Column name for taxes less subsidies on products, if recorded net
+        rather than split into taxes and subsidies.
+    vat : str or None
+        Column name for VAT (e.g. ``'moms'``).
     """
 
     id: str
     product: str
     transaction: str
     category: str
-    prices: PriceSpec
+    price_basic: str
+    price_purchasers: str
+    trade_margins: str | None = None
+    wholesale_margins: str | None = None
+    retail_margins: str | None = None
+    transport_margins: str | None = None
+    product_taxes: str | None = None
+    product_subsidies: str | None = None
+    product_taxes_less_subsidies: str | None = None
+    vat: str | None = None
+
+
+@dataclass
+class SUTClassifications:
+    """
+    Classification tables for the dimensions of a SUT.
+
+    All fields are optional. Functions that require a specific table will
+    raise an informative error if it is not supplied.
+
+    Parameters
+    ----------
+    classification_names : DataFrame or None
+        Maps each dimension name to its classification system
+        (e.g. products → ``'NRNR07'``, industries → ``'NBR117A3'``).
+        Corresponds to the ``classifications`` sheet in the Excel metadata
+        file.
+    products : DataFrame or None
+        Classification table for products: code and label columns.
+    transactions : DataFrame or None
+        Classification table for transaction codes: code, label, and
+        ``gdp_component`` columns. The ``gdp_component`` column maps each
+        transaction code to a fixed GDP decomposition component:
+        ``'output'``, ``'imports'``, ``'intermediate'``,
+        ``'private_consumption'``, ``'government_consumption'``,
+        ``'investment'``, or ``'exports'``.
+    industries : DataFrame or None
+        Classification table for industries: code and label columns.
+    individual_consumption : DataFrame or None
+        Classification table for individual consumption functions
+        (e.g. NCP76): code and label columns.
+    collective_consumption : DataFrame or None
+        Classification table for collective consumption functions
+        (e.g. NCO10): code and label columns.
+    """
+
+    classification_names: pd.DataFrame | None = None
+    products: pd.DataFrame | None = None
+    transactions: pd.DataFrame | None = None
+    industries: pd.DataFrame | None = None
+    individual_consumption: pd.DataFrame | None = None
+    collective_consumption: pd.DataFrame | None = None
 
 
 @dataclass
@@ -72,33 +130,19 @@ class SUTMetadata:
     """
     Column specifications and optional classification tables for a SUT.
 
-    All classification tables are optional. Functions that require a specific
-    table will raise an informative error if it is not supplied.
-
     Parameters
     ----------
     columns : SUTColumns
-        Mapping from conceptual dimensions to actual column names.
-    products : DataFrame or None
-        Classification table for products: code and label columns.
-    transactions : DataFrame or None
-        Classification table for transaction codes: code and label columns.
-    industries : DataFrame or None
-        Classification table for industries: code and label columns.
-    individual_consumption : DataFrame or None
-        Classification table for individual consumption functions (e.g.
-        NCP76): code and label columns.
-    collective_consumption : DataFrame or None
-        Classification table for collective consumption functions (e.g.
-        NCO10): code and label columns.
+        Mapping from conceptual roles to actual column names.
+    classifications : SUTClassifications or None
+        Classification tables for products, transactions, industries, and
+        consumption functions. ``None`` if no classifications are supplied.
+        Functions that require a specific table will raise an informative
+        error if it is absent.
     """
 
     columns: SUTColumns
-    products: pd.DataFrame | None = None
-    transactions: pd.DataFrame | None = None
-    industries: pd.DataFrame | None = None
-    individual_consumption: pd.DataFrame | None = None
-    collective_consumption: pd.DataFrame | None = None
+    classifications: SUTClassifications | None = None
 
 
 @dataclass
@@ -126,16 +170,16 @@ class SUT:
     supply : DataFrame
         Supply table in long format. Contains an id column, product,
         transaction, category, and the basic-prices column specified in
-        ``metadata.columns.prices``. Supply is valued at basic prices only —
-        price layers are a use-side concept. Columns should be ordered: id,
-        product, transaction, category, then price columns. This is not
-        enforced but recommended for readability.
+        ``metadata.columns.price_basic``. Supply is valued at basic prices
+        only — price layers are a use-side concept. Columns should be
+        ordered: id, product, transaction, category, then price columns.
+        This is not enforced but recommended for readability.
     use : DataFrame
         Use table in long format. Contains an id column, product, transaction,
-        category, and all price columns specified in
-        ``metadata.columns.prices`` (basic, layers, purchasers). Columns
-        should be ordered: id, product, transaction, category, then price
-        columns. This is not enforced but recommended for readability.
+        category, and all price columns specified in ``metadata.columns``
+        (basic, price layers, purchasers). Columns should be ordered: id,
+        product, transaction, category, then price columns. This is not
+        enforced but recommended for readability.
     balancing_id : str, int, or None
         The id value of the member currently being balanced. Set via
         :func:`set_active`. ``None`` if no member is designated as active.

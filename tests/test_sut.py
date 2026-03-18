@@ -5,7 +5,7 @@ Tests for core SUT data structures and set_active.
 import pytest
 import pandas as pd
 
-from sutlab.sut import SUT, SUTColumns, SUTMetadata, PriceSpec, set_active
+from sutlab.sut import SUT, SUTColumns, SUTMetadata, set_active
 
 
 # ---------------------------------------------------------------------------
@@ -14,18 +14,18 @@ from sutlab.sut import SUT, SUTColumns, SUTMetadata, PriceSpec, set_active
 
 
 @pytest.fixture
-def price_spec():
-    return PriceSpec(basic="bas", purchasers="koeb", layers=["eng", "det", "afg", "moms"])
-
-
-@pytest.fixture
-def columns(price_spec):
+def columns():
     return SUTColumns(
         id="year",
         product="nrnr",
         transaction="trans",
         category="brch",
-        prices=price_spec,
+        price_basic="bas",
+        price_purchasers="koeb",
+        wholesale_margins="eng",
+        retail_margins="det",
+        product_taxes="afg",
+        vat="moms",
     )
 
 

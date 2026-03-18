@@ -82,3 +82,48 @@ from sutlab.sut import SUT, SUTMetadata, SUTColumns, PriceSpec
 # SUT constructed from 2019 example parquet files
 # supply shape (45793, 4), use shape (45780, 9)
 ```
+
+---
+
+## Session: 2026-03-18 — SUTColumns restructure, SUTClassifications, GDP decomposition
+
+### Decisions made
+
+**`PriceSpec` eliminated.** Its role is subsumed by explicit named fields on `SUTColumns`.
+The old `layers: list[str]` (untyped, ordered) is replaced by named optional fields per
+price-layer role. This makes the role of each column explicit and enables aggregation
+functions to find e.g. product tax columns by name rather than by position.
+
+**`SUTColumns` restructured with fixed role list.** Each field holds the actual column name
+string for that role, or `None` if absent. Required roles: `id`, `product`, `transaction`,
+`category`, `price_basic`, `price_purchasers`. Optional price-layer roles:
+`trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`,
+`product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`.
+Transport margins included for international use cases but not present in Danish data.
+
+**`SUTColumns` loaded from Excel.** Two-column table: `column` (actual column name),
+`role` (one of the fixed roles above). The dataclass remains the internal Python
+representation; the Excel table is the I/O format.
+
+**`SUTClassifications` added.** New nested dataclass replacing the five flat classification
+fields in `SUTMetadata`. Fields: `classification_names`, `products`, `transactions`,
+`industries`, `individual_consumption`, `collective_consumption`. All optional.
+
+**`SUTMetadata` simplified.** Now holds `columns: SUTColumns` and
+`classifications: SUTClassifications | None`.
+
+**GDP decomposition via `gdp_component` column.** The `transactions` classification table
+includes a `gdp_component` column with fixed values: `output`, `imports`, `intermediate`,
+`private_consumption`, `government_consumption`, `investment`, `exports`.
+Rationale: ESA2010 P31/P32 codes do not map cleanly to the standard private/government
+consumption split. A purpose-built fixed decomposition is simpler and matches how users
+expect to see GDP presented. Aggregation functions will use this column directly.
+
+GDP identities:
+- Production: output − intermediate + product_taxes_less_subsidies (from price layers)
+- Expenditure: private_consumption + government_consumption + investment + exports − imports
+
+### What was deferred
+- I/O loading functions for `SUTColumns` (from Excel two-column table)
+- I/O loading functions for `SUTClassifications` (from multi-sheet Excel file)
+- Validation logic
