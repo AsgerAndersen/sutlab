@@ -11,3 +11,9 @@ build/
 
 # Environment
 .env
+
+# Claude Code internals
+.claude/
+
+# Reference documents (copyrighted)
+docs/reference/
