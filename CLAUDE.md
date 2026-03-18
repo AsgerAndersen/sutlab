@@ -10,9 +10,9 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 - Key dependencies: pandas, openpyxl (Excel for metadata/configuration), pyarrow (parquet support) — others to be decided
 
 ## Current status
-- **Phase**: Implementation
+- **Phase**: Planning
 - **What exists**: Project skeleton + core SUT dataclasses (`sutlab/sut.py`)
-- **What's next**: I/O functions (loading SUT from parquet, metadata from Excel)
+- **What's next**: Plan and implement the SUT balancing system (see `notes/mine/sut_balancing.md` and `notes/claude/balancing_system.md`). Start with data representation design for balancing.
 
 ## Architecture
 <!-- Canonical record of settled decisions. Update when decisions are made, never delete. -->
@@ -87,6 +87,7 @@ These will be added to the data structure when needed — do not anticipate them
 ## Open design questions
 - How should classification metadata be structured for I/O? The internal representation is settled (`SUTMetadata`), but the loading functions (from Excel, parquet, etc.) are not yet designed.
 - What is the full module structure beyond `sut.py`?
+- Balancing system data representation: how are locks/cells referenced? Are price-layer share tables (α, β) part of the SUT object or computed on the fly?
 
 ## Project structure
 
