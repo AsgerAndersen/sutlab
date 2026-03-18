@@ -241,12 +241,12 @@ def make_classifications() -> dict[str, pd.DataFrame]:
                            "FIXTURE_INDUSTRIES", "FIXTURE_IC", "FIXTURE_CC"],
     })
     products = pd.DataFrame({
-        "code":        ["A",         "B",         "C"],
-        "description": ["Product A", "Product B", "Product C"],
+        "code": ["A",         "B",         "C"],
+        "name": ["Product A", "Product B", "Product C"],
     })
     transactions = pd.DataFrame({
         "code": ["0100", "0700", "2000", "3110", "3200", "5110", "6001"],
-        "description": [
+        "name": [
             "Output at basic prices",
             "Imports",
             "Intermediate consumption",
@@ -266,16 +266,16 @@ def make_classifications() -> dict[str, pd.DataFrame]:
         ],
     })
     industries = pd.DataFrame({
-        "code":        ["X",          "Y"],
-        "description": ["Industry X", "Industry Y"],
+        "code": ["X",          "Y"],
+        "name": ["Industry X", "Industry Y"],
     })
     individual_consumption = pd.DataFrame({
-        "code":        ["HH"],
-        "description": ["Household"],
+        "code": ["HH"],
+        "name": ["Household"],
     })
     collective_consumption = pd.DataFrame({
-        "code":        ["GOV"],
-        "description": ["Government"],
+        "code": ["GOV"],
+        "name": ["Government"],
     })
     return {
         "classifications":        classifications,
