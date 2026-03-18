@@ -39,7 +39,7 @@ Four dataclasses and one function in `sutlab/sut.py`:
   `private_consumption`, `government_consumption`, `exports`, `investment` (total capital
   formation), `gross_fixed_capital_formation`, `inventory_changes`,
   `acquisitions_less_disposals_of_valuables`. The last three are sub-components of
-  investment. GDP functions sum all components present and display each as a separate line.
+  investment (not alongside it). GDP functions sum all components present and display each as a separate line.
 - **`SUTMetadata`** — holds a `SUTColumns` and an optional `SUTClassifications`. Functions
   that need a specific classification table raise an informative error if it is absent.
 - **`SUT`** — top-level object holding a **collection** of SUTs: `price_basis`
@@ -107,7 +107,7 @@ These will be added to the data structure when needed — do not anticipate them
 - 2026-03-18: Current and previous year's prices are kept as separate `SUT` objects (not combined in one dataclass). Same metadata object can be reused across both.
 - 2026-03-18: `price_basis` stays as `Literal["current_year", "previous_year"]`. `'fixed'` and `'chained'` not added — out of scope for now and easy to extend when needed.
 - 2026-03-19: Classification table text-name column renamed `description` → `name` across all classification tables. `description` implied prose; `name` reflects the intent: the official standard text name of a code.
-- 2026-03-19: `gdp_component` expanded with investment sub-components: `gross_fixed_capital_formation`, `inventory_changes`, `acquisitions_less_disposals_of_valuables`. These are alternatives to the `investment` catch-all for users with granular transaction tables. Mixed use is valid. GDP functions display each component as a separate line.
+- 2026-03-19: `gdp_component` expanded with investment sub-components: `gross_fixed_capital_formation`, `inventory_changes`, `acquisitions_less_disposals_of_valuables`. These are alternatives to the `investment` catch-all for users with granular transaction tables — use instead of `investment`, not alongside it. GDP functions display each component as a separate line.
 - 2026-03-19: `gdp_component` is optional on the transactions classification table (not required). Functions that need it raise an informative error if absent.
 - 2026-03-19: Excel metadata file formats fully settled — see `metadata_format.md` (user-facing) and `notes/claude/data_representation.md` (full spec).
 

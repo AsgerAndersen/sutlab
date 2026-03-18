@@ -114,7 +114,7 @@ acquisitions_less_disposals_of_valuables
 
 `investment` covers total capital formation. If your transaction table distinguishes the
 sub-components, you can use `gross_fixed_capital_formation`, `inventory_changes`, and/or
-`acquisitions_less_disposals_of_valuables` instead of or alongside `investment`. GDP
+`acquisitions_less_disposals_of_valuables` instead of `investment`. GDP
 functions will show each component as a separate line in the output.
 
 If `gdp_component` is absent, functions that compute or display GDP will return an error.

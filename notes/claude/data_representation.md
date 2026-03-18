@@ -224,8 +224,8 @@ gross_fixed_capital_formation, inventory_changes, acquisitions_less_disposals_of
 ```
 
 `investment` is the catch-all for total capital formation. The three values below it are
-sub-components for users whose transaction table is granular enough to distinguish them.
-Mixed use is valid (some transactions mapped to `investment`, others to sub-components).
+sub-components for users whose transaction table is granular enough to distinguish them —
+use these instead of `investment`, not alongside it.
 GDP inspection functions sum all components present and display them as separate lines.
 
 If `gdp_component` is absent from the transactions table (column missing or table not
