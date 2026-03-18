@@ -227,3 +227,31 @@ GDP inspection functions sum all components present and display them as separate
 
 If `gdp_component` is absent from the transactions table (column missing or table not
 loaded), functions that perform GDP decomposition raise an informative error.
+
+---
+
+## Session: 2026-03-19 — Minor naming and format refinements
+
+### Decisions made
+
+**Classification table text-name column renamed `description` → `name`.** `description`
+implied a note or explanatory prose. `name` reflects the intent: the official standard
+text name of a code. Applied to all classification tables (products, transactions,
+industries, individual_consumption, collective_consumption).
+
+**`gdp_component` expanded with investment sub-components.** Three values added alongside
+the existing `investment` catch-all: `gross_fixed_capital_formation`, `inventory_changes`,
+`acquisitions_less_disposals_of_valuables`. Users whose transaction table distinguishes
+capital formation sub-components can map to these instead of or alongside `investment`.
+GDP inspection functions sum all components present and display each as a separate line —
+no special aggregation logic needed.
+
+**`output` kept (not renamed to `production`).** `output` is the name of the transaction
+(ESA2010 P.1); `production` names the GDP approach as a whole. `output` is more precise
+in the `gdp_component` context.
+
+**Excel metadata formats fully settled and documented.** See the session above for the
+format spec. User-facing reference written to `metadata_format.md` at project root.
+
+### What was deferred
+- I/O function implementation (next session)
