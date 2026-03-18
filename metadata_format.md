@@ -98,8 +98,21 @@ Two required columns plus one optional column:
 The `gdp_component` column is optional. If it is present, it must use these exact values:
 
 ```
-output, imports, intermediate,
-private_consumption, government_consumption, investment, exports
+output
+imports
+intermediate
+private_consumption
+government_consumption
+exports
+investment
+gross_fixed_capital_formation
+inventory_changes
+acquisitions_less_disposals_of_valuables
 ```
+
+`investment` covers total capital formation. If your transaction table distinguishes the
+sub-components, you can use `gross_fixed_capital_formation`, `inventory_changes`, and/or
+`acquisitions_less_disposals_of_valuables` instead of or alongside `investment`. GDP
+functions will show each component as a separate line in the output.
 
 If `gdp_component` is absent, functions that compute or display GDP will return an error.

@@ -215,8 +215,15 @@ Valid `gdp_component` values:
 
 ```
 output, imports, intermediate,
-private_consumption, government_consumption, investment, exports
+private_consumption, government_consumption, exports,
+investment,
+gross_fixed_capital_formation, inventory_changes, acquisitions_less_disposals_of_valuables
 ```
+
+`investment` is the catch-all for total capital formation. The three values below it are
+sub-components for users whose transaction table is granular enough to distinguish them.
+Mixed use is valid (some transactions mapped to `investment`, others to sub-components).
+GDP inspection functions sum all components present and display them as separate lines.
 
 If `gdp_component` is absent from the transactions table (column missing or table not
 loaded), functions that perform GDP decomposition raise an informative error.
