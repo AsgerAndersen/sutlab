@@ -255,6 +255,15 @@ def make_classifications() -> dict[str, pd.DataFrame]:
             "Gross fixed capital formation - dwellings",
             "Exports of domestic production",
         ],
+        "gdp_component": [
+            "output",
+            "imports",
+            "intermediate",
+            "private_consumption",
+            "government_consumption",
+            "investment",
+            "exports",
+        ],
     })
     industries = pd.DataFrame({
         "code":        ["X",          "Y"],
@@ -276,6 +285,29 @@ def make_classifications() -> dict[str, pd.DataFrame]:
         "individual_consumption": individual_consumption,
         "collective_consumption": collective_consumption,
     }
+
+
+def make_columns() -> pd.DataFrame:
+    """Return the SUTColumns role mapping table for columns.xlsx.
+
+    Maps each actual column name in the loaded SUT DataFrames to its
+    conceptual role. This is the fixture equivalent of the two-column
+    Excel table that I/O functions will use to construct a SUTColumns
+    dataclass.
+
+    The year column is added by the I/O loading function (not present
+    in the raw parquet files, which are single-year).
+    """
+    return pd.DataFrame({
+        "column": ["year", "nrnr", "trans", "brch",
+                   "bas",         "koeb",
+                   "eng",               "det",
+                   "afg",               "moms"],
+        "role":   ["id",  "product", "transaction", "category",
+                   "price_basic",   "price_purchasers",
+                   "wholesale_margins", "retail_margins",
+                   "product_taxes",     "vat"],
+    })
 
 
 def make_karakteristiske_brancher() -> pd.DataFrame:
@@ -314,6 +346,10 @@ def main() -> None:
         METADATA / "karakteristiske_brancher.xlsx", index=False
     )
     print("Metadata: karakteristiske_brancher.xlsx OK")
+
+    columns = make_columns()
+    columns.to_excel(METADATA / "columns.xlsx", index=False)
+    print("Metadata: columns.xlsx OK")
 
 
 if __name__ == "__main__":
