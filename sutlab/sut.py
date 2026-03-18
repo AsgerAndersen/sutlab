@@ -196,9 +196,9 @@ class SUT:
     metadata: SUTMetadata | None = None
 
 
-def set_active(sut: SUT, balancing_id: str | int) -> SUT:
+def mark_for_balancing(sut: SUT, balancing_id: str | int) -> SUT:
     """
-    Return a new SUT with the given id set as the active balancing target.
+    Return a new SUT with the given id marked as the active balancing target.
 
     The original SUT is not modified. Balancing functions will operate only
     on rows where the id column matches ``balancing_id``; inspection functions
@@ -227,7 +227,7 @@ def set_active(sut: SUT, balancing_id: str | int) -> SUT:
     """
     if sut.metadata is None:
         raise ValueError(
-            "sut.metadata is required to call set_active. "
+            "sut.metadata is required to call mark_for_balancing. "
             "Provide a SUTMetadata with a SUTColumns.id column name."
         )
 

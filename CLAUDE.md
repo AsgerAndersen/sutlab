@@ -11,14 +11,14 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Project skeleton + core SUT dataclasses and `set_active` (`sutlab/sut.py`) + tests (`tests/test_sut.py`)
+- **What exists**: Project skeleton + core SUT dataclasses and `mark_for_balancing` (`sutlab/sut.py`) + tests (`tests/test_sut.py`)
 - **What's next**: I/O functions (loading SUT collection from parquet, metadata from Excel), then balancing operations
 
 ## Architecture
 <!-- Canonical record of settled decisions. Update when decisions are made, never delete. -->
 
 ### Module structure
-- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `set_active`
+- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `mark_for_balancing`
 
 ### Core data representation
 Four dataclasses and one function in `sutlab/sut.py`:
@@ -43,7 +43,7 @@ Four dataclasses and one function in `sutlab/sut.py`:
   basic prices only), `use` DataFrame (long format, all members, all price columns),
   `balancing_id` (the id of the member currently being balanced, or `None`), `metadata`
   (optional `SUTMetadata`).
-- **`set_active(sut, balancing_id)`** — returns a new `SUT` with `balancing_id` set.
+- **`mark_for_balancing(sut, balancing_id)`** — returns a new `SUT` with `balancing_id` set.
   Does not mutate the original. Raises an informative error if the id is not found.
 
 Column names are never hardcoded — all are specified via `SUTColumns`. Supply holds only
@@ -97,7 +97,7 @@ These will be added to the data structure when needed — do not anticipate them
 ## Decisions log
 <!-- Append when a decision is made. Never delete entries. -->
 - 2026-03-18: Core data representation settled — see Architecture section and `notes/claude/data_representation.md`
-- 2026-03-18: SUT is a collection (multi-member long-format DataFrames) with a `balancing_id` field marking the active member. `set_active` returns a new SUT immutably. Rationale: inspection is naturally multi-year; balancing is single-year; the collection keeps both in one object without forcing the user to pass year arguments to every balancing call or inject a work-in-progress SUT into every inspection call.
+- 2026-03-18: SUT is a collection (multi-member long-format DataFrames) with a `balancing_id` field marking the active member. `mark_for_balancing` returns a new SUT immutably. Rationale: inspection is naturally multi-year; balancing is single-year; the collection keeps both in one object without forcing the user to pass year arguments to every balancing call or inject a work-in-progress SUT into every inspection call.
 - 2026-03-18: `PriceSpec` eliminated. `SUTColumns` restructured with explicit named fields per price-layer role (fixed list: `trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`, `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`). Loaded from two-column Excel table (`column`, `role`). `SUTClassifications` added as a nested dataclass inside `SUTMetadata`, replacing the five flat classification fields. Transactions classification table includes a `gdp_component` column with a fixed GDP decomposition.
 
 ## Open design questions

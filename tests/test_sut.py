@@ -1,11 +1,11 @@
 """
-Tests for core SUT data structures and set_active.
+Tests for core SUT data structures and mark_for_balancing.
 """
 
 import pytest
 import pandas as pd
 
-from sutlab.sut import SUT, SUTColumns, SUTMetadata, set_active
+from sutlab.sut import SUT, SUTColumns, SUTMetadata, mark_for_balancing
 
 
 # ---------------------------------------------------------------------------
@@ -72,45 +72,45 @@ def sut(supply, use, metadata):
 
 
 # ---------------------------------------------------------------------------
-# Tests for set_active
+# Tests for mark_for_balancing
 # ---------------------------------------------------------------------------
 
 
 class TestSetActive:
 
     def test_returns_sut_with_correct_balancing_id(self, sut):
-        result = set_active(sut, 2019)
+        result = mark_for_balancing(sut, 2019)
         assert result.balancing_id == 2019
 
     def test_does_not_mutate_original(self, sut):
-        set_active(sut, 2019)
+        mark_for_balancing(sut, 2019)
         assert sut.balancing_id is None
 
     def test_data_is_shared_not_copied(self, sut):
         # The supply DataFrame in the result should be the same object
-        result = set_active(sut, 2019)
+        result = mark_for_balancing(sut, 2019)
         assert result.supply is sut.supply
 
     def test_other_fields_are_preserved(self, sut):
-        result = set_active(sut, 2019)
+        result = mark_for_balancing(sut, 2019)
         assert result.price_basis == sut.price_basis
         assert result.metadata is sut.metadata
 
     def test_can_switch_active_year(self, sut):
-        sut_2018 = set_active(sut, 2018)
-        sut_2019 = set_active(sut, 2019)
+        sut_2018 = mark_for_balancing(sut, 2018)
+        sut_2019 = mark_for_balancing(sut, 2019)
         assert sut_2018.balancing_id == 2018
         assert sut_2019.balancing_id == 2019
 
     def test_raises_for_missing_id(self, sut):
         with pytest.raises(ValueError, match="2025"):
-            set_active(sut, 2025)
+            mark_for_balancing(sut, 2025)
 
     def test_error_message_lists_available_ids(self, sut):
         with pytest.raises(ValueError, match="2018"):
-            set_active(sut, 2025)
+            mark_for_balancing(sut, 2025)
 
     def test_raises_when_metadata_is_none(self, supply, use):
         sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
         with pytest.raises(ValueError, match="metadata"):
-            set_active(sut_no_meta, 2019)
+            mark_for_balancing(sut_no_meta, 2019)
