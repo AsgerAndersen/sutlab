@@ -99,6 +99,9 @@ These will be added to the data structure when needed — do not anticipate them
 - 2026-03-18: Core data representation settled — see Architecture section and `notes/claude/data_representation.md`
 - 2026-03-18: SUT is a collection (multi-member long-format DataFrames) with a `balancing_id` field marking the active member. `mark_for_balancing` returns a new SUT immutably. Rationale: inspection is naturally multi-year; balancing is single-year; the collection keeps both in one object without forcing the user to pass year arguments to every balancing call or inject a work-in-progress SUT into every inspection call.
 - 2026-03-18: `PriceSpec` eliminated. `SUTColumns` restructured with explicit named fields per price-layer role (fixed list: `trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`, `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`). Loaded from two-column Excel table (`column`, `role`). `SUTClassifications` added as a nested dataclass inside `SUTMetadata`, replacing the five flat classification fields. Transactions classification table includes a `gdp_component` column with a fixed GDP decomposition.
+- 2026-03-18: `set_active` renamed to `mark_for_balancing` — more concrete, reflects tagging rather than starting a process.
+- 2026-03-18: Current and previous year's prices are kept as separate `SUT` objects (not combined in one dataclass). Same metadata object can be reused across both.
+- 2026-03-18: `price_basis` stays as `Literal["current_year", "previous_year"]`. `'fixed'` and `'chained'` not added — out of scope for now and easy to extend when needed.
 
 ## Open design questions
 - How should the Excel I/O loading functions be structured? (loading `SUTColumns` from two-column table, loading `SUTClassifications` from multi-sheet Excel file)

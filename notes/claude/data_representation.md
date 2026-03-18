@@ -127,3 +127,26 @@ GDP identities:
 - I/O loading functions for `SUTColumns` (from Excel two-column table)
 - I/O loading functions for `SUTClassifications` (from multi-sheet Excel file)
 - Validation logic
+
+---
+
+## Session: 2026-03-18 — Remaining data representation decisions
+
+### Decisions made
+
+**`set_active` renamed to `mark_for_balancing`.** More concrete — "mark" captures the
+declarative/tagging nature; doesn't imply starting a process.
+
+**Current and previous year prices kept as separate `SUT` objects.** Combining them into
+one dataclass (with `supply_current`, `use_current`, `supply_previous`, `use_previous`)
+was considered and rejected. Balancing operates on one price basis at a time; chain-linking
+is out of scope; the same `SUTMetadata` object can be reused across both objects without
+duplication. Not overengineering — just premature.
+
+**`price_basis` stays as `Literal["current_year", "previous_year"]`.** Adding `'fixed'`
+(fixed base-year prices) and `'chained'` (chain-linked volumes) deferred. `'chained'` is
+conceptually off as a price basis — chain-linked values are volume indices, not prices.
+`'fixed'` is legitimate but out of scope. Easy to extend the Literal when needed.
+
+### What was deferred
+- I/O functions (next session)
