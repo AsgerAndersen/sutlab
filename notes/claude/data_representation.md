@@ -150,3 +150,73 @@ conceptually off as a price basis — chain-linked values are volume indices, no
 
 ### What was deferred
 - I/O functions (next session)
+
+---
+
+## Session: 2026-03-18 — Excel metadata file formats
+
+### Settled formats
+
+#### `columns.xlsx`
+
+Two-column table, one row per column present in the SUT DataFrames. Used by the I/O
+loading function to construct a `SUTColumns` dataclass.
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `column` | yes | Actual column name in the DataFrame (e.g. `nrnr`) |
+| `role`   | yes | Conceptual role from the fixed list below |
+
+Valid roles:
+
+```
+id, product, transaction, category,
+price_basic, price_purchasers,
+trade_margins, wholesale_margins, retail_margins, transport_margins,
+product_taxes, product_subsidies, product_taxes_less_subsidies, vat
+```
+
+Required roles (must appear): `id`, `product`, `transaction`, `category`,
+`price_basic`, `price_purchasers`. Optional roles not present in the file map to
+`None` on `SUTColumns`. Loading raises an informative error if a required role is missing
+or if an unrecognised role value is encountered.
+
+#### `ta_classifications.xlsx`
+
+Multi-sheet Excel file. The file as a whole is optional. Each sheet is individually
+optional — a missing sheet maps to `None` on the corresponding `SUTClassifications` field.
+Sheet names are fixed (match `SUTClassifications` field names exactly).
+
+**Sheet: `classifications`**
+
+Maps each dimension to its classification system name.
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `dimension`      | yes | One of: `products`, `transactions`, `industries`, `individual_consumption`, `collective_consumption` |
+| `classification` | yes | Classification system name (e.g. `NRNR07`, `NBR117A3`) |
+
+**Sheets: `products`, `industries`, `individual_consumption`, `collective_consumption`**
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `code` | yes | Classification code |
+| `name` | yes | Official standard text name of the code |
+
+**Sheet: `transactions`**
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `code`            | yes | Transaction code |
+| `name`            | yes | Official standard text name of the code |
+| `gdp_component`   | no  | GDP decomposition component (see valid values below) |
+
+Valid `gdp_component` values:
+
+```
+output, imports, intermediate,
+private_consumption, government_consumption, investment, exports
+```
+
+If `gdp_component` is absent from the transactions table (column missing or table not
+loaded), functions that perform GDP decomposition raise an informative error.
