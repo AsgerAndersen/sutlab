@@ -1,11 +1,13 @@
 # Metadata file format
 
-The library reads two Excel files to understand the structure of your SUT data:
-`columns.xlsx` and `ta_classifications.xlsx`. Both files are described below.
+The library reads two Excel files to understand the structure of your SUT data: a
+**columns file** and a **classifications file**. You can name these files whatever you
+like and store them wherever you like — you provide the paths when calling the I/O
+functions. Both file structures are described below.
 
 ---
 
-## `columns.xlsx`
+## Columns file
 
 Tells the library which column in your data plays which role.
 
@@ -53,7 +55,7 @@ The `role` values must be chosen from the fixed list below.
 
 ---
 
-## `ta_classifications.xlsx`
+## Classifications file
 
 Provides labels and classification information for products, transactions, industries,
 and consumption functions. The file as a whole is optional. Each sheet is also optional —

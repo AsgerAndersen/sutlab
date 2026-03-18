@@ -157,7 +157,10 @@ conceptually off as a price basis — chain-linked values are volume indices, no
 
 ### Settled formats
 
-#### `columns.xlsx`
+File names are not prescribed — users pass paths to their files when calling I/O
+functions. The structure of each file type is fixed; the name and location are not.
+
+#### Columns file
 
 Two-column table, one row per column present in the SUT DataFrames. Used by the I/O
 loading function to construct a `SUTColumns` dataclass.
@@ -181,7 +184,7 @@ Required roles (must appear): `id`, `product`, `transaction`, `category`,
 `None` on `SUTColumns`. Loading raises an informative error if a required role is missing
 or if an unrecognised role value is encountered.
 
-#### `ta_classifications.xlsx`
+#### Classifications file
 
 Multi-sheet Excel file. The file as a whole is optional. Each sheet is individually
 optional — a missing sheet maps to `None` on the corresponding `SUTClassifications` field.
