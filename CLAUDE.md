@@ -13,18 +13,35 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 *(to be decided in Claude Code)*
 
 ## Current status
-- **Phase**: Planning
-- **What exists**: Project skeleton only
-- **What's next**: Decide core data representation
+- **Phase**: Implementation
+- **What exists**: Project skeleton + core SUT dataclasses (`sutlab/sut.py`)
+- **What's next**: I/O functions (loading SUT from parquet, metadata from Excel)
 
 ## Architecture
 <!-- Canonical record of settled decisions. Update when decisions are made, never delete. -->
 
 ### Module structure
-*(to be decided)*
+- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `PriceSpec`
 
 ### Core data representation
-*(to be decided — first planning priority)*
+Four dataclasses in `sutlab/sut.py`:
+
+- **`PriceSpec`** — column names for price values: `basic` (basic prices), `purchasers`
+  (purchasers' prices), `layers` (ordered list of intermediate price-layer columns such as
+  wholesale margins, retail margins, taxes, VAT).
+- **`SUTColumns`** — maps conceptual dimensions to actual DataFrame column names: `product`,
+  `transaction`, `category` (the column-dimension of the SUT matrix — industry for
+  production/intermediate use, consumption function for final demand, empty otherwise),
+  and a `PriceSpec`.
+- **`SUTMetadata`** — holds a `SUTColumns` plus optional classification tables (products,
+  transactions, industries, individual consumption, collective consumption). Functions that
+  need a specific table raise an informative error if it is absent.
+- **`SUT`** — top-level object: `year` (int), `price_basis` (`"current_year"` or
+  `"previous_year"`), `supply` DataFrame (basic prices only), `use` DataFrame (all price
+  columns), `metadata` (optional `SUTMetadata`).
+
+Column names are never hardcoded — all are specified via `SUTColumns`/`PriceSpec`. Supply
+holds only the basic-prices column; price layers are a use-side concept.
 
 ### Design principles
 <!-- Permanent, load-bearing decisions about how the system works. Record when/why in Decisions log. -->
@@ -72,12 +89,11 @@ Do NOT read proactively. Consult only when a specific question requires it, and 
 
 ## Decisions log
 <!-- Append when a decision is made. Never delete entries. -->
-*(none yet)*
+- 2026-03-18: Core data representation settled — see Architecture section and `notes/claude/data_representation.md`
 
 ## Open design questions
-- What is the core data representation? (first priority)
-- How should classification metadata be structured? The code should be abstract with respect to classification systems — classifications are user-specified, not hardcoded. Users will typically load them from Excel, but the internal representation should not assume a source format.
-- What is the module structure?
+- How should classification metadata be structured for I/O? The internal representation is settled (`SUTMetadata`), but the loading functions (from Excel, parquet, etc.) are not yet designed.
+- What is the full module structure beyond `sut.py`?
 
 ## Project structure
 
@@ -132,4 +148,4 @@ Claude should NOT:
 
 ## Session history
 <!-- Updated by Claude at the end of every session -->
-*(none yet)*
+- 2026-03-18: Planning session — decided core data representation (SUT, SUTMetadata, SUTColumns, PriceSpec). Implemented `sutlab/sut.py`. See `notes/claude/data_representation.md`.
