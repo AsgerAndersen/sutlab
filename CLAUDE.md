@@ -9,9 +9,6 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 - Package install policy: always ask before adding new dependencies; use `uv add`
 - Key dependencies: pandas, openpyxl (Excel for metadata/configuration), pyarrow (parquet support) — others to be decided
 
-## Project goals
-*(to be decided in Claude Code)*
-
 ## Current status
 - **Phase**: Implementation
 - **What exists**: Project skeleton + core SUT dataclasses (`sutlab/sut.py`)
@@ -78,10 +75,6 @@ These will be added to the data structure when needed — do not anticipate them
 - **Chain-linked volume indices**: Volume time series constructed by linking year-to-year Laspeyres volume indices. Derived from the current and previous year's prices tables — not directly observable in the SUT.
 - **Supplementary data**: Physical or volume measures outside the monetary accounting framework (e.g. hours worked, employment, capital stock). Used for e.g. productivity analysis but not part of the SUT itself.
 
-## Reference documentation
-Do NOT read proactively. Consult only when a specific question requires it, and read targeted sections only.
-- `docs/reference/` → Standards documents (e.g. SNA 2008). Specific files to be added as needed.
-
 ## Data
 - `data/examples/` → Example SUT data from Statistics Denmark. Parquet files for SUT tables (pandas DataFrames saved with `to_parquet`).
 - `data/examples/metadata/` → Metadata for example data (e.g. classifications). Excel files.
@@ -120,9 +113,8 @@ Claude should NOT:
 
 ### Start of every session:
 1. Read this CLAUDE.md in full
-2. Run Python with `uv run python` from the project root — no activation needed
-3. Read all files in `notes/claude/`
-4. State briefly: current phase, what was last worked on, what's next
+2. Read all files in `notes/claude/`
+3. State briefly: current phase, what was last worked on, what's next
 
 ### End of every session:
 1. Append a summary to `notes/claude/` (organised by topic, not by session)
@@ -146,6 +138,3 @@ Claude should NOT:
 - Prefer proposing over doing for anything structural
 - Prefer targeted edits over rewrites
 
-## Session history
-<!-- Updated by Claude at the end of every session -->
-- 2026-03-18: Planning session — decided core data representation (SUT, SUTMetadata, SUTColumns, PriceSpec). Implemented `sutlab/sut.py`. See `notes/claude/data_representation.md`.
