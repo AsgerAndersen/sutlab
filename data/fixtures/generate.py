@@ -305,8 +305,8 @@ def make_columns() -> pd.DataFrame:
                    "afg",               "moms"],
         "role":   ["id",  "product", "transaction", "category",
                    "price_basic",   "price_purchasers",
-                   "wholesale_margins", "retail_margins",
-                   "product_taxes",     "vat"],
+                   "wholesale_margins",        "retail_margins",
+                   "product_taxes_less_subsidies", "vat"],
     })
 
 

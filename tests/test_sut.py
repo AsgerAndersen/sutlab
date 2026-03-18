@@ -24,7 +24,7 @@ def columns():
         price_purchasers="koeb",
         wholesale_margins="eng",
         retail_margins="det",
-        product_taxes="afg",
+        product_taxes_less_subsidies="afg",
         vat="moms",
     )
 
