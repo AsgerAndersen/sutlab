@@ -38,6 +38,10 @@ Append-only. Each entry: date, decision, brief rationale.
   `acquisitions_less_disposals_of_valuables`. The last three are sub-components of
   `investment` — use instead of it, not alongside.
 
+- **2026-03-18**: Balancing functions will filter `sut.supply` and `sut.use` to the
+  rows matching `balancing_id`, operate on those, and return a new SUT with updated
+  DataFrames. The rest of the collection is carried along untouched.
+
 - **2026-03-19**: Notes structure reorganised. Decisions log moved to this file.
   `data_representation.md` rewritten as a clean current-state reference. CLAUDE.md
   no longer requires reading all notes at session start — consult proactively when
