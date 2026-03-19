@@ -99,18 +99,18 @@ class SUTClassifications:
         Corresponds to the ``classifications`` sheet in the Excel metadata
         file.
     products : DataFrame or None
-        Classification table for products: code and label columns.
+        Classification table for products: ``code`` and ``name`` columns.
     transactions : DataFrame or None
         Classification table for transaction codes: ``code`` and ``name``
         columns.
     industries : DataFrame or None
-        Classification table for industries: code and label columns.
+        Classification table for industries: ``code`` and ``name`` columns.
     individual_consumption : DataFrame or None
         Classification table for individual consumption functions
-        (e.g. NCP76): code and label columns.
+        (e.g. NCP76): ``code`` and ``name`` columns.
     collective_consumption : DataFrame or None
         Classification table for collective consumption functions
-        (e.g. NCO10): code and label columns.
+        (e.g. NCO10): ``code`` and ``name`` columns.
     """
 
     classification_names: pd.DataFrame | None = None
@@ -153,7 +153,7 @@ class SUT:
     (``metadata.columns.id``).
 
     One member of the collection can be designated as the active balancing
-    target via :func:`set_active`. Balancing functions operate on that member
+    target via :func:`mark_for_balancing`. Balancing functions operate on that member
     only; inspection functions span the full collection.
 
     Parameters
@@ -178,7 +178,7 @@ class SUT:
         enforced but recommended for readability.
     balancing_id : str, int, or None
         The id value of the member currently being balanced. Set via
-        :func:`set_active`. ``None`` if no member is designated as active.
+        :func:`mark_for_balancing`. ``None`` if no member is designated as active.
     metadata : SUTMetadata or None
         Column specifications and optional classification tables. Required by
         functions that need to look up labels or validate codes. If ``None``,

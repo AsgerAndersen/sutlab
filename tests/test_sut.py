@@ -76,7 +76,7 @@ def sut(supply, use, metadata):
 # ---------------------------------------------------------------------------
 
 
-class TestSetActive:
+class TestMarkForBalancing:
 
     def test_returns_sut_with_correct_balancing_id(self, sut):
         result = mark_for_balancing(sut, 2019)
