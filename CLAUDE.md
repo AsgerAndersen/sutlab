@@ -58,6 +58,11 @@ set. Does not mutate the original.
 - Functional style — plain functions that take data and return data; no class hierarchies
 - Dataclasses are fine as simple data containers
 - Informative error messages: `"Product 'X' not found. Available: ..."` not bare KeyError
+- API design: prefer many small public functions with few arguments over fewer abstract
+  functions with many arguments. Names should be explicit and hierarchically structured
+  so related functions group together in autocomplete (e.g. `load_metadata_columns_from_excel`,
+  `load_metadata_classifications_from_excel`). Users navigate the API primarily by name.
+  Internal helpers can be as abstract as needed — this principle applies to the public API only.
 - Column names never hardcoded — always via `SUTColumns`
 - Supply holds only basic prices; price layers are a use-side concept
 - DataFrame column order (established by I/O functions, not enforced by dataclass):
