@@ -249,3 +249,30 @@ format spec. User-facing reference written to `metadata_format.md` at project ro
 
 ### What was deferred
 - I/O function implementation (next session)
+
+---
+
+## Session: 2026-03-19 (continued) — GDP decomposition, consistency check
+
+### Decisions made
+
+**`gdp_component` removed from `SUTClassifications`.** GDP decomposition mapping is
+analysis-time input, not SUT metadata. Rationale: chaining and aggregation do not
+commute — GDP must be computed at the right aggregation level before chaining.
+Storing the mapping inside the SUT object would obscure this constraint. The mapping
+will be passed as an argument to inspection functions (interface TBD).
+
+**Valid `gdp_component` values settled** for future use as a function argument:
+`output`, `imports`, `intermediate`, `private_consumption`, `government_consumption`,
+`exports`, `investment`, `gross_fixed_capital_formation`, `inventory_changes`,
+`acquisitions_less_disposals_of_valuables`. The last three are sub-components of
+`investment` — use instead of it, not alongside it.
+
+**Consistency check completed.** All 8 tests pass. Fixed: stale `:func:\`set_active\``
+references in `SUT` docstring → `mark_for_balancing`; "code and label columns" →
+"code and name columns" in `SUTClassifications` docstring; `TestSetActive` →
+`TestMarkForBalancing` in test file.
+
+### What was deferred
+- I/O function implementation (next session)
+- Exact interface for GDP decomposition argument to `inspect_gdp` (deferred to inspection function design)
