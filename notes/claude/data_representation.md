@@ -1,278 +1,135 @@
-# Data representation
+# SUT data representation — current state reference
 
-## Session: 2026-03-18 — Core SUT dataclass
-
-### Decisions made
-
-**Structure:** Four dataclasses in `sutlab/sut.py`:
-- `PriceSpec` — column names for price values (basic, purchasers, layers list)
-- `SUTColumns` — maps conceptual dimensions to actual DataFrame column names
-- `SUTMetadata` — column spec + optional classification tables
-- `SUT` — top-level object: year, price_basis, supply, use, optional metadata
-
-**Key design choices:**
-- Column names are not hardcoded. `SUTColumns` holds the actual column names from the
-  source data. Code accesses e.g. `df[sut.metadata.columns.product]`.
-- Supply DataFrame holds only the basic-prices column (plus product/transaction/category).
-  Price layers are a use-side concept.
-- Use DataFrame holds all price columns: basic, layers (eng/det/afg/moms etc.), purchasers.
-  The layer columns are configurable via `PriceSpec.layers` — not hardcoded to Danish names.
-- `price_basis` field: `"current_year"` or `"previous_year"`. These are the only two price
-  bases in which SUTs are balanced. Chain-linking (deriving volume indices) is out of scope
-  for now but this field sets up the distinction correctly.
-- The `brch`-equivalent dimension is called `category` conceptually (the column-dimension
-  of the traditional SUT matrix — industry for production/intermediate use, consumption
-  function for final demand, empty for imports/exports/investment).
-- `metadata` is optional on `SUT`. Functions requiring specific metadata raise informative
-  errors if it is absent.
-- `characteristic_industries` (product → primary industry mapping) intentionally excluded
-  from `SUTMetadata` for now.
-
-### What was deferred
-- Validation logic (separate function, not yet written)
-- I/O functions (loading from parquet/Excel)
-- Chain-linking / volume index calculation
+This is a live current-state document. It is more detailed than CLAUDE.md but covers the
+same settled decisions. Update when decisions change; do not append session logs here.
 
 ---
 
-## Session: 2026-03-18 — SUT as collection, set_active
+## Python dataclasses (`sutlab/sut.py`)
 
-### Decisions made
+### SUT
 
-**SUT is a collection, not a single-year object.** `supply` and `use` are long-format
-DataFrames spanning multiple members (typically years). An extra id column (name specified
-in `SUTColumns.id`) identifies which rows belong to which member.
+Top-level object. Holds a **collection** of supply and use tables (typically a time
+series) sharing the same structure and metadata.
 
-**Rationale:** Inspection is naturally multi-year (comparing a year being balanced against
-historical context). Balancing is single-year. A collection keeps both workflows in one
-object.
+| Field | Type | Description |
+|---|---|---|
+| `price_basis` | `"current_year" \| "previous_year"` | Price basis for the whole collection |
+| `supply` | `pd.DataFrame` | Long-format, all members, basic prices only |
+| `use` | `pd.DataFrame` | Long-format, all members, all price columns |
+| `balancing_id` | `str \| int \| None` | Id of the member currently being balanced |
+| `metadata` | `SUTMetadata \| None` | Column specs and optional classifications |
 
-**`balancing_id` field on `SUT`.** Marks which member is the active balancing target.
-`None` if no member is active.
+Current and previous year prices are kept as **separate SUT objects**. The same metadata
+object can be shared between them.
 
-**`set_active(sut, balancing_id) -> SUT`.** Returns a new SUT with `balancing_id` set.
-Immutable — original is unchanged. Raises informative `ValueError` if the id is not found
-or if `metadata` is None.
+Collection design: inspection functions span the full collection; balancing functions
+operate on the member identified by `balancing_id`. This keeps the multi-year series
+available as context during single-year balancing.
 
-**`year` field removed.** The id column subsumes it. The id is not required to be temporal
-(could be a quarter string, a scenario name, etc.).
+### SUTMetadata
 
-**`SUTColumns.id` added.** Column name for the identifier dimension.
+| Field | Type | Description |
+|---|---|---|
+| `columns` | `SUTColumns` | Required |
+| `classifications` | `SUTClassifications \| None` | Optional |
 
-**Column order convention.** Supply and use DataFrames should follow the order: id,
-product, transaction, category, price columns. Not enforced by the dataclass — I/O
-functions are responsible for establishing this order. Documented in the `SUT` docstring.
+### SUTColumns
 
-### Alternatives considered
+Maps conceptual roles to actual DataFrame column names. Loaded from a two-column Excel
+table (`column`, `role`); this dataclass is the internal Python representation.
 
-- **Two types: SUT (single) + SUTSeries (collection)** — rejected because inspection
-  functions would need the user to inject the work-in-progress SUT into the series before
-  each call, or inspection would miss the latest balancing changes.
-- **Collection with mutable `balancing_id`** — rejected in favour of immutable `set_active`
-  to avoid accidental mutation and to allow two active years to coexist (e.g. for comparison).
+**Required fields** (no default):
 
-### Implementation status
+| Field | Role |
+|---|---|
+| `id` | Identifies which collection member (year/quarter) a row belongs to |
+| `product` | Product dimension |
+| `transaction` | Transaction code |
+| `category` | Industry, consumption function, or similar — the column dimension of the SUT matrix |
+| `price_basic` | Values at basic prices |
+| `price_purchasers` | Values at purchasers' prices |
 
-Implemented and tested. 8 tests in `tests/test_sut.py`, all passing.
+**Optional fields** (default `None`):
 
-### Verification
-Confirmed working:
+| Field | Role |
+|---|---|
+| `trade_margins` | Total trade margins (if not split into wholesale/retail) |
+| `wholesale_margins` | Wholesale trade margins |
+| `retail_margins` | Retail trade margins |
+| `transport_margins` | Transport margins |
+| `product_taxes` | Taxes on products (gross, excluding VAT) |
+| `product_subsidies` | Subsidies on products (if recorded separately) |
+| `product_taxes_less_subsidies` | Taxes less subsidies on products (net) |
+| `vat` | VAT |
+
+### SUTClassifications
+
+All fields `pd.DataFrame | None`, default `None`. All classification tables have `code`
+and `name` columns.
+
+| Field | Sheet name in Excel | Notes |
+|---|---|---|
+| `classification_names` | `classifications` | Maps dimension names to classification system names |
+| `products` | `products` | |
+| `transactions` | `transactions` | |
+| `industries` | `industries` | |
+| `individual_consumption` | `individual_consumption` | |
+| `collective_consumption` | `collective_consumption` | |
+
+GDP decomposition mapping is **not** stored here — it is passed as an argument to
+inspection functions (design deferred to inspection function design).
+
+### mark_for_balancing
+
 ```python
-from sutlab.sut import SUT, SUTMetadata, SUTColumns, PriceSpec
-# SUT constructed from 2019 example parquet files
-# supply shape (45793, 4), use shape (45780, 9)
+mark_for_balancing(sut: SUT, balancing_id: str | int) -> SUT
 ```
 
----
-
-## Session: 2026-03-18 — SUTColumns restructure, SUTClassifications, GDP decomposition
-
-### Decisions made
-
-**`PriceSpec` eliminated.** Its role is subsumed by explicit named fields on `SUTColumns`.
-The old `layers: list[str]` (untyped, ordered) is replaced by named optional fields per
-price-layer role. This makes the role of each column explicit and enables aggregation
-functions to find e.g. product tax columns by name rather than by position.
-
-**`SUTColumns` restructured with fixed role list.** Each field holds the actual column name
-string for that role, or `None` if absent. Required roles: `id`, `product`, `transaction`,
-`category`, `price_basic`, `price_purchasers`. Optional price-layer roles:
-`trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`,
-`product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`.
-Transport margins included for international use cases but not present in Danish data.
-
-**`SUTColumns` loaded from Excel.** Two-column table: `column` (actual column name),
-`role` (one of the fixed roles above). The dataclass remains the internal Python
-representation; the Excel table is the I/O format.
-
-**`SUTClassifications` added.** New nested dataclass replacing the five flat classification
-fields in `SUTMetadata`. Fields: `classification_names`, `products`, `transactions`,
-`industries`, `individual_consumption`, `collective_consumption`. All optional.
-
-**`SUTMetadata` simplified.** Now holds `columns: SUTColumns` and
-`classifications: SUTClassifications | None`.
-
-**GDP decomposition via `gdp_component` column.** The `transactions` classification table
-includes a `gdp_component` column with fixed values: `output`, `imports`, `intermediate`,
-`private_consumption`, `government_consumption`, `investment`, `exports`.
-Rationale: ESA2010 P31/P32 codes do not map cleanly to the standard private/government
-consumption split. A purpose-built fixed decomposition is simpler and matches how users
-expect to see GDP presented. Aggregation functions will use this column directly.
-
-GDP identities:
-- Production: output − intermediate + product_taxes_less_subsidies (from price layers)
-- Expenditure: private_consumption + government_consumption + investment + exports − imports
-
-### What was deferred
-- I/O loading functions for `SUTColumns` (from Excel two-column table)
-- I/O loading functions for `SUTClassifications` (from multi-sheet Excel file)
-- Validation logic
+Returns a new SUT with `balancing_id` set. Does not mutate the original. Raises
+`ValueError` with an informative message if `balancing_id` is not found.
 
 ---
 
-## Session: 2026-03-18 — Remaining data representation decisions
+## DataFrame column conventions
 
-### Decisions made
+Established by I/O functions; not enforced by the dataclass.
 
-**`set_active` renamed to `mark_for_balancing`.** More concrete — "mark" captures the
-declarative/tagging nature; doesn't imply starting a process.
-
-**Current and previous year prices kept as separate `SUT` objects.** Combining them into
-one dataclass (with `supply_current`, `use_current`, `supply_previous`, `use_previous`)
-was considered and rejected. Balancing operates on one price basis at a time; chain-linking
-is out of scope; the same `SUTMetadata` object can be reused across both objects without
-duplication. Not overengineering — just premature.
-
-**`price_basis` stays as `Literal["current_year", "previous_year"]`.** Adding `'fixed'`
-(fixed base-year prices) and `'chained'` (chain-linked volumes) deferred. `'chained'` is
-conceptually off as a price basis — chain-linked values are volume indices, not prices.
-`'fixed'` is legitimate but out of scope. Easy to extend the Literal when needed.
-
-### What was deferred
-- I/O functions (next session)
+- **Supply**: `id, product, transaction, category, price_basic`
+- **Use**: `id, product, transaction, category, price_basic, [price layers], price_purchasers`
 
 ---
 
-## Session: 2026-03-18 — Excel metadata file formats
+## Excel metadata file formats
 
-### Settled formats
+### Columns file
 
-File names are not prescribed — users pass paths to their files when calling I/O
-functions. The structure of each file type is fixed; the name and location are not.
+Two columns, one row per column present in the SUT DataFrames:
 
-#### Columns file
+| `column` | `role` |
+|---|---|
+| actual column name | role from the fixed list in SUTColumns |
 
-Two-column table, one row per column present in the SUT DataFrames. Used by the I/O
-loading function to construct a `SUTColumns` dataclass.
+Required roles must be present; optional roles can be absent (field set to `None`).
 
-| Column | Required | Description |
-|--------|----------|-------------|
-| `column` | yes | Actual column name in the DataFrame (e.g. `nrnr`) |
-| `role`   | yes | Conceptual role from the fixed list below |
+### Classifications file (multi-sheet)
 
-Valid roles:
+The file as a whole is optional. Each sheet is individually optional.
 
-```
-id, product, transaction, category,
-price_basic, price_purchasers,
-trade_margins, wholesale_margins, retail_margins, transport_margins,
-product_taxes, product_subsidies, product_taxes_less_subsidies, vat
-```
+**`classifications` sheet**: `dimension` and `classification` columns.
 
-Required roles (must appear): `id`, `product`, `transaction`, `category`,
-`price_basic`, `price_purchasers`. Optional roles not present in the file map to
-`None` on `SUTColumns`. Loading raises an informative error if a required role is missing
-or if an unrecognised role value is encountered.
+**All other sheets** (`products`, `transactions`, `industries`, `individual_consumption`,
+`collective_consumption`): `code` and `name` columns.
 
-#### Classifications file
-
-Multi-sheet Excel file. The file as a whole is optional. Each sheet is individually
-optional — a missing sheet maps to `None` on the corresponding `SUTClassifications` field.
-Sheet names are fixed (match `SUTClassifications` field names exactly).
-
-**Sheet: `classifications`**
-
-Maps each dimension to its classification system name.
-
-| Column | Required | Description |
-|--------|----------|-------------|
-| `dimension`      | yes | One of: `products`, `transactions`, `industries`, `individual_consumption`, `collective_consumption` |
-| `classification` | yes | Classification system name (e.g. `NRNR07`, `NBR117A3`) |
-
-**Sheets: `products`, `industries`, `individual_consumption`, `collective_consumption`**
-
-| Column | Required | Description |
-|--------|----------|-------------|
-| `code` | yes | Classification code |
-| `name` | yes | Official standard text name of the code |
-
-**Sheet: `transactions`**
-
-| Column | Required | Description |
-|--------|----------|-------------|
-| `code` | yes | Transaction code |
-| `name` | yes | Official standard text name of the code |
-
-GDP decomposition mapping is not stored in `SUTClassifications`. It is passed as an
-argument to inspection functions (exact interface TBD when inspection functions are
-designed). See "GDP decomposition" section below for the valid values.
+Sheet names must match exactly (used as keys when loading).
 
 ---
 
-## Session: 2026-03-19 — Minor naming and format refinements
+## Deferred design
 
-### Decisions made
-
-**Classification table text-name column renamed `description` → `name`.** `description`
-implied a note or explanatory prose. `name` reflects the intent: the official standard
-text name of a code. Applied to all classification tables (products, transactions,
-industries, individual_consumption, collective_consumption).
-
-**`gdp_component` removed from `SUTClassifications`.** GDP decomposition mapping is not
-SUT metadata — it is analysis-time input. Rationale: chaining and aggregation do not
-commute; GDP must be computed at the right aggregation level before chaining.
-Storing the mapping in the SUT object would obscure this constraint. The mapping will be
-passed as an argument to inspection functions (interface TBD).
-
-**Valid `gdp_component` values settled** (for future use as argument):
+**GDP decomposition argument** — valid `gdp_component` values are settled:
 `output`, `imports`, `intermediate`, `private_consumption`, `government_consumption`,
 `exports`, `investment` (total capital formation), `gross_fixed_capital_formation`,
 `inventory_changes`, `acquisitions_less_disposals_of_valuables`. The last three are
-sub-components of `investment` — use instead of `investment`, not alongside it.
-
-**`output` kept (not renamed to `production`).** `output` is the name of the transaction
-(ESA2010 P.1); `production` names the GDP approach as a whole. `output` is more precise
-in the `gdp_component` context.
-
-**Excel metadata formats fully settled and documented.** See the session above for the
-format spec. User-facing reference written to `metadata_format.md` at project root.
-
-### What was deferred
-- I/O function implementation (next session)
-
----
-
-## Session: 2026-03-19 (continued) — GDP decomposition, consistency check
-
-### Decisions made
-
-**`gdp_component` removed from `SUTClassifications`.** GDP decomposition mapping is
-analysis-time input, not SUT metadata. Rationale: chaining and aggregation do not
-commute — GDP must be computed at the right aggregation level before chaining.
-Storing the mapping inside the SUT object would obscure this constraint. The mapping
-will be passed as an argument to inspection functions (interface TBD).
-
-**Valid `gdp_component` values settled** for future use as a function argument:
-`output`, `imports`, `intermediate`, `private_consumption`, `government_consumption`,
-`exports`, `investment`, `gross_fixed_capital_formation`, `inventory_changes`,
-`acquisitions_less_disposals_of_valuables`. The last three are sub-components of
-`investment` — use instead of it, not alongside it.
-
-**Consistency check completed.** All 8 tests pass. Fixed: stale `:func:\`set_active\``
-references in `SUT` docstring → `mark_for_balancing`; "code and label columns" →
-"code and name columns" in `SUTClassifications` docstring; `TestSetActive` →
-`TestMarkForBalancing` in test file.
-
-### What was deferred
-- I/O function implementation (next session)
-- Exact interface for GDP decomposition argument to `inspect_gdp` (deferred to inspection function design)
+sub-components of `investment` — use instead of it, not alongside. The exact interface
+(DataFrame, dict, or other) is deferred to inspection function design.
