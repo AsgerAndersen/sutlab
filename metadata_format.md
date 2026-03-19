@@ -85,36 +85,14 @@ Each of these sheets has two columns:
 
 ### Sheet: `transactions`
 
-Two required columns plus one optional column:
+Two columns:
 
-| `code` | `name` | `gdp_component` |
-|---|---|---|
-| `P1` | Output at basic prices | `output` |
-| `P7` | Imports of goods and services | `imports` |
-| `P2` | Intermediate consumption | `intermediate` |
-| `P31` | Individual consumption expenditure | `private_consumption` |
-| `P32` | Collective consumption expenditure | `government_consumption` |
-| `P51G` | Gross fixed capital formation | `investment` |
-| `P6` | Exports of goods and services | `exports` |
-
-The `gdp_component` column is optional. If it is present, it must use these exact values:
-
-```
-output
-imports
-intermediate
-private_consumption
-government_consumption
-exports
-investment
-gross_fixed_capital_formation
-inventory_changes
-acquisitions_less_disposals_of_valuables
-```
-
-`investment` covers total capital formation. If your transaction table distinguishes the
-sub-components, you can use `gross_fixed_capital_formation`, `inventory_changes`, and/or
-`acquisitions_less_disposals_of_valuables` instead of `investment`. GDP
-functions will show each component as a separate line in the output.
-
-If `gdp_component` is absent, functions that compute or display GDP will return an error.
+| `code` | `name` |
+|---|---|
+| `P1` | Output at basic prices |
+| `P7` | Imports of goods and services |
+| `P2` | Intermediate consumption |
+| `P31` | Individual consumption expenditure |
+| `P32` | Collective consumption expenditure |
+| `P51G` | Gross fixed capital formation |
+| `P6` | Exports of goods and services |

@@ -101,17 +101,8 @@ class SUTClassifications:
     products : DataFrame or None
         Classification table for products: code and label columns.
     transactions : DataFrame or None
-        Classification table for transaction codes: code, label, and
-        ``gdp_component`` columns. The ``gdp_component`` column maps each
-        transaction code to a GDP decomposition component. Valid values:
-        ``'output'``, ``'imports'``, ``'intermediate'``,
-        ``'private_consumption'``, ``'government_consumption'``,
-        ``'exports'``, ``'investment'`` (total capital formation),
-        ``'gross_fixed_capital_formation'``, ``'inventory_changes'``,
-        ``'acquisitions_less_disposals_of_valuables'``. The last three are
-        sub-components of investment for users whose transaction table is
-        granular enough to distinguish them. GDP inspection functions sum
-        all components present and display them as separate lines.
+        Classification table for transaction codes: ``code`` and ``name``
+        columns.
     industries : DataFrame or None
         Classification table for industries: code and label columns.
     individual_consumption : DataFrame or None

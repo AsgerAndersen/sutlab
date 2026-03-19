@@ -210,26 +210,12 @@ Maps each dimension to its classification system name.
 
 | Column | Required | Description |
 |--------|----------|-------------|
-| `code`            | yes | Transaction code |
-| `name`            | yes | Official standard text name of the code |
-| `gdp_component`   | no  | GDP decomposition component (see valid values below) |
+| `code` | yes | Transaction code |
+| `name` | yes | Official standard text name of the code |
 
-Valid `gdp_component` values:
-
-```
-output, imports, intermediate,
-private_consumption, government_consumption, exports,
-investment,
-gross_fixed_capital_formation, inventory_changes, acquisitions_less_disposals_of_valuables
-```
-
-`investment` is the catch-all for total capital formation. The three values below it are
-sub-components for users whose transaction table is granular enough to distinguish them —
-use these instead of `investment`, not alongside it.
-GDP inspection functions sum all components present and display them as separate lines.
-
-If `gdp_component` is absent from the transactions table (column missing or table not
-loaded), functions that perform GDP decomposition raise an informative error.
+GDP decomposition mapping is not stored in `SUTClassifications`. It is passed as an
+argument to inspection functions (exact interface TBD when inspection functions are
+designed). See "GDP decomposition" section below for the valid values.
 
 ---
 
@@ -242,12 +228,17 @@ implied a note or explanatory prose. `name` reflects the intent: the official st
 text name of a code. Applied to all classification tables (products, transactions,
 industries, individual_consumption, collective_consumption).
 
-**`gdp_component` expanded with investment sub-components.** Three values added alongside
-the existing `investment` catch-all: `gross_fixed_capital_formation`, `inventory_changes`,
-`acquisitions_less_disposals_of_valuables`. Users whose transaction table distinguishes
-capital formation sub-components can map to these instead of or alongside `investment`.
-GDP inspection functions sum all components present and display each as a separate line —
-no special aggregation logic needed.
+**`gdp_component` removed from `SUTClassifications`.** GDP decomposition mapping is not
+SUT metadata — it is analysis-time input. Rationale: chaining and aggregation do not
+commute; GDP must be computed at the right aggregation level before chaining.
+Storing the mapping in the SUT object would obscure this constraint. The mapping will be
+passed as an argument to inspection functions (interface TBD).
+
+**Valid `gdp_component` values settled** (for future use as argument):
+`output`, `imports`, `intermediate`, `private_consumption`, `government_consumption`,
+`exports`, `investment` (total capital formation), `gross_fixed_capital_formation`,
+`inventory_changes`, `acquisitions_less_disposals_of_valuables`. The last three are
+sub-components of `investment` — use instead of `investment`, not alongside it.
 
 **`output` kept (not renamed to `production`).** `output` is the name of the transaction
 (ESA2010 P.1); `production` names the GDP approach as a whole. `output` is more precise

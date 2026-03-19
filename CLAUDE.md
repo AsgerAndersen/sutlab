@@ -34,12 +34,9 @@ Four dataclasses and one function in `sutlab/sut.py`:
 - **`SUTClassifications`** — optional classification tables: `classification_names`
   (dimension → classification system mapping), `products`, `transactions`, `industries`,
   `individual_consumption`, `collective_consumption`. All classification tables have `code`
-  and `name` columns. The `transactions` table has an optional `gdp_component` column
-  mapping each transaction code to one of: `output`, `imports`, `intermediate`,
-  `private_consumption`, `government_consumption`, `exports`, `investment` (total capital
-  formation), `gross_fixed_capital_formation`, `inventory_changes`,
-  `acquisitions_less_disposals_of_valuables`. The last three are sub-components of
-  investment (not alongside it). GDP functions sum all components present and display each as a separate line.
+  and `name` columns only. GDP decomposition mapping is not stored in `SUTMetadata` — it
+  is passed as an argument to inspection functions (design to be settled when inspection
+  functions are designed).
 - **`SUTMetadata`** — holds a `SUTColumns` and an optional `SUTClassifications`. Functions
   that need a specific classification table raise an informative error if it is absent.
 - **`SUT`** — top-level object holding a **collection** of SUTs: `price_basis`
@@ -102,19 +99,20 @@ These will be added to the data structure when needed — do not anticipate them
 <!-- Append when a decision is made. Never delete entries. -->
 - 2026-03-18: Core data representation settled — see Architecture section and `notes/claude/data_representation.md`
 - 2026-03-18: SUT is a collection (multi-member long-format DataFrames) with a `balancing_id` field marking the active member. `mark_for_balancing` returns a new SUT immutably. Rationale: inspection is naturally multi-year; balancing is single-year; the collection keeps both in one object without forcing the user to pass year arguments to every balancing call or inject a work-in-progress SUT into every inspection call.
-- 2026-03-18: `PriceSpec` eliminated. `SUTColumns` restructured with explicit named fields per price-layer role (fixed list: `trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`, `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`). Loaded from two-column Excel table (`column`, `role`). `SUTClassifications` added as a nested dataclass inside `SUTMetadata`, replacing the five flat classification fields. Transactions classification table includes a `gdp_component` column with a fixed GDP decomposition.
+- 2026-03-18: `PriceSpec` eliminated. `SUTColumns` restructured with explicit named fields per price-layer role (fixed list: `trade_margins`, `wholesale_margins`, `retail_margins`, `transport_margins`, `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`). Loaded from two-column Excel table (`column`, `role`). `SUTClassifications` added as a nested dataclass inside `SUTMetadata`, replacing the five flat classification fields.
 - 2026-03-18: `set_active` renamed to `mark_for_balancing` — more concrete, reflects tagging rather than starting a process.
 - 2026-03-18: Current and previous year's prices are kept as separate `SUT` objects (not combined in one dataclass). Same metadata object can be reused across both.
 - 2026-03-18: `price_basis` stays as `Literal["current_year", "previous_year"]`. `'fixed'` and `'chained'` not added — out of scope for now and easy to extend when needed.
 - 2026-03-19: Classification table text-name column renamed `description` → `name` across all classification tables. `description` implied prose; `name` reflects the intent: the official standard text name of a code.
-- 2026-03-19: `gdp_component` expanded with investment sub-components: `gross_fixed_capital_formation`, `inventory_changes`, `acquisitions_less_disposals_of_valuables`. These are alternatives to the `investment` catch-all for users with granular transaction tables — use instead of `investment`, not alongside it. GDP functions display each component as a separate line.
-- 2026-03-19: `gdp_component` is optional on the transactions classification table (not required). Functions that need it raise an informative error if absent.
 - 2026-03-19: Excel metadata file formats fully settled — see `metadata_format.md` (user-facing) and `notes/claude/data_representation.md` (full spec).
+- 2026-03-19: `gdp_component` removed from `SUTClassifications.transactions`. GDP decomposition mapping is not SUT metadata — it is analysis-time input, passed as an argument to inspection functions. Rationale: chaining and aggregation do not commute; keeping the decomposition out of the SUT object makes it explicit that GDP must be computed at the right aggregation level before chaining. Full design deferred to inspection function design.
+- 2026-03-19: Valid `gdp_component` values settled (for future use as argument to inspection functions): `output`, `imports`, `intermediate`, `private_consumption`, `government_consumption`, `exports`, `investment` (total capital formation), `gross_fixed_capital_formation`, `inventory_changes`, `acquisitions_less_disposals_of_valuables`. The last three are sub-components of `investment` — use instead of `investment`, not alongside it.
 
 ## Open design questions
 - What is the full module structure beyond `sut.py`?
 - How are locks/cells referenced in balancing operations? (product/transaction/category keys, or index-based?)
 - Are price-layer share tables (α, β) stored on the SUT object or computed on the fly when needed?
+- What is the exact interface for the GDP decomposition argument passed to `inspect_gdp`? (DataFrame, dict, or other structure — to be settled when inspection functions are designed.)
 
 ## Project structure
 
