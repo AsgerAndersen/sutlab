@@ -44,9 +44,10 @@ two-column Excel table (`column`, `role`). Required roles: `id`, `product`, `tra
 `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`.
 
 **`SUTClassifications`** — optional classification tables, all fields `DataFrame | None`.
-All classification tables have `code` and `name` columns:
-- `classification_names` — maps dimension names to classification system names
-- `products`, `transactions`, `industries`, `individual_consumption`, `collective_consumption`
+- `classification_names` — maps dimension names to classification system names; `dimension` and `classification` columns
+- `products`, `industries`, `individual_consumption`, `collective_consumption` — `code` and `name` columns
+- `transactions` — `code`, `name`, and `table` columns; `table` is `"supply"` or `"use"`,
+  required and validated on load. Used to split the combined parquet file into supply and use tables.
 
 **`mark_for_balancing(sut, balancing_id) → SUT`** — returns a new SUT with `balancing_id`
 set. Does not mutate the original.

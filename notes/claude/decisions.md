@@ -46,3 +46,26 @@ Append-only. Each entry: date, decision, brief rationale.
   `data_representation.md` rewritten as a clean current-state reference. CLAUDE.md
   no longer requires reading all notes at session start — consult proactively when
   relevant.
+
+- **2026-03-19**: I/O module placed at `sutlab/io.py` (flat, not a subpackage). Public
+  API function names: `load_metadata_from_excel`, `load_metadata_columns_from_excel`,
+  `load_metadata_classifications_from_excel`, `load_sut_from_parquet`. Naming convention:
+  `load_<noun>_from_<source>`, hierarchically structured so related functions group in
+  autocomplete. Internal helpers can be abstract; this principle applies to the public API only.
+
+- **2026-03-19**: Excel metadata loading standardises data on read: leading/trailing
+  whitespace stripped from all string columns in all sheets. No other normalisation
+  (no case folding). All columns in all metadata sheets read as strings (`dtype=str`)
+  to prevent integer inference on values like `2021`.
+
+- **2026-03-19**: `transactions` classification sheet gains a required `table` column
+  (`"supply"` or `"use"`). Validated when loading metadata — error raised immediately
+  if column is absent or contains invalid values. Supply/use transaction lists are
+  derived on the fly from `classifications.transactions` where needed (not stored
+  redundantly on `SUTMetadata`).
+
+- **2026-03-19**: Raw SUT parquet files contain both supply and use rows in a single
+  file. `ta_l_YEAR` = current year prices; `ta_d_YEAR` = previous year prices.
+  `load_sut_from_parquet` loads one price basis at a time. Paths supplied as
+  `dict[id_value, path]` for supply and use; id column name always explicit via
+  `id_col` parameter.

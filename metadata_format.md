@@ -85,14 +85,15 @@ Each of these sheets has two columns:
 
 ### Sheet: `transactions`
 
-Two columns:
+Three columns. All three are required:
 
-| `code` | `name` |
-|---|---|
-| `P1` | Output at basic prices |
-| `P7` | Imports of goods and services |
-| `P2` | Intermediate consumption |
-| `P31` | Individual consumption expenditure |
-| `P32` | Collective consumption expenditure |
-| `P51G` | Gross fixed capital formation |
-| `P6` | Exports of goods and services |
+| `code` | `name` | `table` |
+|---|---|---|
+| `0100` | Output at basic prices | `supply` |
+| `0700` | Imports of goods and services | `supply` |
+| `3110` | Intermediate consumption | `use` |
+| `5110` | Household consumption | `use` |
+
+`table` must be exactly `"supply"` or `"use"` for every row. Any other value raises an
+error when loading. The `table` column is used to split the combined long-format data
+file into separate supply and use tables.
