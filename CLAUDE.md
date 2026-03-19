@@ -11,13 +11,14 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses and `mark_for_balancing` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + fixture data (`data/fixtures/`) + metadata format documentation (`metadata_format.md`)
-- **What's next**: I/O functions (loading SUT collection from parquet, metadata from Excel) — formats fully settled, see `metadata_format.md`
+- **What exists**: Core SUT dataclasses and `mark_for_balancing` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions (`sutlab/io.py`) + tests (`tests/test_io.py`) + fixture data (`data/fixtures/`) + metadata format documentation (`metadata_format.md`)
+- **What's next**: `load_sut_from_parquet` — loading SUT data from parquet files into a `SUT` object; metadata loading is complete
 
 ## Architecture
 
 ### Module structure
 - `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `mark_for_balancing`
+- `sutlab/io.py` — I/O functions: `load_metadata_columns_from_excel`, `load_metadata_classifications_from_excel`, `load_metadata_from_excel`; `load_sut_from_parquet` (planned)
 
 ### Core data representation
 

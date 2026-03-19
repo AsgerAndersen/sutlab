@@ -69,3 +69,18 @@ Append-only. Each entry: date, decision, brief rationale.
   `load_sut_from_parquet` loads one price basis at a time. Paths supplied as
   `dict[id_value, path]` for supply and use; id column name always explicit via
   `id_col` parameter.
+
+- **2026-03-19**: Fixture data redesigned. Combined supply+use format (single parquet
+  file per year, matching real data). One year (2021, current prices). Four products
+  (A, B, C, T), three industries (X, Y, Z). Transactions: 0100, 0700, 2000, 3110,
+  3200, 5139, 5200, 6001. Price layers: `ava` (trade_margins) and `moms` (vat) only.
+  Product T is trade services produced by industry Z; its output equals the sum of all
+  ava values across use rows. T has no explicit use rows — its use is distributed
+  implicitly via the ava column. ava rates vary at the cell level (product × brch).
+
+- **2026-03-19**: GDP identity at market prices verified in `generate.py`. Expenditure
+  approach: final demand at purchasers' prices minus imports at basic prices.
+  Production approach: domestic output at basic prices minus IC at purchasers' prices
+  plus VAT. Trade margins cancel (included in trade industry output and subtracted
+  again in IC at purchasers' prices), so only VAT on final demand remains as the wedge
+  between GDP at basic and market prices.
