@@ -2,6 +2,7 @@
 Tests for I/O functions in sutlab.io.
 """
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -21,26 +22,51 @@ CLASSIFICATIONS_FILE = FIXTURES / "metadata" / "ta_classifications.xlsx"
 
 
 # ---------------------------------------------------------------------------
-# Helpers for writing bad Excel files in tests
+# Helpers for writing minimal Excel files in tests
 # ---------------------------------------------------------------------------
 
+def write_columns_file(tmp_path: Path, rows: list[dict]) -> Path:
+    """Write a columns Excel file from a list of row dicts and return its path."""
+    path = tmp_path / "columns.xlsx"
+    pd.DataFrame(rows).to_excel(path, index=False)
+    return path
 
-def write_excel(path, df, sheet_name="Sheet1"):
-    """Write a single-sheet Excel file."""
-    df.to_excel(path, index=False, sheet_name=sheet_name)
 
-
-def write_excel_multisheet(path, sheets: dict):
-    """Write a multi-sheet Excel file. sheets is {sheet_name: DataFrame}."""
+def write_classifications_file(
+    tmp_path: Path, sheets: dict[str, pd.DataFrame]
+) -> Path:
+    """Write a multi-sheet classifications Excel file and return its path."""
+    path = tmp_path / "classifications.xlsx"
     with pd.ExcelWriter(path) as writer:
         for sheet_name, df in sheets.items():
             df.to_excel(writer, sheet_name=sheet_name, index=False)
+    return path
+
+
+def minimal_columns_rows() -> list[dict]:
+    """Return a minimal valid set of column rows covering all required roles."""
+    return [
+        {"column": "year",  "role": "id"},
+        {"column": "nrnr",  "role": "product"},
+        {"column": "trans", "role": "transaction"},
+        {"column": "brch",  "role": "category"},
+        {"column": "bas",   "role": "price_basic"},
+        {"column": "koeb",  "role": "price_purchasers"},
+    ]
+
+
+def minimal_transactions_df() -> pd.DataFrame:
+    """Return a minimal valid transactions DataFrame with all required columns."""
+    return pd.DataFrame({
+        "code":  ["0100", "0700", "2000"],
+        "name":  ["Output", "Imports", "Intermediate"],
+        "table": ["supply", "supply", "use"],
+    })
 
 
 # ---------------------------------------------------------------------------
-# load_metadata_columns_from_excel
+# Tests for load_metadata_columns_from_excel
 # ---------------------------------------------------------------------------
-
 
 class TestLoadMetadataColumnsFromExcel:
 
@@ -72,99 +98,92 @@ class TestLoadMetadataColumnsFromExcel:
         assert result.product_subsidies is None
 
     def test_integer_looking_column_name_read_as_string(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["2021", "nrnr", "trans", "brch", "bas", "koeb"],
-            "role":   ["id", "product", "transaction", "category", "price_basic", "price_purchasers"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
+        rows = minimal_columns_rows()
+        rows[0]["column"] = 2021  # year column as integer in Excel
+        path = write_columns_file(tmp_path, rows)
         result = load_metadata_columns_from_excel(path)
         assert result.id == "2021"
         assert isinstance(result.id, str)
 
     def test_strips_whitespace_from_role(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["year", "nrnr", "trans", "brch", "bas", "koeb"],
-            "role":   ["id", "product ", "transaction", "category", "price_basic", "price_purchasers"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
+        rows = minimal_columns_rows()
+        rows[1]["role"] = "  product  "  # whitespace around role
+        path = write_columns_file(tmp_path, rows)
         result = load_metadata_columns_from_excel(path)
         assert result.product == "nrnr"
 
     def test_strips_whitespace_from_column(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["year", " nrnr", "trans", "brch", "bas", "koeb"],
-            "role":   ["id", "product", "transaction", "category", "price_basic", "price_purchasers"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
+        rows = minimal_columns_rows()
+        rows[1]["column"] = "  nrnr  "  # whitespace around column name
+        path = write_columns_file(tmp_path, rows)
         result = load_metadata_columns_from_excel(path)
         assert result.product == "nrnr"
 
     def test_error_missing_role_header(self, tmp_path):
-        df = pd.DataFrame({"column": ["nrnr"], "rol": ["product"]})
         path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
+        pd.DataFrame({"column": ["nrnr"], "rol": ["product"]}).to_excel(
+            path, index=False
+        )
         with pytest.raises(ValueError, match="'role'"):
             load_metadata_columns_from_excel(path)
 
     def test_error_missing_column_header(self, tmp_path):
-        df = pd.DataFrame({"col": ["nrnr"], "role": ["product"]})
         path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
+        pd.DataFrame({"col": ["nrnr"], "role": ["product"]}).to_excel(
+            path, index=False
+        )
         with pytest.raises(ValueError, match="'column'"):
             load_metadata_columns_from_excel(path)
 
     def test_error_unknown_role(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["year", "nrnr", "trans", "brch", "bas", "koeb", "xyz"],
-            "role":   ["id", "product", "transaction", "category", "price_basic", "price_purchasers", "unknown_role"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
-        with pytest.raises(ValueError, match="unknown_role"):
+        rows = minimal_columns_rows() + [{"column": "x", "role": "made_up_role"}]
+        path = write_columns_file(tmp_path, rows)
+        with pytest.raises(ValueError, match="made_up_role"):
+            load_metadata_columns_from_excel(path)
+
+    def test_error_unknown_role_lists_known_roles(self, tmp_path):
+        rows = minimal_columns_rows() + [{"column": "x", "role": "made_up_role"}]
+        path = write_columns_file(tmp_path, rows)
+        with pytest.raises(ValueError, match="price_basic"):
             load_metadata_columns_from_excel(path)
 
     def test_error_duplicate_role(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["year", "nrnr", "nrnr2", "trans", "brch", "bas", "koeb"],
-            "role":   ["id", "product", "product", "transaction", "category", "price_basic", "price_purchasers"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
-        with pytest.raises(ValueError, match="'product'.*more than once"):
+        rows = minimal_columns_rows() + [{"column": "other_year", "role": "id"}]
+        path = write_columns_file(tmp_path, rows)
+        with pytest.raises(ValueError, match="'id'"):
+            load_metadata_columns_from_excel(path)
+
+    def test_error_duplicate_column_name(self, tmp_path):
+        rows = minimal_columns_rows() + [{"column": "year", "role": "trade_margins"}]
+        path = write_columns_file(tmp_path, rows)
+        with pytest.raises(ValueError, match="'year'"):
             load_metadata_columns_from_excel(path)
 
     def test_error_missing_required_role(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["nrnr", "trans", "brch", "bas", "koeb"],
-            "role":   ["product", "transaction", "category", "price_basic", "price_purchasers"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
+        rows = [r for r in minimal_columns_rows() if r["role"] != "id"]
+        path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError, match="'id'"):
             load_metadata_columns_from_excel(path)
 
     def test_error_message_lists_all_missing_required_roles(self, tmp_path):
-        df = pd.DataFrame({
-            "column": ["bas", "koeb"],
-            "role":   ["price_basic", "price_purchasers"],
-        })
-        path = tmp_path / "columns.xlsx"
-        write_excel(path, df)
-        with pytest.raises(ValueError, match="id") as exc_info:
+        # Only price_basic and price_purchasers present — four roles missing
+        rows = [
+            {"column": "bas",  "role": "price_basic"},
+            {"column": "koeb", "role": "price_purchasers"},
+        ]
+        path = write_columns_file(tmp_path, rows)
+        with pytest.raises(ValueError) as exc_info:
             load_metadata_columns_from_excel(path)
         message = str(exc_info.value)
+        assert "id" in message
         assert "product" in message
         assert "transaction" in message
         assert "category" in message
 
 
 # ---------------------------------------------------------------------------
-# load_metadata_classifications_from_excel
+# Tests for load_metadata_classifications_from_excel
 # ---------------------------------------------------------------------------
-
 
 class TestLoadMetadataClassificationsFromExcel:
 
@@ -175,87 +194,123 @@ class TestLoadMetadataClassificationsFromExcel:
     def test_classification_names_loaded(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.classification_names is not None
-        assert list(result.classification_names.columns) == ["dimension", "classification"]
+        assert "dimension" in result.classification_names.columns
+        assert "classification" in result.classification_names.columns
 
     def test_products_loaded(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.products is not None
-        assert list(result.products.columns) == ["code", "name"]
         assert set(result.products["code"]) == {"A", "B", "C"}
 
-    def test_transactions_loaded(self):
+    def test_transactions_loaded_with_table_column(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.transactions is not None
-        assert list(result.transactions.columns) == ["code", "name"]
+        assert "code" in result.transactions.columns
+        assert "name" in result.transactions.columns
+        assert "table" in result.transactions.columns
+
+    def test_transactions_table_values_are_supply_or_use(self):
+        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        assert set(result.transactions["table"]).issubset({"supply", "use"})
+
+    def test_supply_transaction_codes_correct(self):
+        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        supply_codes = set(
+            result.transactions.loc[
+                result.transactions["table"] == "supply", "code"
+            ]
+        )
+        assert supply_codes == {"0100", "0700"}
 
     def test_industries_loaded(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.industries is not None
         assert set(result.industries["code"]) == {"X", "Y"}
 
-    def test_missing_sheet_gives_none(self, tmp_path):
-        sheets = {
-            "products": pd.DataFrame({"code": ["A"], "name": ["Product A"]}),
-        }
-        path = tmp_path / "classifications.xlsx"
-        write_excel_multisheet(path, sheets)
+    def test_absent_sheet_gives_none(self, tmp_path):
+        # File with only transactions — everything else should be None
+        path = write_classifications_file(
+            tmp_path, {"transactions": minimal_transactions_df()}
+        )
         result = load_metadata_classifications_from_excel(path)
-        assert result.transactions is None
-        assert result.industries is None
         assert result.classification_names is None
+        assert result.products is None
+        assert result.industries is None
+        assert result.individual_consumption is None
+        assert result.collective_consumption is None
 
     def test_unknown_sheets_are_ignored(self, tmp_path):
-        sheets = {
-            "products": pd.DataFrame({"code": ["A"], "name": ["Product A"]}),
-            "my_extra_sheet": pd.DataFrame({"foo": [1]}),
-        }
-        path = tmp_path / "classifications.xlsx"
-        write_excel_multisheet(path, sheets)
+        path = write_classifications_file(tmp_path, {
+            "transactions": minimal_transactions_df(),
+            "my_custom_sheet": pd.DataFrame({"x": [1]}),
+        })
         result = load_metadata_classifications_from_excel(path)
-        assert result.products is not None
+        assert result.transactions is not None
 
-    def test_strips_whitespace_from_values(self, tmp_path):
-        sheets = {
-            "products": pd.DataFrame({"code": [" A "], "name": ["Product A "]}),
-        }
-        path = tmp_path / "classifications.xlsx"
-        write_excel_multisheet(path, sheets)
+    def test_extra_columns_in_sheet_are_kept(self, tmp_path):
+        # Extra columns beyond the required ones should not be dropped
+        products = pd.DataFrame({
+            "code": ["A"], "name": ["Product A"], "extra_col": [99]
+        })
+        path = write_classifications_file(tmp_path, {"transactions": minimal_transactions_df(), "products": products})
         result = load_metadata_classifications_from_excel(path)
-        assert result.products["code"].iloc[0] == "A"
-        assert result.products["name"].iloc[0] == "Product A"
+        assert "extra_col" in result.products.columns
 
-    def test_error_sheet_missing_expected_column(self, tmp_path):
-        sheets = {
-            "products": pd.DataFrame({"code": ["A"], "naam": ["Product A"]}),
-        }
-        path = tmp_path / "classifications.xlsx"
-        write_excel_multisheet(path, sheets)
-        with pytest.raises(ValueError, match="'products'"):
+    def test_strips_whitespace_from_all_sheets(self, tmp_path):
+        transactions = pd.DataFrame({
+            "code":  ["  0100  "],
+            "name":  ["  Output  "],
+            "table": ["  supply  "],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        result = load_metadata_classifications_from_excel(path)
+        assert result.transactions["code"].iloc[0] == "0100"
+        assert result.transactions["table"].iloc[0] == "supply"
+
+    def test_error_transactions_missing_table_column(self, tmp_path):
+        transactions = pd.DataFrame({"code": ["0100"], "name": ["Output"]})
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        with pytest.raises(ValueError, match="'table'"):
             load_metadata_classifications_from_excel(path)
 
-    def test_error_message_names_missing_column(self, tmp_path):
-        sheets = {
-            "products": pd.DataFrame({"code": ["A"], "naam": ["Product A"]}),
-        }
-        path = tmp_path / "classifications.xlsx"
-        write_excel_multisheet(path, sheets)
+    def test_error_invalid_table_value(self, tmp_path):
+        transactions = pd.DataFrame({
+            "code":  ["0100", "2000"],
+            "name":  ["Output", "Intermediate"],
+            "table": ["supply", "wrong"],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        with pytest.raises(ValueError, match="'wrong'"):
+            load_metadata_classifications_from_excel(path)
+
+    def test_error_invalid_table_value_lists_valid_values(self, tmp_path):
+        transactions = pd.DataFrame({
+            "code":  ["0100"],
+            "name":  ["Output"],
+            "table": ["typo"],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        with pytest.raises(ValueError, match="supply"):
+            load_metadata_classifications_from_excel(path)
+
+    def test_error_sheet_missing_required_column(self, tmp_path):
+        path = write_classifications_file(tmp_path, {
+            "products": pd.DataFrame({"code": ["A"]}),  # missing 'name'
+        })
         with pytest.raises(ValueError, match="'name'"):
             load_metadata_classifications_from_excel(path)
 
-    def test_projected_to_expected_columns_only(self, tmp_path):
-        sheets = {
-            "products": pd.DataFrame({"code": ["A"], "name": ["Product A"], "extra": [99]}),
-        }
-        path = tmp_path / "classifications.xlsx"
-        write_excel_multisheet(path, sheets)
-        result = load_metadata_classifications_from_excel(path)
-        assert list(result.products.columns) == ["code", "name"]
+    def test_error_message_names_the_offending_sheet(self, tmp_path):
+        path = write_classifications_file(tmp_path, {
+            "products": pd.DataFrame({"code": ["A"]}),  # missing 'name'
+        })
+        with pytest.raises(ValueError, match="'products'"):
+            load_metadata_classifications_from_excel(path)
 
 
 # ---------------------------------------------------------------------------
-# load_metadata_from_excel
+# Tests for load_metadata_from_excel
 # ---------------------------------------------------------------------------
-
 
 class TestLoadMetadataFromExcel:
 
@@ -263,16 +318,28 @@ class TestLoadMetadataFromExcel:
         result = load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
         assert isinstance(result, SUTMetadata)
 
-    def test_columns_loaded(self):
+    def test_columns_populated(self):
         result = load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
         assert isinstance(result.columns, SUTColumns)
         assert result.columns.id == "year"
 
-    def test_classifications_loaded_when_path_given(self):
+    def test_classifications_populated(self):
         result = load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
         assert isinstance(result.classifications, SUTClassifications)
-        assert result.classifications.products is not None
+        assert result.classifications.transactions is not None
 
-    def test_classifications_none_when_path_omitted(self):
-        result = load_metadata_from_excel(COLUMNS_FILE)
-        assert result.classifications is None
+    def test_error_if_transactions_sheet_absent(self, tmp_path):
+        classifications_path = write_classifications_file(
+            tmp_path,
+            {"products": pd.DataFrame({"code": ["A"], "name": ["Product A"]})},
+        )
+        with pytest.raises(ValueError, match="'transactions'"):
+            load_metadata_from_excel(COLUMNS_FILE, classifications_path)
+
+    def test_error_for_missing_transactions_sheet_mentions_file(self, tmp_path):
+        classifications_path = write_classifications_file(
+            tmp_path,
+            {"products": pd.DataFrame({"code": ["A"], "name": ["Product A"]})},
+        )
+        with pytest.raises(ValueError, match=re.escape(str(classifications_path))):
+            load_metadata_from_excel(COLUMNS_FILE, classifications_path)

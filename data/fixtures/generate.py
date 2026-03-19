@@ -255,6 +255,7 @@ def make_classifications() -> dict[str, pd.DataFrame]:
             "Gross fixed capital formation - dwellings",
             "Exports of domestic production",
         ],
+        "table": ["supply", "supply", "use", "use", "use", "use", "use"],
     })
     industries = pd.DataFrame({
         "code": ["X",          "Y"],
