@@ -85,17 +85,17 @@ class TestLoadMetadataColumnsFromExcel:
 
     def test_optional_fields_loaded_correctly(self):
         result = load_metadata_columns_from_excel(COLUMNS_FILE)
-        assert result.wholesale_margins == "eng"
-        assert result.retail_margins == "det"
-        assert result.product_taxes_less_subsidies == "afg"
+        assert result.trade_margins == "ava"
         assert result.vat == "moms"
 
     def test_absent_optional_fields_are_none(self):
         result = load_metadata_columns_from_excel(COLUMNS_FILE)
-        assert result.trade_margins is None
+        assert result.wholesale_margins is None
+        assert result.retail_margins is None
         assert result.transport_margins is None
         assert result.product_taxes is None
         assert result.product_subsidies is None
+        assert result.product_taxes_less_subsidies is None
 
     def test_integer_looking_column_name_read_as_string(self, tmp_path):
         rows = minimal_columns_rows()
@@ -200,7 +200,7 @@ class TestLoadMetadataClassificationsFromExcel:
     def test_products_loaded(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.products is not None
-        assert set(result.products["code"]) == {"A", "B", "C"}
+        assert set(result.products["code"]) == {"A", "B", "C", "T"}
 
     def test_transactions_loaded_with_table_column(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
@@ -225,7 +225,7 @@ class TestLoadMetadataClassificationsFromExcel:
     def test_industries_loaded(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.industries is not None
-        assert set(result.industries["code"]) == {"X", "Y"}
+        assert set(result.industries["code"]) == {"X", "Y", "Z"}
 
     def test_absent_sheet_gives_none(self, tmp_path):
         # File with only transactions — everything else should be None

@@ -1,55 +1,45 @@
 """
-Generate minimal fixture SUT data for testing.
+Generate fixture SUT data for testing.
 
 Run from the project root:
     uv run python data/fixtures/generate.py
 
 Writes:
-    data/fixtures/ta_l_2021.parquet   supply table, year 2021
-    data/fixtures/ta_d_2021.parquet   use table, year 2021
-    data/fixtures/ta_l_2022.parquet   supply table, year 2022
-    data/fixtures/ta_d_2022.parquet   use table, year 2022
+    data/fixtures/ta_l_2021.parquet          combined supply+use, year 2021, current prices
+    data/fixtures/metadata/columns.xlsx
     data/fixtures/metadata/ta_classifications.xlsx
     data/fixtures/metadata/karakteristiske_brancher.xlsx
 
-The fixture is small (3 products, 2 industries, 7 transaction codes, 2 years)
-but covers the full SUT structure: output, imports, intermediate use, household
-consumption, collective government consumption, investment, and exports.
+The fixture covers four products (A, B, C, T), three industries (X, Y, Z),
+and the following transactions:
 
-Supply equals use for each product in each year. The GDP identity holds in
-both years. Both are verified on generation — an AssertionError means the
-fixture data is inconsistent.
+    Supply: 0100 (output), 0700 (imports)
+    Use:    2000 (intermediate consumption), 3110 (household consumption),
+            3200 (government collective consumption), 5139 (GFCF — other),
+            5200 (changes in inventories), 6001 (exports)
+
+Product T is produced by the trade industry (Z). Its output equals the total
+trade margins (ava) distributed across all use rows. T has no explicit use
+rows — its use is recorded implicitly via the ava column.
+
+Price layers:
+    ava (trade_margins):  applied to 2000, 3110, and 3200; rate varies by cell
+    moms (vat):           applied to 3110 only, fixed at 20% of bas
+    koeb = bas + ava + moms (NaN layers treated as zero)
+
+Supply equals use in basic prices for each product. GDP identity holds.
+Verified on generation — an AssertionError means the fixture is inconsistent.
 
 Manual verification (basic prices):
+    Supply totals:  A=140, B=140, C=140, T=32
+    Use totals:     A=140, B=140, C=140
+    T use is implicit: sum of all ava values = 2+3+2+4+1+2 + 4+6+2 + 2+3+1 = 32
 
-  Year 2021
-    Supply totals:      A=240,  B=180,  C=180
-    Use totals:         A=240,  B=180,  C=180
-    GDP (production):   output(480) - intermediate(220) = 260
-    GDP (expenditure):  final_demand(380) - imports(120) = 260
-
-  Year 2022
-    Supply totals:      A=270,  B=200,  C=200
-    Use totals:         A=270,  B=200,  C=200
-    GDP (production):   output(540) - intermediate(240) = 300
-    GDP (expenditure):  final_demand(430) - imports(130) = 300
-
-Price layers are applied to intermediate use (2000) and household consumption
-(3110) only. All basic-price values for those rows are multiples of 20, so
-all layer values are exact integers:
-
-    eng  = 10% of bas   (wholesale trade margin)
-    det  =  5% of bas   (retail trade margin)
-    afg  =  5% of bas   (excise taxes)
-    moms = 20% of bas   (VAT)
-    koeb = 1.40 x bas   (purchasers' prices)
-
-All other transaction types have NaN for eng/det/afg/moms and koeb = bas.
-
-Design rationale: see notes/claude/data_representation.md.
+GDP at market prices:
+    Expenditure:  final demand (purchasers') - imports = 342 - 60 = 282
+    Production:   output - IC (purchasers') + VAT = 392 - 134 + 24 = 282
 """
 
-import math
 from pathlib import Path
 
 import pandas as pd
@@ -59,138 +49,89 @@ FIXTURES = Path(__file__).parent
 METADATA = FIXTURES / "metadata"
 METADATA.mkdir(parents=True, exist_ok=True)
 
-# Column order matches production data column names.
-COLS = ["nrnr", "trans", "brch", "bas", "eng", "det", "afg", "moms", "koeb"]
-
 NAN = float("nan")
 
-# Price layer shares applied to intermediate use and household consumption.
-ENG_SHARE  = 0.10   # wholesale trade margin
-DET_SHARE  = 0.05   # retail trade margin
-AFG_SHARE  = 0.05   # excise taxes
-MOMS_SHARE = 0.20   # VAT
+COLS = ["nrnr", "trans", "brch", "bas", "ava", "moms", "koeb"]
 
 
-def with_layers(bas: float) -> list:
-    """Return [bas, eng, det, afg, moms, koeb] with price layers applied.
+# ---------------------------------------------------------------------------
+# Row helpers
+# ---------------------------------------------------------------------------
 
-    Uses standard rounding (0.5 rounds up). All bas values in the fixture
-    are multiples of 20, so all results are exact integers.
+def no_layers(nrnr: str, trans: str, brch: str, bas: float) -> list:
+    """Row with no price layers: ava=NaN, moms=NaN, koeb=bas."""
+    return [nrnr, trans, brch, bas, NAN, NAN, bas]
+
+
+def ava_only(nrnr: str, trans: str, brch: str, bas: float, ava: float) -> list:
+    """Row with trade margin only: moms=NaN, koeb=bas+ava."""
+    return [nrnr, trans, brch, bas, ava, NAN, bas + ava]
+
+
+def ava_and_moms(
+    nrnr: str, trans: str, brch: str, bas: float, ava: float, moms: float
+) -> list:
+    """Row with trade margin and VAT: koeb=bas+ava+moms."""
+    return [nrnr, trans, brch, bas, ava, moms, bas + ava + moms]
+
+
+# ---------------------------------------------------------------------------
+# SUT data
+# ---------------------------------------------------------------------------
+
+def make_sut_2021() -> pd.DataFrame:
+    """Return the combined supply+use table for 2021 at current prices.
+
+    Product T (trade services) appears only on the supply side. Its output
+    equals the total trade margins distributed across use rows via the ava
+    column (32 = 14 on intermediate + 12 on household + 6 on government).
     """
-    eng  = math.floor(bas * ENG_SHARE  + 0.5)
-    det  = math.floor(bas * DET_SHARE  + 0.5)
-    afg  = math.floor(bas * AFG_SHARE  + 0.5)
-    moms = math.floor(bas * MOMS_SHARE + 0.5)
-    koeb = bas + eng + det + afg + moms
-    return [bas, eng, det, afg, moms, koeb]
+    rows = [
+        # --- Supply: output (0100) ---
+        no_layers("A", "0100", "X",  120),
+        no_layers("B", "0100", "X",   80),
+        no_layers("B", "0100", "Y",   40),
+        no_layers("C", "0100", "Y",  120),
+        no_layers("T", "0100", "Z",   32),  # trade industry output = sum of all ava
 
+        # --- Supply: imports (0700) ---
+        no_layers("A", "0700", "",    20),
+        no_layers("B", "0700", "",    20),
+        no_layers("C", "0700", "",    20),
 
-def without_layers(bas: float) -> list:
-    """Return [bas, NaN, NaN, NaN, NaN, koeb=bas]. No price layers applicable."""
-    return [bas, NAN, NAN, NAN, NAN, bas]
+        # --- Use: intermediate consumption (2000) --- ava rate varies by cell ---
+        ava_only("A", "2000", "X",    20,  2),  # ava = 10%
+        ava_only("A", "2000", "Y",    20,  3),  # ava = 15%
+        ava_only("B", "2000", "X",    20,  2),  # ava = 10%
+        ava_only("B", "2000", "Y",    20,  4),  # ava = 20%
+        ava_only("C", "2000", "X",    20,  1),  # ava =  5%
+        ava_only("C", "2000", "Y",    20,  2),  # ava = 10%
 
+        # --- Use: household consumption (3110) --- ava varies by product, moms = 20% ---
+        ava_and_moms("A", "3110", "HH",   40,  4,  8),  # ava = 10%, moms = 20%
+        ava_and_moms("B", "3110", "HH",   40,  6,  8),  # ava = 15%, moms = 20%
+        ava_and_moms("C", "3110", "HH",   40,  2,  8),  # ava =  5%, moms = 20%
 
-# ---------------------------------------------------------------------------
-# Supply tables (ta_l)
-# Only output (0100) and imports (0700). No price layers.
-# Supply totals (basic prices): 2021: A=240, B=180, C=180
-#                               2022: A=270, B=200, C=200
-# ---------------------------------------------------------------------------
+        # --- Use: government collective consumption (3200) --- ava varies by product ---
+        ava_only("A", "3200", "GOV",  20,  2),  # ava = 10%
+        ava_only("B", "3200", "GOV",  20,  3),  # ava = 15%
+        ava_only("C", "3200", "GOV",  20,  1),  # ava =  5%
 
-def make_supply(year: int) -> pd.DataFrame:
-    """Return the supply table for the given year."""
-    if year == 2021:
-        rows = [
-            # nrnr   trans   brch
-            ["A",   "0100", "X",   *without_layers(200)],
-            ["B",   "0100", "X",   *without_layers(100)],
-            ["B",   "0100", "Y",   *without_layers(60)],
-            ["C",   "0100", "Y",   *without_layers(120)],
-            ["A",   "0700", "",    *without_layers(40)],
-            ["B",   "0700", "",    *without_layers(20)],
-            ["C",   "0700", "",    *without_layers(60)],
-        ]
-    elif year == 2022:
-        rows = [
-            ["A",   "0100", "X",   *without_layers(220)],
-            ["B",   "0100", "X",   *without_layers(110)],
-            ["B",   "0100", "Y",   *without_layers(70)],
-            ["C",   "0100", "Y",   *without_layers(140)],
-            ["A",   "0700", "",    *without_layers(50)],
-            ["B",   "0700", "",    *without_layers(20)],
-            ["C",   "0700", "",    *without_layers(60)],
-        ]
-    else:
-        raise ValueError(f"No fixture data for year {year}.")
+        # --- Use: gross fixed capital formation --- other (5139) ---
+        no_layers("A", "5139", "",    10),
+        no_layers("B", "5139", "",    10),
+        no_layers("C", "5139", "",    10),
 
-    return pd.DataFrame(rows, columns=COLS)
+        # --- Use: changes in inventories (5200) ---
+        no_layers("A", "5200", "",    10),
+        no_layers("B", "5200", "",    10),
+        no_layers("C", "5200", "",    10),
 
-
-# ---------------------------------------------------------------------------
-# Use tables (ta_d)
-# Intermediate (2000) and household (3110) have price layers.
-# All other transaction types have NaN layers and koeb = bas.
-# Use totals (basic prices): 2021: A=240, B=180, C=180
-#                            2022: A=270, B=200, C=200
-# ---------------------------------------------------------------------------
-
-def make_use(year: int) -> pd.DataFrame:
-    """Return the use table for the given year."""
-    if year == 2021:
-        rows = [
-            # --- Intermediate consumption (price layers applied) ---
-            ["A",   "2000", "X",   *with_layers(60)],
-            ["A",   "2000", "Y",   *with_layers(40)],
-            ["B",   "2000", "X",   *with_layers(40)],
-            ["B",   "2000", "Y",   *with_layers(20)],
-            ["C",   "2000", "X",   *with_layers(40)],
-            ["C",   "2000", "Y",   *with_layers(20)],
-            # --- Household consumption (price layers applied) ---
-            ["A",   "3110", "HH",  *with_layers(80)],
-            ["B",   "3110", "HH",  *with_layers(60)],
-            ["C",   "3110", "HH",  *with_layers(40)],
-            # --- Government collective consumption ---
-            ["A",   "3200", "GOV", *without_layers(10)],
-            ["B",   "3200", "GOV", *without_layers(20)],
-            ["C",   "3200", "GOV", *without_layers(20)],
-            # --- Gross fixed capital formation ---
-            ["A",   "5110", "",    *without_layers(10)],
-            ["B",   "5110", "",    *without_layers(10)],
-            ["C",   "5110", "",    *without_layers(20)],
-            # --- Exports ---
-            ["A",   "6001", "",    *without_layers(40)],
-            ["B",   "6001", "",    *without_layers(30)],
-            ["C",   "6001", "",    *without_layers(40)],
-        ]
-    elif year == 2022:
-        rows = [
-            # --- Intermediate consumption (price layers applied) ---
-            ["A",   "2000", "X",   *with_layers(80)],
-            ["A",   "2000", "Y",   *with_layers(40)],
-            ["B",   "2000", "X",   *with_layers(40)],
-            ["B",   "2000", "Y",   *with_layers(20)],
-            ["C",   "2000", "X",   *with_layers(40)],
-            ["C",   "2000", "Y",   *with_layers(20)],
-            # --- Household consumption (price layers applied) ---
-            ["A",   "3110", "HH",  *with_layers(100)],
-            ["B",   "3110", "HH",  *with_layers(60)],
-            ["C",   "3110", "HH",  *with_layers(60)],
-            # --- Government collective consumption ---
-            ["A",   "3200", "GOV", *without_layers(10)],
-            ["B",   "3200", "GOV", *without_layers(20)],
-            ["C",   "3200", "GOV", *without_layers(20)],
-            # --- Gross fixed capital formation ---
-            ["A",   "5110", "",    *without_layers(10)],
-            ["B",   "5110", "",    *without_layers(10)],
-            ["C",   "5110", "",    *without_layers(20)],
-            # --- Exports ---
-            ["A",   "6001", "",    *without_layers(30)],
-            ["B",   "6001", "",    *without_layers(50)],
-            ["C",   "6001", "",    *without_layers(40)],
-        ]
-    else:
-        raise ValueError(f"No fixture data for year {year}.")
-
+        # --- Use: exports (6001) ---
+        no_layers("A", "6001", "",    20),
+        no_layers("B", "6001", "",    20),
+        no_layers("C", "6001", "",    20),
+    ]
     return pd.DataFrame(rows, columns=COLS)
 
 
@@ -198,33 +139,61 @@ def make_use(year: int) -> pd.DataFrame:
 # Verification
 # ---------------------------------------------------------------------------
 
-def verify_balance(supply: pd.DataFrame, use: pd.DataFrame, year: int) -> None:
-    """Raise AssertionError if supply != use for any product (basic prices)."""
-    supply_totals = supply.groupby("nrnr")["bas"].sum()
-    use_totals    = use.groupby("nrnr")["bas"].sum()
-    for product in supply_totals.index:
-        s = supply_totals[product]
-        u = use_totals[product]
-        assert s == u, (
-            f"Year {year}: supply ({s}) != use ({u}) for product '{product}'"
-        )
+_SUPPLY_TRANS = {"0100", "0700"}
 
 
-def verify_gdp(supply: pd.DataFrame, use: pd.DataFrame, year: int) -> None:
-    """Raise AssertionError if GDP (production approach) != GDP (expenditure approach)."""
-    output       = supply.loc[supply["trans"] == "0100", "bas"].sum()
-    imports      = supply.loc[supply["trans"] == "0700", "bas"].sum()
-    intermediate = use.loc[use["trans"] == "2000", "bas"].sum()
+def verify_balance(df: pd.DataFrame) -> None:
+    """Raise AssertionError if supply != use for any product (basic prices).
 
-    final_demand_trans = ["3110", "3200", "5110", "6001"]
-    final_demand = use.loc[use["trans"].isin(final_demand_trans), "bas"].sum()
+    For A, B, C: checks that output+imports == sum of all use rows.
+    For T: checks that output == sum of all ava values (implicit use).
+    """
+    supply_df = df[df["trans"].isin(_SUPPLY_TRANS)]
+    use_df = df[~df["trans"].isin(_SUPPLY_TRANS)]
 
-    gdp_production   = output - intermediate
-    gdp_expenditure  = final_demand - imports
+    supply_by_product = supply_df.groupby("nrnr")["bas"].sum()
+    use_by_product = use_df.groupby("nrnr")["bas"].sum()
 
-    assert gdp_production == gdp_expenditure, (
-        f"Year {year}: GDP production ({gdp_production}) "
-        f"!= GDP expenditure ({gdp_expenditure})"
+    for product in ["A", "B", "C"]:
+        s = supply_by_product[product]
+        u = use_by_product[product]
+        assert s == u, f"Product '{product}': supply ({s}) != use ({u})"
+
+    t_supply = supply_by_product["T"]
+    total_ava = use_df["ava"].sum()  # NaN skipped by default
+    assert t_supply == total_ava, (
+        f"Product 'T': supply ({t_supply}) != sum of ava ({total_ava})"
+    )
+
+
+def verify_gdp(df: pd.DataFrame) -> None:
+    """Raise AssertionError if GDP expenditure != GDP production at market prices.
+
+    Expenditure: final demand at purchasers' prices minus imports at basic prices.
+    Production:  domestic output at basic prices minus IC at purchasers' prices
+                 plus VAT. Trade margins cancel (included in both output of T
+                 and IC at purchasers' prices), so only VAT on final demand
+                 remains as the wedge between basic and market prices.
+    """
+    supply_df = df[df["trans"].isin(_SUPPLY_TRANS)]
+    use_df = df[~df["trans"].isin(_SUPPLY_TRANS)]
+
+    # Expenditure approach
+    final_demand_trans = {"3110", "3200", "5139", "5200", "6001"}
+    final_demand = use_df[use_df["trans"].isin(final_demand_trans)]["koeb"].sum()
+    imports = supply_df[supply_df["trans"] == "0700"]["bas"].sum()
+    gdp_expenditure = final_demand - imports
+
+    # Production approach
+    output = supply_df[supply_df["trans"] == "0100"]["bas"].sum()
+    ic_basic = use_df[use_df["trans"] == "2000"]["bas"].sum()
+    ic_ava = use_df[use_df["trans"] == "2000"]["ava"].sum()  # NaN skipped
+    ic_purchasers = ic_basic + ic_ava
+    vat = use_df["moms"].sum()  # NaN skipped
+    gdp_production = output - ic_purchasers + vat
+
+    assert gdp_expenditure == gdp_production, (
+        f"GDP expenditure ({gdp_expenditure}) != GDP production ({gdp_production})"
     )
 
 
@@ -241,29 +210,30 @@ def make_classifications() -> dict[str, pd.DataFrame]:
                            "FIXTURE_INDUSTRIES", "FIXTURE_IC", "FIXTURE_CC"],
     })
     products = pd.DataFrame({
-        "code": ["A",         "B",         "C"],
-        "name": ["Product A", "Product B", "Product C"],
+        "code": ["A",         "B",         "C",         "T"],
+        "name": ["Product A", "Product B", "Product C", "Trade services"],
     })
     transactions = pd.DataFrame({
-        "code": ["0100", "0700", "2000", "3110", "3200", "5110", "6001"],
+        "code": ["0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"],
         "name": [
             "Output at basic prices",
             "Imports",
             "Intermediate consumption",
             "Household consumption",
             "Government collective consumption",
-            "Gross fixed capital formation - dwellings",
+            "Gross fixed capital formation - other",
+            "Changes in inventories",
             "Exports of domestic production",
         ],
-        "table": ["supply", "supply", "use", "use", "use", "use", "use"],
+        "table": ["supply", "supply", "use", "use", "use", "use", "use", "use"],
     })
     industries = pd.DataFrame({
-        "code": ["X",          "Y"],
-        "name": ["Industry X", "Industry Y"],
+        "code": ["X",          "Y",          "Z"],
+        "name": ["Industry X", "Industry Y", "Trade industry"],
     })
     individual_consumption = pd.DataFrame({
         "code": ["HH"],
-        "name": ["Household"],
+        "name": ["Households"],
     })
     collective_consumption = pd.DataFrame({
         "code": ["GOV"],
@@ -283,30 +253,24 @@ def make_columns() -> pd.DataFrame:
     """Return the SUTColumns role mapping table for columns.xlsx.
 
     Maps each actual column name in the loaded SUT DataFrames to its
-    conceptual role. This is the fixture equivalent of the two-column
-    Excel table that I/O functions will use to construct a SUTColumns
-    dataclass.
-
-    The year column is added by the I/O loading function (not present
-    in the raw parquet files, which are single-year).
+    conceptual role. The year column is added by the I/O loading function
+    (not present in the raw parquet files, which are single-year).
     """
     return pd.DataFrame({
-        "column": ["year", "nrnr", "trans", "brch",
-                   "bas",         "koeb",
-                   "eng",               "det",
-                   "afg",               "moms"],
-        "role":   ["id",  "product", "transaction", "category",
+        "column": ["year", "nrnr",    "trans",        "brch",
+                   "bas",           "koeb",
+                   "ava",           "moms"],
+        "role":   ["id",  "product", "transaction",   "category",
                    "price_basic",   "price_purchasers",
-                   "wholesale_margins",        "retail_margins",
-                   "product_taxes_less_subsidies", "vat"],
+                   "trade_margins", "vat"],
     })
 
 
 def make_karakteristiske_brancher() -> pd.DataFrame:
     """Return characteristic industry table (primary producer per product)."""
     return pd.DataFrame({
-        "nrnr": ["A", "B", "C"],
-        "brch": ["X", "X", "Y"],
+        "nrnr": ["A", "B", "C", "T"],
+        "brch": ["X", "X", "Y", "Z"],
     })
 
 
@@ -315,17 +279,11 @@ def make_karakteristiske_brancher() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    for year in [2021, 2022]:
-        supply = make_supply(year)
-        use    = make_use(year)
-
-        verify_balance(supply, use, year)
-        verify_gdp(supply, use, year)
-
-        supply.to_parquet(FIXTURES / f"ta_l_{year}.parquet", index=False)
-        use.to_parquet(FIXTURES / f"ta_d_{year}.parquet", index=False)
-
-        print(f"Year {year}: supply ({len(supply)} rows), use ({len(use)} rows) -- balanced OK")
+    sut = make_sut_2021()
+    verify_balance(sut)
+    verify_gdp(sut)
+    sut.to_parquet(FIXTURES / "ta_l_2021.parquet", index=False)
+    print(f"ta_l_2021.parquet: {len(sut)} rows -- balanced OK")
 
     sheets = make_classifications()
     with pd.ExcelWriter(METADATA / "ta_classifications.xlsx") as writer:
