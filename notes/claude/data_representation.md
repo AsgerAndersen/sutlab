@@ -68,14 +68,14 @@ table (`column`, `role`); this dataclass is the internal Python representation.
 All fields `pd.DataFrame | None`, default `None`. All classification tables have `code`
 and `name` columns.
 
-| Field | Sheet name in Excel | Notes |
-|---|---|---|
-| `classification_names` | `classifications` | Maps dimension names to classification system names |
-| `products` | `products` | |
-| `transactions` | `transactions` | |
-| `industries` | `industries` | |
-| `individual_consumption` | `individual_consumption` | |
-| `collective_consumption` | `collective_consumption` | |
+| Field | Sheet name in Excel | Columns | Notes |
+|---|---|---|---|
+| `classification_names` | `classifications` | `dimension`, `classification` | Maps dimension names to classification system names |
+| `products` | `products` | `code`, `name` | |
+| `transactions` | `transactions` | `code`, `name`, `table` | `table` is `"supply"` or `"use"` — required, validated on load |
+| `industries` | `industries` | `code`, `name` | |
+| `individual_consumption` | `individual_consumption` | `code`, `name` | |
+| `collective_consumption` | `collective_consumption` | `code`, `name` | |
 
 GDP decomposition mapping is **not** stored here — it is passed as an argument to
 inspection functions (design deferred to inspection function design).
@@ -118,7 +118,10 @@ The file as a whole is optional. Each sheet is individually optional.
 
 **`classifications` sheet**: `dimension` and `classification` columns.
 
-**All other sheets** (`products`, `transactions`, `industries`, `individual_consumption`,
+**`transactions` sheet**: `code`, `name`, and `table` columns. `table` is required and
+must be `"supply"` or `"use"` — validated when loading metadata.
+
+**All other sheets** (`products`, `industries`, `individual_consumption`,
 `collective_consumption`): `code` and `name` columns.
 
 Sheet names must match exactly (used as keys when loading).

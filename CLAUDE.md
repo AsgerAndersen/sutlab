@@ -44,9 +44,10 @@ two-column Excel table (`column`, `role`). Required roles: `id`, `product`, `tra
 `product_taxes`, `product_subsidies`, `product_taxes_less_subsidies`, `vat`.
 
 **`SUTClassifications`** — optional classification tables, all fields `DataFrame | None`.
-All classification tables have `code` and `name` columns:
-- `classification_names` — maps dimension names to classification system names
-- `products`, `transactions`, `industries`, `individual_consumption`, `collective_consumption`
+- `classification_names` — maps dimension names to classification system names; `dimension` and `classification` columns
+- `products`, `industries`, `individual_consumption`, `collective_consumption` — `code` and `name` columns
+- `transactions` — `code`, `name`, and `table` columns; `table` is `"supply"` or `"use"`,
+  required and validated on load. Used to split the combined parquet file into supply and use tables.
 
 **`mark_for_balancing(sut, balancing_id) → SUT`** — returns a new SUT with `balancing_id`
 set. Does not mutate the original.
@@ -58,6 +59,11 @@ set. Does not mutate the original.
 - Functional style — plain functions that take data and return data; no class hierarchies
 - Dataclasses are fine as simple data containers
 - Informative error messages: `"Product 'X' not found. Available: ..."` not bare KeyError
+- API design: prefer many small public functions with few arguments over fewer abstract
+  functions with many arguments. Names should be explicit and hierarchically structured
+  so related functions group together in autocomplete (e.g. `load_metadata_columns_from_excel`,
+  `load_metadata_classifications_from_excel`). Users navigate the API primarily by name.
+  Internal helpers can be as abstract as needed — this principle applies to the public API only.
 - Column names never hardcoded — always via `SUTColumns`
 - Supply holds only basic prices; price layers are a use-side concept
 - DataFrame column order (established by I/O functions, not enforced by dataclass):

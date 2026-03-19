@@ -101,8 +101,10 @@ class SUTClassifications:
     products : DataFrame or None
         Classification table for products: ``code`` and ``name`` columns.
     transactions : DataFrame or None
-        Classification table for transaction codes: ``code`` and ``name``
-        columns.
+        Classification table for transaction codes: ``code``, ``name``, and
+        ``table`` columns. ``table`` must be ``"supply"`` or ``"use"`` for
+        every row and is validated when loading from Excel. Used to split
+        combined long-format SUT data into separate supply and use tables.
     industries : DataFrame or None
         Classification table for industries: ``code`` and ``name`` columns.
     individual_consumption : DataFrame or None
