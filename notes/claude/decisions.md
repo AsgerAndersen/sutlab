@@ -93,3 +93,18 @@ Append-only. Each entry: date, decision, brief rationale.
   result — balancing a sub-SUT is not supported. Private helpers: `_match_codes`,
   `_code_matches_pattern`, `_natural_sort_key`, `_filter_sut_by_column`,
   `_filter_sut_by_ids`.
+
+- **2026-03-23**: `get_product_codes`, `get_transaction_codes`, `get_ids` added — return
+  unique values from the data as a sorted single-column DataFrame. `get_category_codes`
+  dropped in favour of three type-specific functions: `get_industry_codes` (P1/P2),
+  `get_individual_consumption_codes` (P31), `get_collective_consumption_codes` (P32).
+  All three require `metadata.classifications.transactions` with an `esa_code` column.
+
+- **2026-03-23**: `esa_code` added as a required column on the `transactions`
+  classification sheet. Maps institution-specific transaction codes to standardised ESA
+  codes. Valid values: P1, P2, P3, P31, P32, P51g, P52, P53, P6, P7. Validated on load.
+  Enables type-specific category code lookup functions.
+
+- **2026-03-23**: Method interface on `SUT` (pandas-style `sut.get_rows(...)`) deferred.
+  Decision: if adopted, implement as thin methods delegating to free functions — no logic
+  changes needed. Free functions remain the canonical implementation.
