@@ -145,5 +145,6 @@ Claude should NOT:
 
 ### General behaviour:
 - When uncertain, say so explicitly rather than inferring silently
+- Read source before making claims about function signatures or behaviour
 - Prefer proposing over doing for anything structural
 - Prefer targeted edits over rewrites
