@@ -12,8 +12,9 @@ from sutlab.io import (
     load_metadata_classifications_from_excel,
     load_metadata_columns_from_excel,
     load_metadata_from_excel,
+    load_sut_from_parquet,
 )
-from sutlab.sut import SUTClassifications, SUTColumns, SUTMetadata
+from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
 
 
 FIXTURES = Path(__file__).parent.parent / "data" / "fixtures"
@@ -343,3 +344,119 @@ class TestLoadMetadataFromExcel:
         )
         with pytest.raises(ValueError, match=re.escape(str(classifications_path))):
             load_metadata_from_excel(COLUMNS_FILE, classifications_path)
+
+
+# ---------------------------------------------------------------------------
+# Tests for load_sut_from_parquet
+# ---------------------------------------------------------------------------
+
+PARQUET_FILE = FIXTURES / "ta_l_2021.parquet"
+
+
+class TestLoadSutFromParquet:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    def test_returns_sut(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert isinstance(result, SUT)
+
+    def test_price_basis_set(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert result.price_basis == "current_year"
+
+    def test_metadata_attached(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert result.metadata is metadata
+
+    def test_balancing_id_is_none(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert result.balancing_id is None
+
+    def test_supply_has_correct_columns(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert list(result.supply.columns) == ["year", "nrnr", "trans", "brch", "bas"]
+
+    def test_use_has_correct_columns(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert list(result.use.columns) == ["year", "nrnr", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_supply_contains_only_supply_transactions(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_supply_row_count(self, metadata):
+        # 5 output rows (A/X, B/X, B/Y, C/Y, T/Z) + 3 import rows = 8
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert len(result.supply) == 8
+
+    def test_use_row_count(self, metadata):
+        # 6 intermediate + 3 household + 3 government + 3 gfcf + 3 inventories + 3 exports = 21
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert len(result.use) == 21
+
+    def test_id_column_populated(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert (result.supply["year"] == 2021).all()
+        assert (result.use["year"] == 2021).all()
+
+    def test_id_value_type_preserved(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert result.supply["year"].dtype == int or result.supply["year"].iloc[0] == 2021
+
+    def test_string_id_value_preserved(self, metadata):
+        result = load_sut_from_parquet(["2021"], [PARQUET_FILE], metadata, "current_year")
+        assert result.supply["year"].iloc[0] == "2021"
+
+    def test_product_column_is_str(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert pd.api.types.is_string_dtype(result.supply["nrnr"])
+        assert pd.api.types.is_string_dtype(result.use["nrnr"])
+
+    def test_transaction_column_is_str(self, metadata):
+        result = load_sut_from_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert pd.api.types.is_string_dtype(result.supply["trans"])
+        assert pd.api.types.is_string_dtype(result.use["trans"])
+
+    def test_multiple_years_concatenated(self, metadata):
+        # Load the same file twice with different id values — simulates two years
+        result = load_sut_from_parquet(
+            [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
+        )
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert set(result.use["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 16
+        assert len(result.use) == 42
+
+    def test_error_mismatched_lengths(self, metadata):
+        with pytest.raises(ValueError, match="same length"):
+            load_sut_from_parquet([2021, 2022], [PARQUET_FILE], metadata, "current_year")
+
+    def test_error_missing_classifications(self, tmp_path, metadata):
+        # metadata without classifications
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_sut_from_parquet([2021], [PARQUET_FILE], bare_metadata, "current_year")
+
+    def test_error_unknown_transaction_code(self, tmp_path, metadata):
+        # Write a parquet file with an unknown transaction code
+        df = pd.read_parquet(PARQUET_FILE)
+        df.loc[df["trans"] == "0100", "trans"] = "ZZZZ"
+        bad_parquet = tmp_path / "bad.parquet"
+        df.to_parquet(bad_parquet, index=False)
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_sut_from_parquet([2021], [bad_parquet], metadata, "current_year")
+
+    def test_error_unknown_transaction_code_lists_known_codes(self, tmp_path, metadata):
+        df = pd.read_parquet(PARQUET_FILE)
+        df.loc[df["trans"] == "0100", "trans"] = "ZZZZ"
+        bad_parquet = tmp_path / "bad.parquet"
+        df.to_parquet(bad_parquet, index=False)
+        with pytest.raises(ValueError, match="0700"):
+            load_sut_from_parquet([2021], [bad_parquet], metadata, "current_year")

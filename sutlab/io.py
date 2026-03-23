@@ -1,14 +1,15 @@
 """
-I/O functions for loading SUT metadata from Excel files.
+I/O functions for loading SUT data and metadata from files.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 
-from sutlab.sut import SUTClassifications, SUTColumns, SUTMetadata
+from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +29,19 @@ _OPTIONAL_ROLES: set[str] = {
 _ALL_KNOWN_ROLES: set[str] = _REQUIRED_ROLES | _OPTIONAL_ROLES
 
 _VALID_TABLE_VALUES: set[str] = {"supply", "use"}
+
+# Price layer role names in the order they should appear in the use DataFrame.
+# Matches the field order of SUTColumns.
+_PRICE_LAYER_ROLES: list[str] = [
+    "trade_margins",
+    "wholesale_margins",
+    "retail_margins",
+    "transport_margins",
+    "product_taxes",
+    "product_subsidies",
+    "product_taxes_less_subsidies",
+    "vat",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -304,3 +318,125 @@ def load_metadata_from_excel(
         )
 
     return SUTMetadata(columns=columns, classifications=classifications)
+
+
+def load_sut_from_parquet(
+    id_values: list[str | int],
+    paths: list[str | Path],
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+) -> SUT:
+    """
+    Load a SUT collection from combined supply+use parquet files.
+
+    Each file in ``paths`` contains both supply and use rows for one collection
+    member (typically one year). The corresponding entry in ``id_values`` is
+    added as the id column. Supply and use rows are split using the
+    ``table`` column of ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are cast to ``str`` on
+    load, regardless of how they are stored in the parquet file. The id column
+    is added with the type given in ``id_values`` (preserved as-is).
+
+    Parameters
+    ----------
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved (e.g. pass integers if you want an integer id column).
+    paths : list of str or Path
+        Paths to the parquet files, in the same order as ``id_values``.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.mark_for_balancing`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    cols = metadata.columns
+    trans_df = metadata.classifications.transactions
+
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", "code"])
+
+    # Load each file, cast string columns, and label with the id value
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_parquet(path)
+        df[cols.product] = df[cols.product].astype(str)
+        df[cols.transaction] = df[cols.transaction].astype(str)
+        df[cols.category] = df[cols.category].astype(str)
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+
+    # Validate that all transaction codes in the data are known
+    known_codes = set(trans_df["code"])
+    data_codes = set(combined[cols.transaction].unique())
+    unknown_codes = data_codes - known_codes
+    if unknown_codes:
+        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
+        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+        raise ValueError(
+            f"Transaction codes in data not found in classifications.transactions: "
+            f"{unknown_str}. Known codes: {known_str}"
+        )
+
+    # Split into supply and use
+    supply_mask = combined[cols.transaction].isin(supply_codes)
+    supply_raw = combined[supply_mask].reset_index(drop=True)
+    use_raw = combined[~supply_mask].reset_index(drop=True)
+
+    # Supply: id, product, transaction, category, price_basic
+    supply_col_order = [
+        cols.id, cols.product, cols.transaction, cols.category, cols.price_basic,
+    ]
+    supply = supply_raw[supply_col_order]
+
+    # Use: id, product, transaction, category, price_basic, [layers], price_purchasers
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    use_col_order = (
+        [cols.id, cols.product, cols.transaction, cols.category, cols.price_basic]
+        + layer_cols
+        + [cols.price_purchasers]
+    )
+    use = use_raw[use_col_order]
+
+    return SUT(
+        price_basis=price_basis,
+        supply=supply,
+        use=use,
+        metadata=metadata,
+    )
