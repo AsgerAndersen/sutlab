@@ -476,3 +476,131 @@ def get_rows(
         result = _filter_sut_by_column(result, cols.category, categories)
 
     return replace(result, balancing_id=None)
+
+
+# ---------------------------------------------------------------------------
+# Code lookup functions
+# ---------------------------------------------------------------------------
+
+
+def _unique_column_values(sut: SUT, column_name: str) -> pd.DataFrame:
+    """Return a sorted single-column DataFrame of unique non-null values from supply and use."""
+    supply_vals = sut.supply[column_name].dropna().unique().tolist()
+    use_vals = sut.use[column_name].dropna().unique().tolist()
+    all_vals = list(set(supply_vals) | set(use_vals))
+    return pd.DataFrame({column_name: all_vals}).sort_values(column_name).reset_index(drop=True)
+
+
+def get_product_codes(sut: SUT) -> pd.DataFrame:
+    """Return the unique product codes present in the data.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to inspect.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-column DataFrame named after the product column in ``sut``,
+        containing the unique product codes from supply and use combined,
+        sorted in ascending order with a clean integer index.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is ``None``.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call get_product_codes. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+    return _unique_column_values(sut, sut.metadata.columns.product)
+
+
+def get_transaction_codes(sut: SUT) -> pd.DataFrame:
+    """Return the unique transaction codes present in the data.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to inspect.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-column DataFrame named after the transaction column in ``sut``,
+        containing the unique transaction codes from supply and use combined,
+        sorted in ascending order with a clean integer index.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is ``None``.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call get_transaction_codes. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+    return _unique_column_values(sut, sut.metadata.columns.transaction)
+
+
+def get_category_codes(sut: SUT) -> pd.DataFrame:
+    """Return the unique category codes present in the data.
+
+    Rows with no category (imports, exports, investment) have a missing
+    category value and are excluded from the result.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to inspect.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-column DataFrame named after the category column in ``sut``,
+        containing the unique category codes from supply and use combined,
+        sorted in ascending order with a clean integer index.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is ``None``.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call get_category_codes. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+    return _unique_column_values(sut, sut.metadata.columns.category)
+
+
+def get_ids(sut: SUT) -> pd.DataFrame:
+    """Return the unique id values present in the data.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to inspect.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-column DataFrame named after the id column in ``sut``,
+        containing the unique id values from supply and use combined,
+        sorted in ascending order with a clean integer index.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is ``None``.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call get_ids. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+    return _unique_column_values(sut, sut.metadata.columns.id)

@@ -11,7 +11,11 @@ from sutlab.sut import (
     SUTMetadata,
     _match_codes,
     _natural_sort_key,
+    get_category_codes,
+    get_ids,
+    get_product_codes,
     get_rows,
+    get_transaction_codes,
     mark_for_balancing,
 )
 
@@ -443,3 +447,117 @@ class TestGetRows:
         # V10* minus V10100
         result = get_rows(sut_multi, products=["V10*", "~V10100"])
         assert set(result.supply["nrnr"]) == {"V10200"}
+
+
+# ---------------------------------------------------------------------------
+# Tests for get_product_codes, get_transaction_codes, get_category_codes, get_ids
+# ---------------------------------------------------------------------------
+
+
+class TestGetProductCodes:
+
+    def test_returns_dataframe_with_product_column(self, sut):
+        result = get_product_codes(sut)
+        assert list(result.columns) == ["nrnr"]
+
+    def test_returns_unique_values_from_supply_and_use(self, sut):
+        result = get_product_codes(sut)
+        assert set(result["nrnr"]) == {"P1", "P2"}
+
+    def test_sorted_ascending(self, sut):
+        result = get_product_codes(sut)
+        assert list(result["nrnr"]) == sorted(result["nrnr"])
+
+    def test_index_is_reset(self, sut):
+        result = get_product_codes(sut)
+        assert list(result.index) == list(range(len(result)))
+
+    def test_raises_when_metadata_is_none(self, supply, use):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+        with pytest.raises(ValueError, match="metadata"):
+            get_product_codes(sut_no_meta)
+
+
+class TestGetTransactionCodes:
+
+    def test_returns_dataframe_with_transaction_column(self, sut):
+        result = get_transaction_codes(sut)
+        assert list(result.columns) == ["trans"]
+
+    def test_includes_codes_from_both_supply_and_use(self, sut):
+        # supply has "0100", use has "2000"
+        result = get_transaction_codes(sut)
+        assert set(result["trans"]) == {"0100", "2000"}
+
+    def test_sorted_ascending(self, sut):
+        result = get_transaction_codes(sut)
+        assert list(result["trans"]) == sorted(result["trans"])
+
+    def test_index_is_reset(self, sut):
+        result = get_transaction_codes(sut)
+        assert list(result.index) == list(range(len(result)))
+
+    def test_raises_when_metadata_is_none(self, supply, use):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+        with pytest.raises(ValueError, match="metadata"):
+            get_transaction_codes(sut_no_meta)
+
+
+class TestGetCategoryCodes:
+
+    def test_returns_dataframe_with_category_column(self, sut):
+        result = get_category_codes(sut)
+        assert list(result.columns) == ["brch"]
+
+    def test_returns_unique_values(self, sut):
+        result = get_category_codes(sut)
+        assert set(result["brch"]) == {"I1"}
+
+    def test_excludes_nan_categories(self, sut, supply, metadata):
+        use_with_nan = sut.use.copy()
+        use_with_nan.loc[0, "brch"] = None
+        sut_with_nan = SUT(
+            price_basis="current_year",
+            supply=supply,
+            use=use_with_nan,
+            metadata=metadata,
+        )
+        result = get_category_codes(sut_with_nan)
+        assert result["brch"].isna().sum() == 0
+
+    def test_sorted_ascending(self, sut):
+        result = get_category_codes(sut)
+        assert list(result["brch"]) == sorted(result["brch"])
+
+    def test_index_is_reset(self, sut):
+        result = get_category_codes(sut)
+        assert list(result.index) == list(range(len(result)))
+
+    def test_raises_when_metadata_is_none(self, supply, use):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+        with pytest.raises(ValueError, match="metadata"):
+            get_category_codes(sut_no_meta)
+
+
+class TestGetIds:
+
+    def test_returns_dataframe_with_id_column(self, sut):
+        result = get_ids(sut)
+        assert list(result.columns) == ["year"]
+
+    def test_returns_unique_values(self, sut):
+        result = get_ids(sut)
+        assert set(result["year"]) == {2018, 2019}
+
+    def test_sorted_ascending(self, sut):
+        result = get_ids(sut)
+        assert list(result["year"]) == sorted(result["year"])
+
+    def test_index_is_reset(self, sut):
+        result = get_ids(sut)
+        assert list(result.index) == list(range(len(result)))
+
+    def test_raises_when_metadata_is_none(self, supply, use):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+        with pytest.raises(ValueError, match="metadata"):
+            get_ids(sut_no_meta)
