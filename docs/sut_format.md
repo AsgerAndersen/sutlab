@@ -42,3 +42,30 @@ get_rows(sut, ids=range(2015, 2020))                   # range of ids
 ```
 
 `get_rows` always returns a new SUT — the original is never modified. If no rows match, empty DataFrames are returned.
+
+## Inspecting unique codes
+
+These functions return the unique codes present in the data as a sorted single-column DataFrame.
+
+```python
+from sutlab.sut import (
+    get_product_codes,
+    get_transaction_codes,
+    get_ids,
+    get_industry_codes,
+    get_individual_consumption_codes,
+    get_collective_consumption_codes,
+)
+
+get_product_codes(sut)                  # unique product codes
+get_transaction_codes(sut)              # unique transaction codes
+get_ids(sut)                            # unique id values
+
+get_industry_codes(sut)                 # category codes from output (P1) and intermediate consumption (P2) rows
+get_individual_consumption_codes(sut)   # category codes from individual consumption (P31) rows
+get_collective_consumption_codes(sut)   # category codes from collective consumption (P32) rows
+```
+
+The three category functions require a classifications file with a `transactions` sheet including an `esa_code` column — see `metadata_format.md`.
+
+All functions return values from both supply and use combined. NaN category values (imports, exports, investment rows) are excluded.
