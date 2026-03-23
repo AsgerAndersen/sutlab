@@ -84,3 +84,12 @@ Append-only. Each entry: date, decision, brief rationale.
   plus VAT. Trade margins cancel (included in trade industry output and subtracted
   again in IC at purchasers' prices), so only VAT on final demand remains as the wedge
   between GDP at basic and market prices.
+
+- **2026-03-23**: `get_rows` added to `sutlab/sut.py` as the single public selection
+  function. Filters supply and use by ids, products, transactions, and/or categories
+  (AND logic). Pattern syntax: exact, wildcard (`*`), natural-sort range (`:`),
+  negation (`~`). Individual per-dimension functions dropped — `get_rows` with keyword
+  arguments is simpler for the target user base. `balancing_id` set to `None` on
+  result — balancing a sub-SUT is not supported. Private helpers: `_match_codes`,
+  `_code_matches_pattern`, `_natural_sort_key`, `_filter_sut_by_column`,
+  `_filter_sut_by_ids`.
