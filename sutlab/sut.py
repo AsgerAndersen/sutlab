@@ -547,11 +547,43 @@ def get_transaction_codes(sut: SUT) -> pd.DataFrame:
     return _unique_column_values(sut, sut.metadata.columns.transaction)
 
 
-def get_category_codes(sut: SUT) -> pd.DataFrame:
-    """Return the unique category codes present in the data.
+def _category_codes_for_esa(sut: SUT, esa_codes: list[str]) -> pd.DataFrame:
+    """Return sorted unique category codes from rows whose transaction maps to any of the given ESA codes."""
+    trans_df = sut.metadata.classifications.transactions
+    matching_trans = trans_df[trans_df["esa_code"].isin(esa_codes)]["code"].tolist()
 
-    Rows with no category (imports, exports, investment) have a missing
-    category value and are excluded from the result.
+    trans_col = sut.metadata.columns.transaction
+    cat_col = sut.metadata.columns.category
+
+    supply_cats = sut.supply[sut.supply[trans_col].isin(matching_trans)][cat_col].dropna().unique().tolist()
+    use_cats = sut.use[sut.use[trans_col].isin(matching_trans)][cat_col].dropna().unique().tolist()
+    all_cats = list(set(supply_cats) | set(use_cats))
+
+    return pd.DataFrame({cat_col: all_cats}).sort_values(cat_col).reset_index(drop=True)
+
+
+def _require_transaction_classifications(sut: SUT, function_name: str) -> None:
+    """Raise ValueError if transaction classifications with esa_code are not available."""
+    if sut.metadata is None:
+        raise ValueError(
+            f"sut.metadata is required to call {function_name}. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+    if (
+        sut.metadata.classifications is None
+        or sut.metadata.classifications.transactions is None
+    ):
+        raise ValueError(
+            f"sut.metadata.classifications.transactions is required to call {function_name}. "
+            "Load a classifications file with a 'transactions' sheet including an 'esa_code' column."
+        )
+
+
+def get_industry_codes(sut: SUT) -> pd.DataFrame:
+    """Return the unique industry codes present in the data.
+
+    Industry codes are the category codes from output (P1) and intermediate
+    consumption (P2) rows.
 
     Parameters
     ----------
@@ -562,20 +594,73 @@ def get_category_codes(sut: SUT) -> pd.DataFrame:
     -------
     pd.DataFrame
         Single-column DataFrame named after the category column in ``sut``,
-        containing the unique category codes from supply and use combined,
-        sorted in ascending order with a clean integer index.
+        containing the unique industry codes, sorted in ascending order with
+        a clean integer index.
 
     Raises
     ------
     ValueError
-        If ``sut.metadata`` is ``None``.
+        If ``sut.metadata`` or ``sut.metadata.classifications.transactions``
+        is ``None``.
     """
-    if sut.metadata is None:
-        raise ValueError(
-            "sut.metadata is required to call get_category_codes. "
-            "Provide a SUTMetadata with column name mappings."
-        )
-    return _unique_column_values(sut, sut.metadata.columns.category)
+    _require_transaction_classifications(sut, "get_industry_codes")
+    return _category_codes_for_esa(sut, ["P1", "P2"])
+
+
+def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
+    """Return the unique individual consumption function codes present in the data.
+
+    Individual consumption codes are the category codes from rows with ESA
+    transaction P31 (Individual consumption expenditure).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to inspect.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-column DataFrame named after the category column in ``sut``,
+        containing the unique individual consumption codes, sorted in
+        ascending order with a clean integer index.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` or ``sut.metadata.classifications.transactions``
+        is ``None``.
+    """
+    _require_transaction_classifications(sut, "get_individual_consumption_codes")
+    return _category_codes_for_esa(sut, ["P31"])
+
+
+def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
+    """Return the unique collective consumption function codes present in the data.
+
+    Collective consumption codes are the category codes from rows with ESA
+    transaction P32 (Collective consumption expenditure).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to inspect.
+
+    Returns
+    -------
+    pd.DataFrame
+        Single-column DataFrame named after the category column in ``sut``,
+        containing the unique collective consumption codes, sorted in
+        ascending order with a clean integer index.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` or ``sut.metadata.classifications.transactions``
+        is ``None``.
+    """
+    _require_transaction_classifications(sut, "get_collective_consumption_codes")
+    return _category_codes_for_esa(sut, ["P32"])
 
 
 def get_ids(sut: SUT) -> pd.DataFrame:

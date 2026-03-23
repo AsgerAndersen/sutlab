@@ -85,15 +85,18 @@ Each of these sheets has two columns:
 
 ### Sheet: `transactions`
 
-Three columns. All three are required:
+Four columns. All four are required:
 
-| `code` | `name` | `table` |
-|---|---|---|
-| `0100` | Output at basic prices | `supply` |
-| `0700` | Imports of goods and services | `supply` |
-| `3110` | Intermediate consumption | `use` |
-| `5110` | Household consumption | `use` |
+| `code` | `name` | `table` | `esa_code` |
+|---|---|---|---|
+| `0100` | Output at basic prices | `supply` | `P1` |
+| `0700` | Imports of goods and services | `supply` | `P7` |
+| `3110` | Intermediate consumption | `use` | `P2` |
+| `3200` | Household consumption | `use` | `P31` |
+| `3300` | Government collective consumption | `use` | `P32` |
 
-`table` must be exactly `"supply"` or `"use"` for every row. Any other value raises an
-error when loading. The `table` column is used to split the combined long-format data
-file into separate supply and use tables.
+`table` must be exactly `"supply"` or `"use"` for every row.
+
+`esa_code` maps each institution-specific transaction code to a standardised ESA code.
+Valid values: `P1`, `P2`, `P3`, `P31`, `P32`, `P51g`, `P52`, `P53`, `P6`, `P7`.
+Any other value raises an error when loading.

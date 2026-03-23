@@ -59,9 +59,10 @@ def minimal_columns_rows() -> list[dict]:
 def minimal_transactions_df() -> pd.DataFrame:
     """Return a minimal valid transactions DataFrame with all required columns."""
     return pd.DataFrame({
-        "code":  ["0100", "0700", "2000"],
-        "name":  ["Output", "Imports", "Intermediate"],
-        "table": ["supply", "supply", "use"],
+        "code":     ["0100",   "0700", "2000"],
+        "name":     ["Output", "Imports", "Intermediate"],
+        "table":    ["supply", "supply", "use"],
+        "esa_code": ["P1",     "P7",    "P2"],
     })
 
 
@@ -203,12 +204,18 @@ class TestLoadMetadataClassificationsFromExcel:
         assert result.products is not None
         assert set(result.products["code"]) == {"A", "B", "C", "T"}
 
-    def test_transactions_loaded_with_table_column(self):
+    def test_transactions_loaded_with_required_columns(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.transactions is not None
         assert "code" in result.transactions.columns
         assert "name" in result.transactions.columns
         assert "table" in result.transactions.columns
+        assert "esa_code" in result.transactions.columns
+
+    def test_transactions_esa_code_values_are_valid(self):
+        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        valid = {"P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
+        assert set(result.transactions["esa_code"]).issubset(valid)
 
     def test_transactions_table_values_are_supply_or_use(self):
         result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
@@ -259,9 +266,10 @@ class TestLoadMetadataClassificationsFromExcel:
 
     def test_strips_whitespace_from_all_sheets(self, tmp_path):
         transactions = pd.DataFrame({
-            "code":  ["  0100  "],
-            "name":  ["  Output  "],
-            "table": ["  supply  "],
+            "code":     ["  0100  "],
+            "name":     ["  Output  "],
+            "table":    ["  supply  "],
+            "esa_code": ["  P1  "],
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         result = load_metadata_classifications_from_excel(path)
@@ -276,9 +284,10 @@ class TestLoadMetadataClassificationsFromExcel:
 
     def test_error_invalid_table_value(self, tmp_path):
         transactions = pd.DataFrame({
-            "code":  ["0100", "2000"],
-            "name":  ["Output", "Intermediate"],
-            "table": ["supply", "wrong"],
+            "code":     ["0100",   "2000"],
+            "name":     ["Output", "Intermediate"],
+            "table":    ["supply", "wrong"],
+            "esa_code": ["P1",     "P2"],
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="'wrong'"):
@@ -286,12 +295,45 @@ class TestLoadMetadataClassificationsFromExcel:
 
     def test_error_invalid_table_value_lists_valid_values(self, tmp_path):
         transactions = pd.DataFrame({
-            "code":  ["0100"],
-            "name":  ["Output"],
-            "table": ["typo"],
+            "code":     ["0100"],
+            "name":     ["Output"],
+            "table":    ["typo"],
+            "esa_code": ["P1"],
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="supply"):
+            load_metadata_classifications_from_excel(path)
+
+    def test_error_transactions_missing_esa_code_column(self, tmp_path):
+        transactions = pd.DataFrame({
+            "code":  ["0100"],
+            "name":  ["Output"],
+            "table": ["supply"],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        with pytest.raises(ValueError, match="'esa_code'"):
+            load_metadata_classifications_from_excel(path)
+
+    def test_error_invalid_esa_code_value(self, tmp_path):
+        transactions = pd.DataFrame({
+            "code":     ["0100"],
+            "name":     ["Output"],
+            "table":    ["supply"],
+            "esa_code": ["WRONG"],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        with pytest.raises(ValueError, match="'WRONG'"):
+            load_metadata_classifications_from_excel(path)
+
+    def test_error_invalid_esa_code_lists_valid_values(self, tmp_path):
+        transactions = pd.DataFrame({
+            "code":     ["0100"],
+            "name":     ["Output"],
+            "table":    ["supply"],
+            "esa_code": ["WRONG"],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        with pytest.raises(ValueError, match="P1"):
             load_metadata_classifications_from_excel(path)
 
     def test_error_sheet_missing_required_column(self, tmp_path):

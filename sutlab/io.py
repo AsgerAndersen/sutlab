@@ -30,6 +30,8 @@ _ALL_KNOWN_ROLES: set[str] = _REQUIRED_ROLES | _OPTIONAL_ROLES
 
 _VALID_TABLE_VALUES: set[str] = {"supply", "use"}
 
+_VALID_ESA_CODES: set[str] = {"P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
+
 # Price layer role names in the order they should appear in the use DataFrame.
 # Matches the field order of SUTColumns.
 _PRICE_LAYER_ROLES: list[str] = [
@@ -190,8 +192,10 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
     corresponding field is set to ``None`` if the sheet is absent.
 
     If the ``transactions`` sheet is present, it must have a ``table`` column
-    with values ``"supply"`` or ``"use"`` for every row. This column is used
-    to split combined long-format SUT data into separate supply and use tables.
+    with values ``"supply"`` or ``"use"`` for every row, and an ``esa_code``
+    column mapping each transaction to a standardised ESA code. Valid ESA
+    codes: ``P1``, ``P2``, ``P3``, ``P31``, ``P32``, ``P51g``, ``P52``,
+    ``P53``, ``P6``, ``P7``.
 
     Leading and trailing whitespace is stripped from all values in all sheets.
     All values are read as strings.
@@ -211,6 +215,8 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
         If a present sheet is missing its required columns.
     ValueError
         If the ``transactions`` sheet has missing or invalid ``table`` values.
+    ValueError
+        If the ``transactions`` sheet has missing or invalid ``esa_code`` values.
     """
     all_sheets = pd.read_excel(path, sheet_name=None, dtype=str)
     all_sheets = {name: _strip_whitespace(df) for name, df in all_sheets.items()}
@@ -233,7 +239,7 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
     if "transactions" in all_sheets:
         df = all_sheets["transactions"]
         _validate_required_columns(
-            df, ["code", "name", "table"], source="'transactions' sheet"
+            df, ["code", "name", "table", "esa_code"], source="'transactions' sheet"
         )
         invalid_table_values = set(df["table"]) - _VALID_TABLE_VALUES
         if invalid_table_values:
@@ -241,6 +247,14 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
             raise ValueError(
                 f"Invalid values in 'table' column of 'transactions' sheet: {invalid_str}. "
                 f"Each row must be 'supply' or 'use'."
+            )
+        invalid_esa_values = set(df["esa_code"]) - _VALID_ESA_CODES
+        if invalid_esa_values:
+            invalid_str = ", ".join(f"'{v}'" for v in sorted(invalid_esa_values))
+            valid_str = ", ".join(sorted(_VALID_ESA_CODES))
+            raise ValueError(
+                f"Invalid values in 'esa_code' column of 'transactions' sheet: {invalid_str}. "
+                f"Valid values are: {valid_str}."
             )
         transactions = df
 

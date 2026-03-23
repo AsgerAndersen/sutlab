@@ -7,12 +7,15 @@ import pandas as pd
 
 from sutlab.sut import (
     SUT,
+    SUTClassifications,
     SUTColumns,
     SUTMetadata,
     _match_codes,
     _natural_sort_key,
-    get_category_codes,
+    get_collective_consumption_codes,
     get_ids,
+    get_individual_consumption_codes,
+    get_industry_codes,
     get_product_codes,
     get_rows,
     get_transaction_codes,
@@ -450,8 +453,49 @@ class TestGetRows:
 
 
 # ---------------------------------------------------------------------------
-# Tests for get_product_codes, get_transaction_codes, get_category_codes, get_ids
+# Tests for get_product_codes, get_transaction_codes, get_ids,
+# get_industry_codes, get_individual_consumption_codes, get_collective_consumption_codes
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def classified_transactions():
+    return pd.DataFrame({
+        "code":     ["0100", "2000", "3110", "3200"],
+        "name":     ["Output", "Intermediate", "Household", "Government"],
+        "table":    ["supply", "use",    "use",  "use"],
+        "esa_code": ["P1",     "P2",     "P31",  "P32"],
+    })
+
+
+@pytest.fixture
+def supply_classified():
+    return pd.DataFrame({
+        "year":  [2021, 2021],
+        "nrnr":  ["P1", "P2"],
+        "trans": ["0100", "0100"],
+        "brch":  ["X", "Y"],
+        "bas":   [100.0, 80.0],
+    })
+
+
+@pytest.fixture
+def use_classified():
+    return pd.DataFrame({
+        "year":  [2021, 2021, 2021, 2021, 2021],
+        "nrnr":  ["P1", "P2", "P1",  "P2",  "P1"],
+        "trans": ["2000", "2000", "3110", "3110", "3200"],
+        "brch":  ["X",    "Y",    "HH",   "HH",   "GOV"],
+        "bas":   [30.0,   20.0,   40.0,   30.0,   20.0],
+        "koeb":  [30.0,   20.0,   40.0,   30.0,   20.0],
+    })
+
+
+@pytest.fixture
+def sut_classified(supply_classified, use_classified, columns, classified_transactions):
+    classifications = SUTClassifications(transactions=classified_transactions)
+    meta = SUTMetadata(columns=columns, classifications=classifications)
+    return SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
 
 
 class TestGetProductCodes:
@@ -503,40 +547,85 @@ class TestGetTransactionCodes:
             get_transaction_codes(sut_no_meta)
 
 
-class TestGetCategoryCodes:
+class TestGetIndustryCodes:
 
-    def test_returns_dataframe_with_category_column(self, sut):
-        result = get_category_codes(sut)
+    def test_returns_dataframe_with_category_column(self, sut_classified):
+        result = get_industry_codes(sut_classified)
         assert list(result.columns) == ["brch"]
 
-    def test_returns_unique_values(self, sut):
-        result = get_category_codes(sut)
-        assert set(result["brch"]) == {"I1"}
+    def test_returns_codes_from_p1_and_p2_transactions(self, sut_classified):
+        # supply has X, Y (P1); use has X, Y (P2); HH and GOV are P31/P32
+        result = get_industry_codes(sut_classified)
+        assert set(result["brch"]) == {"X", "Y"}
 
-    def test_excludes_nan_categories(self, sut, supply, metadata):
-        use_with_nan = sut.use.copy()
-        use_with_nan.loc[0, "brch"] = None
-        sut_with_nan = SUT(
-            price_basis="current_year",
-            supply=supply,
-            use=use_with_nan,
-            metadata=metadata,
-        )
-        result = get_category_codes(sut_with_nan)
-        assert result["brch"].isna().sum() == 0
-
-    def test_sorted_ascending(self, sut):
-        result = get_category_codes(sut)
+    def test_sorted_ascending(self, sut_classified):
+        result = get_industry_codes(sut_classified)
         assert list(result["brch"]) == sorted(result["brch"])
 
-    def test_index_is_reset(self, sut):
-        result = get_category_codes(sut)
+    def test_index_is_reset(self, sut_classified):
+        result = get_industry_codes(sut_classified)
         assert list(result.index) == list(range(len(result)))
 
-    def test_raises_when_metadata_is_none(self, supply, use):
-        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+    def test_raises_when_metadata_is_none(self, supply_classified, use_classified):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply_classified, use=use_classified)
         with pytest.raises(ValueError, match="metadata"):
-            get_category_codes(sut_no_meta)
+            get_industry_codes(sut_no_meta)
+
+    def test_raises_when_classifications_is_none(self, supply_classified, use_classified, columns):
+        meta = SUTMetadata(columns=columns)
+        sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+        with pytest.raises(ValueError, match="classifications"):
+            get_industry_codes(sut_no_class)
+
+
+class TestGetIndividualConsumptionCodes:
+
+    def test_returns_dataframe_with_category_column(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified)
+        assert list(result.columns) == ["brch"]
+
+    def test_returns_codes_from_p31_transactions(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified)
+        assert set(result["brch"]) == {"HH"}
+
+    def test_sorted_ascending(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified)
+        assert list(result["brch"]) == sorted(result["brch"])
+
+    def test_index_is_reset(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified)
+        assert list(result.index) == list(range(len(result)))
+
+    def test_raises_when_classifications_is_none(self, supply_classified, use_classified, columns):
+        meta = SUTMetadata(columns=columns)
+        sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+        with pytest.raises(ValueError, match="classifications"):
+            get_individual_consumption_codes(sut_no_class)
+
+
+class TestGetCollectiveConsumptionCodes:
+
+    def test_returns_dataframe_with_category_column(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified)
+        assert list(result.columns) == ["brch"]
+
+    def test_returns_codes_from_p32_transactions(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified)
+        assert set(result["brch"]) == {"GOV"}
+
+    def test_sorted_ascending(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified)
+        assert list(result["brch"]) == sorted(result["brch"])
+
+    def test_index_is_reset(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified)
+        assert list(result.index) == list(range(len(result)))
+
+    def test_raises_when_classifications_is_none(self, supply_classified, use_classified, columns):
+        meta = SUTMetadata(columns=columns)
+        sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+        with pytest.raises(ValueError, match="classifications"):
+            get_collective_consumption_codes(sut_no_class)
 
 
 class TestGetIds:
