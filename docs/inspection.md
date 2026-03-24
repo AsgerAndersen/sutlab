@@ -66,6 +66,8 @@ The result contains 12 tables, grouped below by topic.
 
 `price_layers_growth` — year-on-year change within each row.
 
+`price_layer_shares` — same structure as `price_layers`, but every value is divided by total use at purchasers' prices for that product and year. Expresses each price layer as a share of the product's total purchasers' price use.
+
 ---
 
 ### Row MultiIndex levels

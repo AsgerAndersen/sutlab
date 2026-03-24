@@ -427,6 +427,7 @@ class ProductInspectionData:
     price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layer_shares: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass
@@ -549,6 +550,13 @@ class ProductInspection:
     price_layers_growth : pd.DataFrame
         Same structure as ``price_layers``, with the same year-on-year
         growth calculation as ``balance_growth``.
+
+    price_layer_shares : pd.DataFrame
+        Same structure as ``price_layers``. Every value is divided by the
+        total use at purchasers' prices for that product and year (sum of
+        the purchasers' price column across all use rows for that product).
+        Expresses each price layer row as a share of the product's total
+        purchasers' price use. Division by zero yields ``NaN``.
     """
 
     data: ProductInspectionData
@@ -600,6 +608,10 @@ class ProductInspection:
     @property
     def price_layers_growth(self) -> Styler:
         return _style_price_layers_table(self.data.price_layers_growth, _format_percentage)
+
+    @property
+    def price_layer_shares(self) -> Styler:
+        return _style_price_layers_table(self.data.price_layer_shares, _format_percentage)
 
 
 def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
@@ -718,6 +730,9 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     )
     price_layers_distribution = _build_price_layers_distribution(price_layers)
     price_layers_growth = _build_growth_table(price_layers)
+    price_layer_shares = _build_price_layer_shares(
+        price_layers, sut, matched_products, all_ids
+    )
 
     data = ProductInspectionData(
         balance=balance,
@@ -732,6 +747,7 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
         price_layers=price_layers,
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
+        price_layer_shares=price_layer_shares,
     )
     return ProductInspection(data=data)
 
@@ -1174,6 +1190,56 @@ def _build_price_layers_table(
         return pd.DataFrame()
 
     return pd.concat(blocks)
+
+
+def _build_price_layer_shares(
+    price_layers: pd.DataFrame,
+    sut,
+    matched_products: list[str],
+    all_ids: list,
+) -> pd.DataFrame:
+    """Build price layer shares relative to total product use at purchasers' prices.
+
+    Every value in ``price_layers`` is divided by the sum of the purchasers'
+    price column across all use rows for that product and year. The denominator
+    is the same for every row within a product, regardless of layer or
+    transaction. Division by zero yields NaN.
+    """
+    if price_layers.empty:
+        return pd.DataFrame()
+
+    cols = sut.metadata.columns
+    id_col = cols.id
+    prod_col = cols.product
+    purch_col = cols.price_purchasers
+
+    # Compute denominator: total purchasers' price use per (product, year)
+    use_purch = (
+        sut.use
+        .groupby([prod_col, id_col], as_index=False)[purch_col]
+        .sum()
+    )
+
+    shares = price_layers.copy().astype(float)
+    product_vals = price_layers.index.get_level_values("product")
+
+    for product in matched_products:
+        prod_rows = price_layers.index.get_level_values("product") == product
+        if not prod_rows.any():
+            continue
+
+        denom = pd.Series(0.0, index=all_ids)
+        prod_use_purch = use_purch[use_purch[prod_col] == product]
+        for _, row in prod_use_purch.iterrows():
+            denom[row[id_col]] = row[purch_col]
+
+        abs_positions = [i for i, v in enumerate(product_vals) if v == product]
+        for i_abs in abs_positions:
+            shares.iloc[i_abs] = (
+                price_layers.iloc[i_abs].astype(float).div(denom).values
+            )
+
+    return shares
 
 
 def _build_price_layers_distribution(price_layers: pd.DataFrame) -> pd.DataFrame:
