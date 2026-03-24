@@ -11,13 +11,13 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses, `mark_for_balancing`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 13 tables (balance, supply/use detail, price layers, price layer shares, and distribution/growth variants) + tests (`tests/test_inspect.py`) + fixture data (`data/fixtures/`) + user documentation (`docs/`)
+- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 13 tables (balance, supply/use detail, price layers, price layer shares, and distribution/growth variants) + tests (`tests/test_inspect.py`) + fixture data (`data/fixtures/`) + user documentation (`docs/`)
 - **What's next**: Further inspection functions, balancing functions
 
 ## Architecture
 
 ### Module structure
-- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `mark_for_balancing`, `get_rows`, `get_product_codes`, `get_transaction_codes`, `get_ids`, `get_industry_codes`, `get_individual_consumption_codes`, `get_collective_consumption_codes`
+- `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `set_balancing_id`, `get_rows`, `get_product_codes`, `get_transaction_codes`, `get_ids`, `get_industry_codes`, `get_individual_consumption_codes`, `get_collective_consumption_codes`
 - `sutlab/io.py` — I/O functions: `load_metadata_columns_from_excel`, `load_metadata_classifications_from_excel`, `load_metadata_from_excel`, `load_sut_from_parquet(id_values, paths, metadata, price_basis)` — accepts lists to load a multi-member collection in one call
 - `sutlab/inspect.py` — `inspect_products` → `ProductInspection` (13 tables: balance, supply_detail, use_detail, price_layers, price_layers_shares, and distribution/growth variants)
 
@@ -51,7 +51,7 @@ two-column Excel table (`column`, `role`). Required roles: `id`, `product`, `tra
 - `transactions` — `code`, `name`, and `table` columns; `table` is `"supply"` or `"use"`,
   required and validated on load. Used to split the combined parquet file into supply and use tables.
 
-**`mark_for_balancing(sut, balancing_id) → SUT`** — returns a new SUT with `balancing_id`
+**`set_balancing_id(sut, balancing_id) → SUT`** — returns a new SUT with `balancing_id`
 set. Does not mutate the original.
 
 ### Design principles

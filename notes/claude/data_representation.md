@@ -80,10 +80,10 @@ and `name` columns.
 GDP decomposition mapping is **not** stored here — it is passed as an argument to
 inspection functions (design deferred to inspection function design).
 
-### mark_for_balancing
+### set_balancing_id
 
 ```python
-mark_for_balancing(sut: SUT, balancing_id: str | int) -> SUT
+set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT
 ```
 
 Returns a new SUT with `balancing_id` set. Does not mutate the original. Raises
