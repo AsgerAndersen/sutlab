@@ -348,41 +348,54 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
                 f"Found: {present_str}"
             )
 
+    id_col = cols.id
+    trans_col = cols.transaction
+    cat_col = cols.category
+
     for sut_df, targets_df, table_name in [
         (sut.supply, targets.supply, "supply"),
         (sut.use, targets.use, "use"),
     ]:
-        id_col = cols.id
-        trans_col = cols.transaction
-        cat_col = cols.category
-
-        sut_ids = {str(v) for v in sut_df[id_col].unique()}
-        target_ids = {str(v) for v in targets_df[id_col].unique()}
+        sut_ids = set(sut_df[id_col].astype(str).unique())
+        target_ids = set(targets_df[id_col].astype(str).unique())
         common_ids = sut_ids & target_ids
 
-        for id_val in sorted(common_ids):
-            sut_mask = sut_df[id_col].astype(str) == id_val
-            target_mask = targets_df[id_col].astype(str) == id_val
+        if not common_ids:
+            continue
 
-            sut_combos = set(
-                zip(sut_df.loc[sut_mask, trans_col], sut_df.loc[sut_mask, cat_col])
-            )
-            target_combos = set(
-                zip(
-                    targets_df.loc[target_mask, trans_col],
-                    targets_df.loc[target_mask, cat_col],
-                )
-            )
+        # Unique (id, trans, cat) combinations required by the sut, for matched ids only
+        sut_combos = (
+            sut_df[sut_df[id_col].astype(str).isin(common_ids)]
+            [[id_col, trans_col, cat_col]]
+            .drop_duplicates()
+            .assign(**{id_col: lambda df: df[id_col].astype(str)})
+        )
 
-            missing_combos = sut_combos - target_combos
-            if missing_combos:
-                missing_str = ", ".join(
-                    f"({t!r}, {c!r})" for t, c in sorted(missing_combos)
+        # Unique (id, trans, cat) combinations present in targets
+        target_combos = (
+            targets_df[[id_col, trans_col, cat_col]]
+            .drop_duplicates()
+            .assign(**{id_col: lambda df: df[id_col].astype(str)})
+        )
+
+        # Left merge: rows without a match in targets are missing coverage
+        merged = sut_combos.merge(
+            target_combos, on=[id_col, trans_col, cat_col], how="left", indicator=True
+        )
+        missing = merged[merged["_merge"] == "left_only"].drop(columns="_merge")
+
+        if not missing.empty:
+            lines = []
+            for id_val, group in missing.groupby(id_col):
+                combos_str = ", ".join(
+                    f"({t!r}, {c!r})"
+                    for t, c in sorted(zip(group[trans_col], group[cat_col]))
                 )
-                raise ValueError(
-                    f"targets.{table_name} is missing coverage for id '{id_val}'. "
-                    f"Missing (transaction, category) combinations: {missing_str}"
-                )
+                lines.append(f"  id '{id_val}': {combos_str}")
+            raise ValueError(
+                f"targets.{table_name} is missing coverage for some ids:\n"
+                + "\n".join(lines)
+            )
 
     return replace(sut, balancing_targets=targets)
 
