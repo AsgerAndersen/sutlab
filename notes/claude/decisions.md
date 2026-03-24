@@ -16,6 +16,10 @@ Append-only. Each entry: date, decision, brief rationale.
 - **2026-03-18**: `set_active` renamed to `mark_for_balancing` — more concrete, reflects
   tagging rather than starting a process.
 
+- **2026-03-24**: `mark_for_balancing` renamed to `set_balancing_id` — consistent with
+  the `set_*` naming convention established for functions that return a new SUT with one
+  field updated (e.g. `set_balancing_targets`).
+
 - **2026-03-18**: Current and previous year's prices kept as separate `SUT` objects.
   Same metadata object can be reused for both.
 

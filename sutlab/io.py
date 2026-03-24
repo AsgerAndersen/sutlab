@@ -369,7 +369,7 @@ def load_sut_from_parquet(
     -------
     SUT
         SUT with supply and use DataFrames populated and ``metadata`` set.
-        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.mark_for_balancing`
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
         to designate a member for balancing.
 
     Raises

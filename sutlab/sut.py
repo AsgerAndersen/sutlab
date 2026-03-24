@@ -156,7 +156,7 @@ class SUT:
     (``metadata.columns.id``).
 
     One member of the collection can be designated as the active balancing
-    target via :func:`mark_for_balancing`. Balancing functions operate on that member
+    target via :func:`set_balancing_id`. Balancing functions operate on that member
     only; inspection functions span the full collection.
 
     Parameters
@@ -195,9 +195,9 @@ class SUT:
     metadata: SUTMetadata | None = None
 
 
-def mark_for_balancing(sut: SUT, balancing_id: str | int) -> SUT:
+def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
     """
-    Return a new SUT with the given id marked as the active balancing target.
+    Return a new SUT with ``balancing_id`` set to the given id value.
 
     The original SUT is not modified. Balancing functions will operate only
     on rows where the id column matches ``balancing_id``; inspection functions
@@ -208,7 +208,7 @@ def mark_for_balancing(sut: SUT, balancing_id: str | int) -> SUT:
     sut : SUT
         The SUT collection to update.
     balancing_id : str or int
-        The id value to mark as the active balancing target. Must exist in
+        The id value to set as the active balancing target. Must exist in
         the supply table's id column.
 
     Returns
