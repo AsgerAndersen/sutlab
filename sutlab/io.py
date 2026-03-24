@@ -459,16 +459,20 @@ def load_sut_from_parquet(
 
 
 def load_balancing_targets_from_excel(
-    path: str | Path,
+    id_values: list[str | int],
+    paths: list[str | Path],
     metadata: SUTMetadata,
 ) -> BalancingTargets:
     """
-    Load balancing target totals from an Excel file.
+    Load a balancing targets collection from one Excel file per id value.
 
-    The file must have columns for id, transaction, category, and target
-    values, using the same concrete column names as the SUT data (as defined
-    in ``metadata.columns``). One row per (id, transaction, category)
-    combination. Supply and use rows are split using the ``table`` column of
+    Each file contains target totals for one collection member (typically one
+    year) with no id column — the corresponding entry in ``id_values`` is
+    added as the id column. Files have columns for transaction, category, and
+    target values, using the same concrete column names as the SUT data (as
+    defined in ``metadata.columns``).
+
+    Supply and use rows are split using the ``table`` column of
     ``metadata.classifications.transactions``.
 
     All columns except the target column are read as strings to preserve
@@ -478,8 +482,11 @@ def load_balancing_targets_from_excel(
 
     Parameters
     ----------
-    path : str or Path
-        Path to the Excel file.
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved (e.g. pass integers if you want an integer id column).
+    paths : list of str or Path
+        Paths to the Excel files, in the same order as ``id_values``.
     metadata : SUTMetadata
         Metadata for the SUT. ``metadata.columns.target`` must be set.
         ``metadata.classifications.transactions`` must be present — it is
@@ -492,15 +499,23 @@ def load_balancing_targets_from_excel(
     Raises
     ------
     ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
         If ``metadata.columns.target`` is ``None``.
     ValueError
         If ``metadata.classifications.transactions`` is absent.
     ValueError
-        If the file is missing any required column.
+        If any file is missing a required column.
     ValueError
-        If any transaction code in the file is not found in
+        If any transaction code is not found in
         ``metadata.classifications.transactions``.
     """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
     cols = metadata.columns
 
     if cols.target is None:
@@ -516,22 +531,28 @@ def load_balancing_targets_from_excel(
             "and use rows in load_balancing_targets_from_excel."
         )
 
-    df = pd.read_excel(path, dtype=str)
-    df = _strip_whitespace(df)
+    required_cols = [cols.transaction, cols.category, cols.target]
 
-    required_cols = [cols.id, cols.transaction, cols.category, cols.target]
-    _validate_required_columns(df, required_cols, source="Targets file")
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_excel(path, dtype=str)
+        df = _strip_whitespace(df)
+        _validate_required_columns(df, required_cols, source=f"Targets file '{path}'")
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
 
     # Fill empty category cells with "" to match SUT data convention
-    df[cols.category] = df[cols.category].fillna("")
+    combined[cols.category] = combined[cols.category].fillna("")
 
     # Convert target column from string to numeric
-    df[cols.target] = pd.to_numeric(df[cols.target])
+    combined[cols.target] = pd.to_numeric(combined[cols.target])
 
     # Validate all transaction codes are known
     trans_df = metadata.classifications.transactions
     known_codes = set(trans_df["code"])
-    data_codes = set(df[cols.transaction].unique())
+    data_codes = set(combined[cols.transaction].unique())
     unknown_codes = data_codes - known_codes
     if unknown_codes:
         unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
@@ -543,10 +564,10 @@ def load_balancing_targets_from_excel(
 
     # Split into supply and use
     supply_codes = set(trans_df.loc[trans_df["table"] == "supply", "code"])
-    supply_mask = df[cols.transaction].isin(supply_codes)
+    supply_mask = combined[cols.transaction].isin(supply_codes)
 
     col_order = [cols.id, cols.transaction, cols.category, cols.target]
-    supply = df[supply_mask][col_order].reset_index(drop=True)
-    use = df[~supply_mask][col_order].reset_index(drop=True)
+    supply = combined[supply_mask][col_order].reset_index(drop=True)
+    use = combined[~supply_mask][col_order].reset_index(drop=True)
 
     return BalancingTargets(supply=supply, use=use)
