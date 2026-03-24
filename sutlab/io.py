@@ -9,7 +9,7 @@ from typing import Literal
 
 import pandas as pd
 
-from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
+from sutlab.sut import BalancingTargets, SUT, SUTClassifications, SUTColumns, SUTMetadata
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +24,7 @@ _REQUIRED_ROLES: set[str] = {
 _OPTIONAL_ROLES: set[str] = {
     "trade_margins", "wholesale_margins", "retail_margins", "transport_margins",
     "product_taxes", "product_subsidies", "product_taxes_less_subsidies", "vat",
+    "target",
 }
 
 _ALL_KNOWN_ROLES: set[str] = _REQUIRED_ROLES | _OPTIONAL_ROLES
@@ -179,6 +180,7 @@ def load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
         product_subsidies=role_to_col.get("product_subsidies"),
         product_taxes_less_subsidies=role_to_col.get("product_taxes_less_subsidies"),
         vat=role_to_col.get("vat"),
+        target=role_to_col.get("target"),
     )
 
 
@@ -454,3 +456,97 @@ def load_sut_from_parquet(
         use=use,
         metadata=metadata,
     )
+
+
+def load_balancing_targets_from_excel(
+    path: str | Path,
+    metadata: SUTMetadata,
+) -> BalancingTargets:
+    """
+    Load balancing target totals from an Excel file.
+
+    The file must have columns for id, transaction, category, and target
+    values, using the same concrete column names as the SUT data (as defined
+    in ``metadata.columns``). One row per (id, transaction, category)
+    combination. Supply and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    All columns except the target column are read as strings to preserve
+    leading zeros in transaction codes. Empty category cells are filled with
+    ``""`` to match the SUT data convention for rows with no category
+    (e.g. imports, exports).
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the Excel file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.columns.target`` must be set.
+        ``metadata.classifications.transactions`` must be present — it is
+        used to split supply and use rows.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.columns.target`` is ``None``.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If the file is missing any required column.
+    ValueError
+        If any transaction code in the file is not found in
+        ``metadata.classifications.transactions``.
+    """
+    cols = metadata.columns
+
+    if cols.target is None:
+        raise ValueError(
+            "metadata.columns.target is required to call "
+            "load_balancing_targets_from_excel. "
+            "Add a 'target' role to the columns metadata."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_excel."
+        )
+
+    df = pd.read_excel(path, dtype=str)
+    df = _strip_whitespace(df)
+
+    required_cols = [cols.id, cols.transaction, cols.category, cols.target]
+    _validate_required_columns(df, required_cols, source="Targets file")
+
+    # Fill empty category cells with "" to match SUT data convention
+    df[cols.category] = df[cols.category].fillna("")
+
+    # Convert target column from string to numeric
+    df[cols.target] = pd.to_numeric(df[cols.target])
+
+    # Validate all transaction codes are known
+    trans_df = metadata.classifications.transactions
+    known_codes = set(trans_df["code"])
+    data_codes = set(df[cols.transaction].unique())
+    unknown_codes = data_codes - known_codes
+    if unknown_codes:
+        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
+        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+        raise ValueError(
+            f"Transaction codes in targets not found in classifications.transactions: "
+            f"{unknown_str}. Known codes: {known_str}"
+        )
+
+    # Split into supply and use
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", "code"])
+    supply_mask = df[cols.transaction].isin(supply_codes)
+
+    col_order = [cols.id, cols.transaction, cols.category, cols.target]
+    supply = df[supply_mask][col_order].reset_index(drop=True)
+    use = df[~supply_mask][col_order].reset_index(drop=True)
+
+    return BalancingTargets(supply=supply, use=use)

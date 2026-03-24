@@ -66,6 +66,10 @@ class SUTColumns:
         rather than split into taxes and subsidies.
     vat : str or None
         Column name for VAT (e.g. ``'moms'``).
+    target : str or None
+        Column name for balancing target values in the targets DataFrame
+        (e.g. ``'maal'``). Only required when loading or validating balancing
+        targets.
     """
 
     id: str
@@ -82,6 +86,7 @@ class SUTColumns:
     product_subsidies: str | None = None
     product_taxes_less_subsidies: str | None = None
     vat: str | None = None
+    target: str | None = None
 
 
 @dataclass
@@ -145,6 +150,35 @@ class SUTMetadata:
 
 
 @dataclass
+class BalancingTargets:
+    """
+    Target column totals for one balancing round, split into supply and use.
+
+    Each DataFrame has one row per (id, transaction, category) combination.
+    Supply targets are at basic prices; use targets are at purchasers' prices.
+    This is implicit — the price column in both DataFrames is the one mapped
+    to the ``target`` role in :class:`SUTColumns`.
+
+    Column names match the actual column names in the SUT DataFrames (i.e.
+    the concrete names from :class:`SUTColumns`, not fixed canonical names).
+    Column order: id, transaction, category, target.
+
+    Typically produced by :func:`~sutlab.io.load_balancing_targets_from_excel`
+    and attached to a :class:`SUT` via :func:`set_balancing_targets`.
+
+    Parameters
+    ----------
+    supply : DataFrame
+        Target totals for supply transactions (at basic prices).
+    use : DataFrame
+        Target totals for use transactions (at purchasers' prices).
+    """
+
+    supply: pd.DataFrame
+    use: pd.DataFrame
+
+
+@dataclass
 class SUT:
     """
     A collection of supply and use tables sharing the same structure and metadata.
@@ -181,7 +215,10 @@ class SUT:
         enforced but recommended for readability.
     balancing_id : str, int, or None
         The id value of the member currently being balanced. Set via
-        :func:`mark_for_balancing`. ``None`` if no member is designated as active.
+        :func:`set_balancing_id`. ``None`` if no member is designated as active.
+    balancing_targets : BalancingTargets or None
+        Target column totals for the current balancing round. Set via
+        :func:`set_balancing_targets`. ``None`` if no targets have been loaded.
     metadata : SUTMetadata or None
         Column specifications and optional classification tables. Required by
         functions that need to look up labels or validate codes. If ``None``,
@@ -192,6 +229,7 @@ class SUT:
     supply: pd.DataFrame
     use: pd.DataFrame
     balancing_id: str | int | None = None
+    balancing_targets: BalancingTargets | None = None
     metadata: SUTMetadata | None = None
 
 
@@ -241,6 +279,112 @@ def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
         )
 
     return replace(sut, balancing_id=balancing_id)
+
+
+def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
+    """
+    Return a new SUT with ``balancing_targets`` set to the given targets.
+
+    The original SUT is not modified. Validates that the targets DataFrames
+    contain the required columns and that all (transaction, category)
+    combinations present in ``sut.supply`` and ``sut.use`` are covered in the
+    corresponding targets table, for each id value that appears in both.
+
+    Id values present in ``sut`` but absent from ``targets`` are allowed —
+    targets need not cover every member of the collection.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to update.
+    targets : BalancingTargets
+        Target column totals to attach. Supply and use DataFrames must use the
+        same concrete column names as the SUT data, as defined in
+        ``sut.metadata.columns``.
+
+    Returns
+    -------
+    SUT
+        A new SUT with ``balancing_targets`` set. The underlying data is
+        shared with the original (not copied).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is ``None``.
+    ValueError
+        If ``sut.metadata.columns.target`` is ``None`` — the target column
+        role must be defined in the columns metadata.
+    ValueError
+        If either targets DataFrame is missing a required column.
+    ValueError
+        If any (transaction, category) combination present in ``sut.supply``
+        or ``sut.use`` is missing from the corresponding targets table, for
+        a matched id value.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call set_balancing_targets. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+
+    cols = sut.metadata.columns
+
+    if cols.target is None:
+        raise ValueError(
+            "sut.metadata.columns.target is required to call set_balancing_targets. "
+            "Add a 'target' role to the columns metadata."
+        )
+
+    required_cols = [cols.id, cols.transaction, cols.category, cols.target]
+
+    for table_name, targets_df in [("supply", targets.supply), ("use", targets.use)]:
+        missing = [c for c in required_cols if c not in targets_df.columns]
+        if missing:
+            missing_str = ", ".join(f"'{c}'" for c in missing)
+            present_str = ", ".join(f"'{c}'" for c in targets_df.columns)
+            raise ValueError(
+                f"targets.{table_name} is missing required columns: {missing_str}. "
+                f"Found: {present_str}"
+            )
+
+    for sut_df, targets_df, table_name in [
+        (sut.supply, targets.supply, "supply"),
+        (sut.use, targets.use, "use"),
+    ]:
+        id_col = cols.id
+        trans_col = cols.transaction
+        cat_col = cols.category
+
+        sut_ids = {str(v) for v in sut_df[id_col].unique()}
+        target_ids = {str(v) for v in targets_df[id_col].unique()}
+        common_ids = sut_ids & target_ids
+
+        for id_val in sorted(common_ids):
+            sut_mask = sut_df[id_col].astype(str) == id_val
+            target_mask = targets_df[id_col].astype(str) == id_val
+
+            sut_combos = set(
+                zip(sut_df.loc[sut_mask, trans_col], sut_df.loc[sut_mask, cat_col])
+            )
+            target_combos = set(
+                zip(
+                    targets_df.loc[target_mask, trans_col],
+                    targets_df.loc[target_mask, cat_col],
+                )
+            )
+
+            missing_combos = sut_combos - target_combos
+            if missing_combos:
+                missing_str = ", ".join(
+                    f"({t!r}, {c!r})" for t, c in sorted(missing_combos)
+                )
+                raise ValueError(
+                    f"targets.{table_name} is missing coverage for id '{id_val}'. "
+                    f"Missing (transaction, category) combinations: {missing_str}"
+                )
+
+    return replace(sut, balancing_targets=targets)
 
 
 # ---------------------------------------------------------------------------
