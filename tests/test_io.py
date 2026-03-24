@@ -9,12 +9,13 @@ import pandas as pd
 import pytest
 
 from sutlab.io import (
+    load_balancing_targets_from_excel,
     load_metadata_classifications_from_excel,
     load_metadata_columns_from_excel,
     load_metadata_from_excel,
     load_sut_from_parquet,
 )
-from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
+from sutlab.sut import BalancingTargets, SUT, SUTClassifications, SUTColumns, SUTMetadata
 
 
 FIXTURES = Path(__file__).parent.parent / "data" / "fixtures"
@@ -502,3 +503,128 @@ class TestLoadSutFromParquet:
         df.to_parquet(bad_parquet, index=False)
         with pytest.raises(ValueError, match="0700"):
             load_sut_from_parquet([2021], [bad_parquet], metadata, "current_year")
+
+
+# ---------------------------------------------------------------------------
+# Tests for target role in load_metadata_columns_from_excel
+# ---------------------------------------------------------------------------
+
+class TestLoadMetadataColumnsTargetRole:
+
+    def test_target_field_loaded_from_fixture(self):
+        result = load_metadata_columns_from_excel(COLUMNS_FILE)
+        assert result.target == "maal"
+
+    def test_target_field_is_none_when_absent(self, tmp_path):
+        path = write_columns_file(tmp_path, minimal_columns_rows())
+        result = load_metadata_columns_from_excel(path)
+        assert result.target is None
+
+
+# ---------------------------------------------------------------------------
+# Tests for load_balancing_targets_from_excel
+# ---------------------------------------------------------------------------
+
+TARGETS_FILE = FIXTURES / "ta_targets_2021.xlsx"
+
+
+def write_targets_file(tmp_path: Path, rows: list[dict], filename="targets.xlsx") -> Path:
+    """Write a targets Excel file from a list of row dicts and return its path."""
+    path = tmp_path / filename
+    pd.DataFrame(rows).to_excel(path, index=False)
+    return path
+
+
+def minimal_targets_rows() -> list[dict]:
+    """Minimal valid targets covering one supply and one use row."""
+    return [
+        {"year": 2021, "trans": "0100", "brch": "X",  "maal": 202},
+        {"year": 2021, "trans": "2000", "brch": "X",  "maal": 64},
+    ]
+
+
+class TestLoadBalancingTargetsFromExcel:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    def test_returns_balancing_targets(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert isinstance(result, BalancingTargets)
+
+    def test_supply_and_use_are_dataframes(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert isinstance(result.supply, pd.DataFrame)
+        assert isinstance(result.use, pd.DataFrame)
+
+    def test_supply_contains_only_supply_transactions(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_supply_row_count(self, metadata):
+        # 0100/X, 0100/Y, 0100/Z, 0700/""
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert len(result.supply) == 4
+
+    def test_use_row_count(self, metadata):
+        # 2000/X, 2000/Y, 3110/HH, 3200/GOV, 5139/"", 5200/"", 6001/""
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert len(result.use) == 7
+
+    def test_column_order(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert list(result.supply.columns) == ["year", "trans", "brch", "maal"]
+        assert list(result.use.columns) == ["year", "trans", "brch", "maal"]
+
+    def test_transaction_codes_preserve_leading_zeros(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert "0100" in result.supply["trans"].values
+        assert "0700" in result.supply["trans"].values
+
+    def test_empty_category_filled_with_empty_string(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        # imports (0700) have no category
+        imports = result.supply[result.supply["trans"] == "0700"]
+        assert imports["brch"].iloc[0] == ""
+
+    def test_target_column_is_numeric(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        assert pd.api.types.is_numeric_dtype(result.supply["maal"])
+        assert pd.api.types.is_numeric_dtype(result.use["maal"])
+
+    def test_target_values_correct(self, metadata):
+        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        supply_0100_x = result.supply[
+            (result.supply["trans"] == "0100") & (result.supply["brch"] == "X")
+        ]["maal"].iloc[0]
+        assert supply_0100_x == 202
+
+    def test_error_when_target_role_not_set(self, tmp_path, metadata):
+        bare_columns = SUTColumns(
+            id="year", product="nrnr", transaction="trans", category="brch",
+            price_basic="bas", price_purchasers="koeb",
+        )
+        bare_metadata = SUTMetadata(columns=bare_columns, classifications=metadata.classifications)
+        with pytest.raises(ValueError, match="target"):
+            load_balancing_targets_from_excel(TARGETS_FILE, bare_metadata)
+
+    def test_error_when_classifications_absent(self, metadata):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_balancing_targets_from_excel(TARGETS_FILE, bare_metadata)
+
+    def test_error_missing_required_column(self, tmp_path, metadata):
+        path = write_targets_file(tmp_path, [{"year": 2021, "trans": "0100", "maal": 202}])
+        with pytest.raises(ValueError, match="brch"):
+            load_balancing_targets_from_excel(path, metadata)
+
+    def test_error_unknown_transaction_code(self, tmp_path, metadata):
+        rows = minimal_targets_rows() + [{"year": 2021, "trans": "ZZZZ", "brch": "X", "maal": 10}]
+        path = write_targets_file(tmp_path, rows)
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_balancing_targets_from_excel(path, metadata)

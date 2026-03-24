@@ -6,6 +6,7 @@ Run from the project root:
 
 Writes:
     data/fixtures/ta_l_2021.parquet          combined supply+use, year 2021, current prices
+    data/fixtures/ta_targets_2021.xlsx       balancing targets for 2021
     data/fixtures/metadata/columns.xlsx
     data/fixtures/metadata/ta_classifications.xlsx
     data/fixtures/metadata/karakteristiske_brancher.xlsx
@@ -260,11 +261,45 @@ def make_columns() -> pd.DataFrame:
     return pd.DataFrame({
         "column": ["year", "nrnr",    "trans",        "brch",
                    "bas",           "koeb",
-                   "ava",           "moms"],
+                   "ava",           "moms",
+                   "maal"],
         "role":   ["id",  "product", "transaction",   "category",
                    "price_basic",   "price_purchasers",
-                   "trade_margins", "vat"],
+                   "trade_margins", "vat",
+                   "target"],
     })
+
+
+def make_targets_2021() -> pd.DataFrame:
+    """Return balancing targets for 2021.
+
+    One row per (trans, brch) combination. Supply targets are at basic
+    prices; use targets are at purchasers' prices. Values are deliberately
+    slightly different from the actual column totals in the fixture data to
+    simulate a realistic balancing scenario.
+
+    Actual totals for reference:
+        supply: 0100/X=200, 0100/Y=160, 0100/Z=32, 0700/""=60
+        use:    2000/X=65,  2000/Y=69,  3110/HH=156, 3200/GOV=66,
+                5139/""=30, 5200/""=30, 6001/""=60
+    """
+    NAN = float("nan")
+    rows = [
+        # supply targets (basic prices)
+        [2021, "0100", "X",   202],
+        [2021, "0100", "Y",   158],
+        [2021, "0100", "Z",    33],
+        [2021, "0700", NAN,    62],
+        # use targets (purchasers' prices)
+        [2021, "2000", "X",    64],
+        [2021, "2000", "Y",    71],
+        [2021, "3110", "HH",  160],
+        [2021, "3200", "GOV",  65],
+        [2021, "5139", NAN,    28],
+        [2021, "5200", NAN,    32],
+        [2021, "6001", NAN,    58],
+    ]
+    return pd.DataFrame(rows, columns=["year", "trans", "brch", "maal"])
 
 
 def make_karakteristiske_brancher() -> pd.DataFrame:
@@ -285,6 +320,10 @@ def main() -> None:
     verify_gdp(sut)
     sut.to_parquet(FIXTURES / "ta_l_2021.parquet", index=False)
     print(f"ta_l_2021.parquet: {len(sut)} rows -- balanced OK")
+
+    targets = make_targets_2021()
+    targets.to_excel(FIXTURES / "ta_targets_2021.xlsx", index=False)
+    print(f"ta_targets_2021.xlsx: {len(targets)} rows")
 
     sheets = make_classifications()
     with pd.ExcelWriter(METADATA / "ta_classifications.xlsx") as writer:
