@@ -11,7 +11,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses, `mark_for_balancing`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 12 tables (balance, supply/use detail, price layers, and distribution/growth variants of each) + tests (`tests/test_inspect.py`) + fixture data (`data/fixtures/`) + user documentation (`docs/`)
+- **What exists**: Core SUT dataclasses, `mark_for_balancing`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 13 tables (balance, supply/use detail, price layers, price layer shares, and distribution/growth variants) + tests (`tests/test_inspect.py`) + fixture data (`data/fixtures/`) + user documentation (`docs/`)
 - **What's next**: Further inspection functions, balancing functions
 
 ## Architecture
@@ -19,7 +19,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 ### Module structure
 - `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `mark_for_balancing`, `get_rows`, `get_product_codes`, `get_transaction_codes`, `get_ids`, `get_industry_codes`, `get_individual_consumption_codes`, `get_collective_consumption_codes`
 - `sutlab/io.py` — I/O functions: `load_metadata_columns_from_excel`, `load_metadata_classifications_from_excel`, `load_metadata_from_excel`, `load_sut_from_parquet(id_values, paths, metadata, price_basis)` — accepts lists to load a multi-member collection in one call
-- `sutlab/inspect.py` — `inspect_products` → `ProductInspection` (12 tables: balance, supply_detail, use_detail, price_layers, and distribution/growth variants of each)
+- `sutlab/inspect.py` — `inspect_products` → `ProductInspection` (13 tables: balance, supply_detail, use_detail, price_layers, price_layer_shares, and distribution/growth variants)
 
 ### Core data representation
 

@@ -165,6 +165,11 @@ Append-only. Each entry: date, decision, brief rationale.
   in use DataFrame column order. Transactions with all-zero values for a layer are
   omitted. Each `(product, layer)` block ends with a `("", "Total")` summary row.
 
+- **2026-03-24**: `price_layer_shares` added to `ProductInspection`. Same structure as
+  `price_layers`. Each value divided by total use at purchasers' prices for that product
+  and year (sum of `price_purchasers` across all use rows). Styled and formatted as
+  percentages, same as the other price layer tables.
+
 - **2026-03-24**: `price_layers` Styler: cycling palette (amber, purple, teal, rose)
   with light data shades. Within each block: `price_layer` index uses `index_total`
   shade (block header); `transaction`/`transaction_txt` index alternates between the
