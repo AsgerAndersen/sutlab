@@ -1450,31 +1450,31 @@ class TestPriceLayersGrowth:
 
 
 # ---------------------------------------------------------------------------
-# Tests: price_layer_shares
+# Tests: price_layers_shares
 # ---------------------------------------------------------------------------
 
 
 class TestPriceLayerShares:
-    """price_layer_shares divides by total purchasers' price use per (product, year)."""
+    """price_layers_shares divides by total purchasers' price use per (product, year)."""
 
     # Fixture totals at purchasers' prices for product A:
     #   2020: 2000(22) + 3110(52) + 6001(20) = 94
     #   2021: 2000(25) + 3110(58) + 6001(22) = 105
 
     def _layer_block(self, result, layer):
-        df = result.data.price_layer_shares
+        df = result.data.price_layers_shares
         return df[df.index.get_level_values("price_layer") == layer]
 
     def test_index_matches_price_layers(self, sut_with_layers):
         result = inspect_products(sut_with_layers, "A")
         assert (
-            result.data.price_layer_shares.index.tolist()
+            result.data.price_layers_shares.index.tolist()
             == result.data.price_layers.index.tolist()
         )
 
     def test_columns_match_price_layers(self, sut_with_layers):
         result = inspect_products(sut_with_layers, "A")
-        assert list(result.data.price_layer_shares.columns) == list(result.data.price_layers.columns)
+        assert list(result.data.price_layers_shares.columns) == list(result.data.price_layers.columns)
 
     def test_ava_ic_share_2020(self, sut_with_layers):
         """IC ava = 2, total purchasers' use = 94 → share = 2/94."""
@@ -1499,11 +1499,11 @@ class TestPriceLayerShares:
 
     def test_returns_styler(self, sut_with_layers):
         result = inspect_products(sut_with_layers, "A")
-        assert isinstance(result.price_layer_shares, Styler)
+        assert isinstance(result.price_layers_shares, Styler)
 
     def test_empty_when_no_layers(self, sut):
         result = inspect_products(sut, "A")
-        assert result.data.price_layer_shares.empty
+        assert result.data.price_layers_shares.empty
 
 
 # ---------------------------------------------------------------------------

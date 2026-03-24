@@ -19,7 +19,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 ### Module structure
 - `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `mark_for_balancing`, `get_rows`, `get_product_codes`, `get_transaction_codes`, `get_ids`, `get_industry_codes`, `get_individual_consumption_codes`, `get_collective_consumption_codes`
 - `sutlab/io.py` — I/O functions: `load_metadata_columns_from_excel`, `load_metadata_classifications_from_excel`, `load_metadata_from_excel`, `load_sut_from_parquet(id_values, paths, metadata, price_basis)` — accepts lists to load a multi-member collection in one call
-- `sutlab/inspect.py` — `inspect_products` → `ProductInspection` (13 tables: balance, supply_detail, use_detail, price_layers, price_layer_shares, and distribution/growth variants)
+- `sutlab/inspect.py` — `inspect_products` → `ProductInspection` (13 tables: balance, supply_detail, use_detail, price_layers, price_layers_shares, and distribution/growth variants)
 
 ### Core data representation
 

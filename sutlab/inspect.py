@@ -427,7 +427,7 @@ class ProductInspectionData:
     price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layer_shares: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layers_shares: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass
@@ -551,7 +551,7 @@ class ProductInspection:
         Same structure as ``price_layers``, with the same year-on-year
         growth calculation as ``balance_growth``.
 
-    price_layer_shares : pd.DataFrame
+    price_layers_shares : pd.DataFrame
         Same structure as ``price_layers``. Every value is divided by the
         total use at purchasers' prices for that product and year (sum of
         the purchasers' price column across all use rows for that product).
@@ -610,8 +610,8 @@ class ProductInspection:
         return _style_price_layers_table(self.data.price_layers_growth, _format_percentage)
 
     @property
-    def price_layer_shares(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layer_shares, _format_percentage)
+    def price_layers_shares(self) -> Styler:
+        return _style_price_layers_table(self.data.price_layers_shares, _format_percentage)
 
 
 def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
@@ -730,7 +730,7 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     )
     price_layers_distribution = _build_price_layers_distribution(price_layers)
     price_layers_growth = _build_growth_table(price_layers)
-    price_layer_shares = _build_price_layer_shares(
+    price_layers_shares = _build_price_layers_shares(
         price_layers, sut, matched_products, all_ids
     )
 
@@ -747,7 +747,7 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
         price_layers=price_layers,
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
-        price_layer_shares=price_layer_shares,
+        price_layers_shares=price_layers_shares,
     )
     return ProductInspection(data=data)
 
@@ -1192,7 +1192,7 @@ def _build_price_layers_table(
     return pd.concat(blocks)
 
 
-def _build_price_layer_shares(
+def _build_price_layers_shares(
     price_layers: pd.DataFrame,
     sut,
     matched_products: list[str],
