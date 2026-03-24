@@ -108,3 +108,51 @@ Append-only. Each entry: date, decision, brief rationale.
 - **2026-03-23**: Method interface on `SUT` (pandas-style `sut.get_rows(...)`) deferred.
   Decision: if adopted, implement as thin methods delegating to free functions — no logic
   changes needed. Free functions remain the canonical implementation.
+
+- **2026-03-24**: `inspect_products(sut, products) → ProductInspection` implemented in
+  `sutlab/inspect.py`. Uses same selection API as `get_rows` for the `products` argument.
+  Returns a `ProductInspection` dataclass with two layers: `result.data.<table>` for raw
+  DataFrames, `result.<table>` for pandas Styler (auto-renders in Jupyter).
+
+- **2026-03-24**: `ProductInspection` contains 9 tables:
+  - `balance` — wide table, ids as columns, 4-level MultiIndex
+    `(product, product_txt, transaction, transaction_txt)`. Supply transactions → Total
+    supply → use transactions → Total use → Balance. Basic prices only.
+  - `supply_detail` / `use_detail` — category breakdown for transactions with non-empty
+    category column. 6-level MultiIndex `(product, product_txt, transaction,
+    transaction_txt, category, category_txt)`. Sorted MultiIndex. Supply/use split from
+    `sut.supply` / `sut.use` directly.
+  - `balance_distribution` — same structure as `balance` minus the Balance row. Supply
+    rows normalised by Total supply per year; use rows by Total use per year.
+  - `supply_detail_distribution` / `use_detail_distribution` — same structure as detail
+    tables. Each value divided by the product's total across all transactions/categories
+    per year (column-wise normalisation within each product block).
+  - `balance_growth` / `supply_detail_growth` / `use_detail_growth` — year-on-year
+    change: `(value[t] - value[t-1]) / value[t-1]`, stored as a fraction (0.05 = 5%
+    growth). First year is NaN. Division by zero yields NaN (inf replaced). Balance row
+    excluded from balance_growth.
+
+- **2026-03-24**: `product_txt` always present as a MultiIndex level (empty string when
+  no product classification loaded). Consistent structure regardless of metadata.
+
+- **2026-03-24**: Transaction classification required for `inspect_products` (needs
+  `name` column for labels). Product classification optional — `product_txt` is empty
+  string when absent. Category labels looked up via `esa_code` on the transactions
+  classification, mapping to `industries`, `individual_consumption`, or
+  `collective_consumption` classification tables.
+
+- **2026-03-24**: Styler formatting rules: raw value tables use European number format
+  (e.g. `1.234.567,8`, one decimal); distribution and growth tables use European
+  percentage format (e.g. `5,0%`, one decimal). NaN displayed as empty string.
+
+- **2026-03-24**: Balance table Styler: supply rows green, use rows blue, summary rows
+  (Total supply, Total use) bold with more saturated shade. Balance row neutral grey.
+  Alternating shades within supply and use blocks. Colours extend to `transaction` and
+  `transaction_txt` index levels (accounting for pandas sparse MultiIndex rendering —
+  borders/CSS placed on first row of merged spans). Product separator: `2px solid #999`.
+
+- **2026-03-24**: Detail table Styler: supply_detail all green, use_detail all blue.
+  Alternating shades within each `(product, transaction)` block. Transaction header
+  colour (slightly more saturated) applied to `transaction`/`transaction_txt` index
+  levels. Separator between transaction blocks: `1px solid #ccc`; between product
+  blocks: `2px solid #999`.

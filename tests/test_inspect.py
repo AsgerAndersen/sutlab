@@ -5,8 +5,10 @@ Tests for inspect_products.
 import pytest
 import pandas as pd
 
+from pandas.io.formats.style import Styler
+
 from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
-from sutlab.inspect import ProductInspection, inspect_products
+from sutlab.inspect import ProductInspection, ProductInspectionData, inspect_products
 
 
 # ---------------------------------------------------------------------------
@@ -147,16 +149,16 @@ def sut_with_industry_labels(supply, use, columns, transactions):
 
 def _level(result, level_name):
     """Return the values of one MultiIndex level as a list."""
-    return result.balance.index.get_level_values(level_name).tolist()
+    return result.data.balance.index.get_level_values(level_name).tolist()
 
 
 def _unique_level(result, level_name):
-    return result.balance.index.get_level_values(level_name).unique().tolist()
+    return result.data.balance.index.get_level_values(level_name).unique().tolist()
 
 
 def _block_level(result, product_code, level_name):
     """Return level values for a single product block."""
-    return result.balance.loc[product_code].index.get_level_values(level_name).tolist()
+    return result.data.balance.loc[product_code].index.get_level_values(level_name).tolist()
 
 
 # ---------------------------------------------------------------------------
@@ -170,17 +172,25 @@ class TestInspectProductsReturnType:
         result = inspect_products(sut, "A")
         assert isinstance(result, ProductInspection)
 
-    def test_balance_is_dataframe(self, sut):
+    def test_has_data_attribute(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.balance, pd.DataFrame)
+        assert isinstance(result.data, ProductInspectionData)
 
-    def test_supply_detail_is_dataframe(self, sut):
+    def test_balance_returns_styler(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.supply_detail, pd.DataFrame)
+        assert isinstance(result.balance, Styler)
 
-    def test_use_detail_is_dataframe(self, sut):
+    def test_supply_detail_returns_styler(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.use_detail, pd.DataFrame)
+        assert isinstance(result.supply_detail, Styler)
+
+    def test_use_detail_returns_styler(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.use_detail, Styler)
+
+    def test_data_balance_is_dataframe(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.data.balance, pd.DataFrame)
 
 
 # ---------------------------------------------------------------------------
@@ -192,15 +202,15 @@ class TestBalanceTableIndex:
 
     def test_index_is_multiindex(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.balance.index, pd.MultiIndex)
+        assert isinstance(result.data.balance.index, pd.MultiIndex)
 
     def test_index_has_four_levels(self, sut):
         result = inspect_products(sut, "A")
-        assert result.balance.index.nlevels == 4
+        assert result.data.balance.index.nlevels == 4
 
     def test_index_level_names(self, sut):
         result = inspect_products(sut, "A")
-        assert list(result.balance.index.names) == [
+        assert list(result.data.balance.index.names) == [
             "product", "product_txt", "transaction", "transaction_txt"
         ]
 
@@ -221,7 +231,7 @@ class TestBalanceTableIndex:
 
     def test_columns_are_sorted_ids(self, sut):
         result = inspect_products(sut, "A")
-        assert list(result.balance.columns) == [2020, 2021]
+        assert list(result.data.balance.columns) == [2020, 2021]
 
 
 # ---------------------------------------------------------------------------
@@ -309,44 +319,44 @@ class TestBalanceTableValues:
     def test_supply_transaction_values(self, sut):
         # No product labels in this fixture, so product_txt=""
         result = inspect_products(sut, "A")
-        row = result.balance.loc[("A", "", "0100", "Output at basic prices")]
+        row = result.data.balance.loc[("A", "", "0100", "Output at basic prices")]
         assert row[2020] == 100.0
         assert row[2021] == 110.0
 
     def test_total_supply_is_sum_of_supply_transactions(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance.loc[("A", "", "", "Total supply")]
+        row = result.data.balance.loc[("A", "", "", "Total supply")]
         assert row[2020] == 120.0   # 100 + 20
         assert row[2021] == 135.0   # 110 + 25
 
     def test_use_transaction_values(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance.loc[("A", "", "2000", "Intermediate consumption")]
+        row = result.data.balance.loc[("A", "", "2000", "Intermediate consumption")]
         assert row[2020] == 80.0
         assert row[2021] == 85.0
 
     def test_total_use_is_sum_of_use_transactions(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance.loc[("A", "", "", "Total use")]
+        row = result.data.balance.loc[("A", "", "", "Total use")]
         assert row[2020] == 120.0   # 80 + 40
         assert row[2021] == 135.0   # 85 + 50
 
     def test_balance_is_total_supply_minus_total_use(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance.loc[("A", "", "", "Balance")]
+        row = result.data.balance.loc[("A", "", "", "Balance")]
         assert row[2020] == 0.0
         assert row[2021] == 0.0
 
     def test_supply_only_product_has_zero_total_use(self, sut):
         result = inspect_products(sut, "T")
-        row = result.balance.loc[("T", "", "", "Total use")]
+        row = result.data.balance.loc[("T", "", "", "Total use")]
         assert row[2020] == 0.0
         assert row[2021] == 0.0
 
     def test_supply_only_product_balance_equals_total_supply(self, sut):
         result = inspect_products(sut, "T")
-        total_supply = result.balance.loc[("T", "", "", "Total supply")]
-        balance = result.balance.loc[("T", "", "", "Balance")]
+        total_supply = result.data.balance.loc[("T", "", "", "Total supply")]
+        balance = result.data.balance.loc[("T", "", "", "Balance")]
         assert (balance == total_supply).all()
 
 
@@ -446,7 +456,7 @@ class TestProductSelection:
 
     def test_no_match_returns_empty_dataframe(self, sut):
         result = inspect_products(sut, "Z99")
-        assert result.balance.empty
+        assert result.data.balance.empty
 
 
 # ---------------------------------------------------------------------------
@@ -458,78 +468,78 @@ class TestSupplyDetail:
 
     def test_is_dataframe(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        assert isinstance(result.supply_detail, pd.DataFrame)
+        assert isinstance(result.data.supply_detail, pd.DataFrame)
 
     def test_index_is_multiindex(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        assert isinstance(result.supply_detail.index, pd.MultiIndex)
+        assert isinstance(result.data.supply_detail.index, pd.MultiIndex)
 
     def test_index_has_six_levels(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        assert result.supply_detail.index.nlevels == 6
+        assert result.data.supply_detail.index.nlevels == 6
 
     def test_index_level_names(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        assert list(result.supply_detail.index.names) == [
+        assert list(result.data.supply_detail.index.names) == [
             "product", "product_txt", "transaction", "transaction_txt",
             "category", "category_txt",
         ]
 
     def test_columns_are_sorted_ids(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        assert list(result.supply_detail.columns) == [2020, 2021]
+        assert list(result.data.supply_detail.columns) == [2020, 2021]
 
     def test_transaction_with_categories_is_present(self, sut):
         # 0100 (output) has industry categories in the supply fixture
         result = inspect_products(sut, ["A", "T"])
-        trans_codes = result.supply_detail.index.get_level_values("transaction").unique().tolist()
+        trans_codes = result.data.supply_detail.index.get_level_values("transaction").unique().tolist()
         assert "0100" in trans_codes
 
     def test_transaction_without_categories_is_absent(self, sut):
         # 0700 (imports) has empty category in the supply fixture
         result = inspect_products(sut, ["A", "T"])
-        trans_codes = result.supply_detail.index.get_level_values("transaction").unique().tolist()
+        trans_codes = result.data.supply_detail.index.get_level_values("transaction").unique().tolist()
         assert "0700" not in trans_codes
 
     def test_transaction_txt_is_populated(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        trans_txts = result.supply_detail.index.get_level_values("transaction_txt").unique().tolist()
+        trans_txts = result.data.supply_detail.index.get_level_values("transaction_txt").unique().tolist()
         assert "Output at basic prices" in trans_txts
 
     def test_both_products_in_product_level(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        products = result.supply_detail.index.get_level_values("product").unique().tolist()
+        products = result.data.supply_detail.index.get_level_values("product").unique().tolist()
         assert set(products) == {"A", "T"}
 
     def test_category_codes_for_product_a(self, sut):
         result = inspect_products(sut, ["A", "T"])
         # A has category X for output (0100)
-        cats_a = result.supply_detail.loc[("A", "", "0100")].index.get_level_values("category").tolist()
+        cats_a = result.data.supply_detail.loc[("A", "", "0100")].index.get_level_values("category").tolist()
         assert cats_a == ["X"]
 
     def test_category_codes_for_product_t(self, sut):
         result = inspect_products(sut, ["A", "T"])
         # T has category Z for output (0100)
-        cats_t = result.supply_detail.loc[("T", "", "0100")].index.get_level_values("category").tolist()
+        cats_t = result.data.supply_detail.loc[("T", "", "0100")].index.get_level_values("category").tolist()
         assert cats_t == ["Z"]
 
     def test_values_are_correct(self, sut):
         # A, output (0100), industry X: 100 in 2020, 110 in 2021
         result = inspect_products(sut, "A")
-        row = result.supply_detail.loc[("A", "", "0100", "Output at basic prices", "X", "")]
+        row = result.data.supply_detail.loc[("A", "", "0100", "Output at basic prices", "X", "")]
         assert row[2020] == 100.0
         assert row[2021] == 110.0
 
     def test_product_with_no_category_rows_omitted(self, sut):
         # Selecting only T: T has no 0700 rows with categories
         result = inspect_products(sut, "T")
-        trans_codes = result.supply_detail.index.get_level_values("transaction").unique().tolist()
+        trans_codes = result.data.supply_detail.index.get_level_values("transaction").unique().tolist()
         assert "0700" not in trans_codes
 
     def test_categories_in_natural_sort_order(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        cats_a = result.supply_detail.loc[("A", "", "0100")].index.get_level_values("category").tolist()
-        cats_t = result.supply_detail.loc[("T", "", "0100")].index.get_level_values("category").tolist()
+        cats_a = result.data.supply_detail.loc[("A", "", "0100")].index.get_level_values("category").tolist()
+        cats_t = result.data.supply_detail.loc[("T", "", "0100")].index.get_level_values("category").tolist()
         assert cats_a == sorted(cats_a)
         assert cats_t == sorted(cats_t)
 
@@ -543,44 +553,44 @@ class TestUseDetail:
 
     def test_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.use_detail, pd.DataFrame)
+        assert isinstance(result.data.use_detail, pd.DataFrame)
 
     def test_index_has_six_levels(self, sut):
         result = inspect_products(sut, "A")
-        assert result.use_detail.index.nlevels == 6
+        assert result.data.use_detail.index.nlevels == 6
 
     def test_index_level_names(self, sut):
         result = inspect_products(sut, "A")
-        assert list(result.use_detail.index.names) == [
+        assert list(result.data.use_detail.index.names) == [
             "product", "product_txt", "transaction", "transaction_txt",
             "category", "category_txt",
         ]
 
     def test_columns_are_sorted_ids(self, sut):
         result = inspect_products(sut, "A")
-        assert list(result.use_detail.columns) == [2020, 2021]
+        assert list(result.data.use_detail.columns) == [2020, 2021]
 
     def test_transaction_with_categories_is_present(self, sut):
         # 2000 (IC) has industry categories in the use fixture
         result = inspect_products(sut, "A")
-        trans_codes = result.use_detail.index.get_level_values("transaction").unique().tolist()
+        trans_codes = result.data.use_detail.index.get_level_values("transaction").unique().tolist()
         assert "2000" in trans_codes
 
     def test_transaction_without_categories_is_absent(self, sut):
         # 6001 (exports) has empty category in the use fixture
         result = inspect_products(sut, "A")
-        trans_codes = result.use_detail.index.get_level_values("transaction").unique().tolist()
+        trans_codes = result.data.use_detail.index.get_level_values("transaction").unique().tolist()
         assert "6001" not in trans_codes
 
     def test_values_are_correct(self, sut):
         result = inspect_products(sut, "A")
-        row = result.use_detail.loc[("A", "", "2000", "Intermediate consumption", "X", "")]
+        row = result.data.use_detail.loc[("A", "", "2000", "Intermediate consumption", "X", "")]
         assert row[2020] == 80.0
         assert row[2021] == 85.0
 
     def test_supply_only_product_has_empty_use_detail(self, sut):
         result = inspect_products(sut, "T")
-        assert result.use_detail.empty
+        assert result.data.use_detail.empty
 
 
 # ---------------------------------------------------------------------------
@@ -592,18 +602,18 @@ class TestDetailCategoryLabels:
 
     def test_category_txt_empty_in_supply_without_industry_classification(self, sut):
         result = inspect_products(sut, ["A", "T"])
-        cat_txts = result.supply_detail.index.get_level_values("category_txt").tolist()
+        cat_txts = result.data.supply_detail.index.get_level_values("category_txt").tolist()
         assert all(v == "" for v in cat_txts)
 
     def test_category_txt_populated_in_supply_when_classification_present(self, sut_with_industry_labels):
         result = inspect_products(sut_with_industry_labels, ["A", "T"])
-        cat_txts = result.supply_detail.index.get_level_values("category_txt").tolist()
+        cat_txts = result.data.supply_detail.index.get_level_values("category_txt").tolist()
         assert "Industry X" in cat_txts
         assert "Trade industry" in cat_txts
 
     def test_can_access_supply_row_by_full_six_tuple_with_labels(self, sut_with_industry_labels):
         result = inspect_products(sut_with_industry_labels, "A")
-        row = result.supply_detail.loc[
+        row = result.data.supply_detail.loc[
             ("A", "Agricultural goods", "0100", "Output at basic prices", "X", "Industry X")
         ]
         assert row[2020] == 100.0
@@ -611,17 +621,17 @@ class TestDetailCategoryLabels:
 
     def test_category_txt_empty_in_use_without_classification(self, sut):
         result = inspect_products(sut, "A")
-        cat_txts = result.use_detail.index.get_level_values("category_txt").tolist()
+        cat_txts = result.data.use_detail.index.get_level_values("category_txt").tolist()
         assert all(v == "" for v in cat_txts)
 
     def test_category_txt_populated_in_use_when_classification_present(self, sut_with_industry_labels):
         result = inspect_products(sut_with_industry_labels, "A")
-        cat_txts = result.use_detail.index.get_level_values("category_txt").tolist()
+        cat_txts = result.data.use_detail.index.get_level_values("category_txt").tolist()
         assert "Industry X" in cat_txts
 
     def test_can_access_use_row_by_full_six_tuple_with_labels(self, sut_with_industry_labels):
         result = inspect_products(sut_with_industry_labels, "A")
-        row = result.use_detail.loc[
+        row = result.data.use_detail.loc[
             ("A", "Agricultural goods", "2000", "Intermediate consumption", "X", "Industry X")
         ]
         assert row[2020] == 80.0
@@ -630,8 +640,8 @@ class TestDetailCategoryLabels:
     def test_product_txt_consistent_in_detail_tables(self, sut_with_industry_labels):
         result = inspect_products(sut_with_industry_labels, ["A", "T"])
         for product, product_txt in zip(
-            result.supply_detail.index.get_level_values("product"),
-            result.supply_detail.index.get_level_values("product_txt"),
+            result.data.supply_detail.index.get_level_values("product"),
+            result.data.supply_detail.index.get_level_values("product_txt"),
         ):
             if product == "A":
                 assert product_txt == "Agricultural goods"
@@ -685,38 +695,41 @@ class TestBalanceDistribution:
 
     def test_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.balance_distribution, pd.DataFrame)
+        assert isinstance(result.data.balance_distribution, pd.DataFrame)
 
-    def test_same_index_as_balance(self, sut):
+    def test_same_index_as_balance_without_balance_row(self, sut):
         result = inspect_products(sut, "A")
-        assert result.balance_distribution.index.equals(result.balance.index)
+        expected = result.data.balance.index[
+            result.data.balance.index.get_level_values("transaction_txt") != "Balance"
+        ]
+        assert result.data.balance_distribution.index.equals(expected)
 
     def test_same_columns_as_balance(self, sut):
         result = inspect_products(sut, "A")
-        assert list(result.balance_distribution.columns) == list(result.balance.columns)
+        assert list(result.data.balance_distribution.columns) == list(result.data.balance.columns)
 
     def test_total_supply_row_is_one(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance_distribution.loc[("A", "", "", "Total supply")]
+        row = result.data.balance_distribution.loc[("A", "", "", "Total supply")]
         assert row[2020] == pytest.approx(1.0)
         assert row[2021] == pytest.approx(1.0)
 
     def test_total_use_row_is_one(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance_distribution.loc[("A", "", "", "Total use")]
+        row = result.data.balance_distribution.loc[("A", "", "", "Total use")]
         assert row[2020] == pytest.approx(1.0)
         assert row[2021] == pytest.approx(1.0)
 
     def test_supply_transaction_value(self, sut):
         # 0100: 100 of 120 in 2020, 110 of 135 in 2021
         result = inspect_products(sut, "A")
-        row = result.balance_distribution.loc[("A", "", "0100", "Output at basic prices")]
+        row = result.data.balance_distribution.loc[("A", "", "0100", "Output at basic prices")]
         assert row[2020] == pytest.approx(100 / 120)
         assert row[2021] == pytest.approx(110 / 135)
 
     def test_supply_transactions_sum_to_one(self, sut):
         result = inspect_products(sut, "A")
-        block = result.balance_distribution.loc["A"]
+        block = result.data.balance_distribution.loc["A"]
         total_supply_pos = block.index.get_level_values("transaction_txt").tolist().index("Total supply")
         supply_rows = block.iloc[:total_supply_pos]
         assert supply_rows[2020].sum() == pytest.approx(1.0)
@@ -725,13 +738,13 @@ class TestBalanceDistribution:
     def test_use_transaction_value(self, sut):
         # 2000: 80 of 120 in 2020, 85 of 135 in 2021
         result = inspect_products(sut, "A")
-        row = result.balance_distribution.loc[("A", "", "2000", "Intermediate consumption")]
+        row = result.data.balance_distribution.loc[("A", "", "2000", "Intermediate consumption")]
         assert row[2020] == pytest.approx(80 / 120)
         assert row[2021] == pytest.approx(85 / 135)
 
     def test_use_transactions_sum_to_one(self, sut):
         result = inspect_products(sut, "A")
-        block = result.balance_distribution.loc["A"]
+        block = result.data.balance_distribution.loc["A"]
         txts = block.index.get_level_values("transaction_txt").tolist()
         total_supply_pos = txts.index("Total supply")
         total_use_pos = txts.index("Total use")
@@ -739,15 +752,13 @@ class TestBalanceDistribution:
         assert use_rows[2020].sum() == pytest.approx(1.0)
         assert use_rows[2021].sum() == pytest.approx(1.0)
 
-    def test_balance_row_is_zero_for_balanced_sut(self, sut):
+    def test_balance_row_not_in_distribution(self, sut):
         result = inspect_products(sut, "A")
-        row = result.balance_distribution.loc[("A", "", "", "Balance")]
-        assert row[2020] == pytest.approx(0.0)
-        assert row[2021] == pytest.approx(0.0)
+        assert ("A", "", "", "Balance") not in result.data.balance_distribution.index
 
     def test_empty_balance_gives_empty_distribution(self, sut):
         result = inspect_products(sut, "Z99")
-        assert result.balance_distribution.empty
+        assert result.data.balance_distribution.empty
 
 
 # ---------------------------------------------------------------------------
@@ -759,24 +770,24 @@ class TestDetailDistribution:
 
     def test_supply_distribution_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.supply_detail_distribution, pd.DataFrame)
+        assert isinstance(result.data.supply_detail_distribution, pd.DataFrame)
 
     def test_use_distribution_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.use_detail_distribution, pd.DataFrame)
+        assert isinstance(result.data.use_detail_distribution, pd.DataFrame)
 
     def test_supply_distribution_same_index_as_supply_detail(self, sut):
         result = inspect_products(sut, "A")
-        assert result.supply_detail_distribution.index.equals(result.supply_detail.index)
+        assert result.data.supply_detail_distribution.index.equals(result.data.supply_detail.index)
 
     def test_use_distribution_same_index_as_use_detail(self, sut):
         result = inspect_products(sut, "A")
-        assert result.use_detail_distribution.index.equals(result.use_detail.index)
+        assert result.data.use_detail_distribution.index.equals(result.data.use_detail.index)
 
     def test_supply_distribution_values_correct(self, sut_multi_cat):
         # 2020: X=60, Y=40, total=100 → X=0.6, Y=0.4
         result = inspect_products(sut_multi_cat, "A")
-        dist = result.supply_detail_distribution
+        dist = result.data.supply_detail_distribution
         x_row = dist.loc[("A", "", "0100", "Output at basic prices", "X", "")]
         y_row = dist.loc[("A", "", "0100", "Output at basic prices", "Y", "")]
         assert x_row[2020] == pytest.approx(0.6)
@@ -784,7 +795,7 @@ class TestDetailDistribution:
 
     def test_supply_distribution_sums_to_one_per_product_per_year(self, sut_multi_cat):
         result = inspect_products(sut_multi_cat, "A")
-        dist = result.supply_detail_distribution
+        dist = result.data.supply_detail_distribution
         product_data = dist.loc["A"]
         assert product_data[2020].sum() == pytest.approx(1.0)
         assert product_data[2021].sum() == pytest.approx(1.0)
@@ -792,7 +803,7 @@ class TestDetailDistribution:
     def test_use_distribution_values_correct(self, sut_multi_cat):
         # 2020: X=60, Y=20, total=80 → X=0.75, Y=0.25
         result = inspect_products(sut_multi_cat, "A")
-        dist = result.use_detail_distribution
+        dist = result.data.use_detail_distribution
         x_row = dist.loc[("A", "", "2000", "Intermediate consumption", "X", "")]
         y_row = dist.loc[("A", "", "2000", "Intermediate consumption", "Y", "")]
         assert x_row[2020] == pytest.approx(0.75)
@@ -800,14 +811,14 @@ class TestDetailDistribution:
 
     def test_use_distribution_sums_to_one_per_product_per_year(self, sut_multi_cat):
         result = inspect_products(sut_multi_cat, "A")
-        dist = result.use_detail_distribution
+        dist = result.data.use_detail_distribution
         product_data = dist.loc["A"]
         assert product_data[2020].sum() == pytest.approx(1.0)
         assert product_data[2021].sum() == pytest.approx(1.0)
 
     def test_empty_detail_gives_empty_distribution(self, sut):
         result = inspect_products(sut, "T")
-        assert result.use_detail_distribution.empty
+        assert result.data.use_detail_distribution.empty
 
 
 # ---------------------------------------------------------------------------
@@ -819,57 +830,320 @@ class TestGrowthTables:
 
     def test_balance_growth_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.balance_growth, pd.DataFrame)
+        assert isinstance(result.data.balance_growth, pd.DataFrame)
 
     def test_supply_detail_growth_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.supply_detail_growth, pd.DataFrame)
+        assert isinstance(result.data.supply_detail_growth, pd.DataFrame)
 
     def test_use_detail_growth_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
-        assert isinstance(result.use_detail_growth, pd.DataFrame)
+        assert isinstance(result.data.use_detail_growth, pd.DataFrame)
 
-    def test_balance_growth_same_index_as_balance(self, sut):
+    def test_balance_growth_same_index_as_balance_without_balance_row(self, sut):
         result = inspect_products(sut, "A")
-        assert result.balance_growth.index.equals(result.balance.index)
+        expected = result.data.balance.index[
+            result.data.balance.index.get_level_values("transaction_txt") != "Balance"
+        ]
+        assert result.data.balance_growth.index.equals(expected)
+
+    def test_balance_row_not_in_growth(self, sut):
+        result = inspect_products(sut, "A")
+        assert ("A", "", "", "Balance") not in result.data.balance_growth.index
 
     def test_balance_growth_first_column_is_nan(self, sut):
         result = inspect_products(sut, "A")
-        first_col = result.balance_growth.columns[0]
-        assert result.balance_growth[first_col].isna().all()
+        first_col = result.data.balance_growth.columns[0]
+        assert result.data.balance_growth[first_col].isna().all()
 
     def test_balance_growth_value(self, sut):
-        # 0100 output: 100 in 2020, 110 in 2021 → growth = 1.1
+        # 0100 output: 100 in 2020, 110 in 2021 → change = (110-100)/100 = 0.1
         result = inspect_products(sut, "A")
-        row = result.balance_growth.loc[("A", "", "0100", "Output at basic prices")]
-        assert row[2021] == pytest.approx(110 / 100)
+        row = result.data.balance_growth.loc[("A", "", "0100", "Output at basic prices")]
+        assert row[2021] == pytest.approx((110 - 100) / 100)
 
     def test_balance_growth_zero_denominator_is_nan(self, sut):
         # Total use for supply-only product T is 0 in both years → 0/0 = NaN
         result = inspect_products(sut, "T")
-        row = result.balance_growth.loc[("T", "", "", "Total use")]
+        row = result.data.balance_growth.loc[("T", "", "", "Total use")]
         assert row[2021] != row[2021]  # NaN != NaN
 
     def test_supply_detail_growth_value(self, sut):
-        # A, output (0100), category X: 100 in 2020, 110 in 2021 → 1.1
+        # A, output (0100), category X: 100 in 2020, 110 in 2021 → change = 0.1
         result = inspect_products(sut, "A")
-        row = result.supply_detail_growth.loc[
+        row = result.data.supply_detail_growth.loc[
             ("A", "", "0100", "Output at basic prices", "X", "")
         ]
-        assert row[2021] == pytest.approx(110 / 100)
+        assert row[2021] == pytest.approx((110 - 100) / 100)
 
     def test_use_detail_growth_value(self, sut):
-        # A, IC (2000), category X: 80 in 2020, 85 in 2021 → 85/80
+        # A, IC (2000), category X: 80 in 2020, 85 in 2021 → change = (85-80)/80
         result = inspect_products(sut, "A")
-        row = result.use_detail_growth.loc[
+        row = result.data.use_detail_growth.loc[
             ("A", "", "2000", "Intermediate consumption", "X", "")
         ]
-        assert row[2021] == pytest.approx(85 / 80)
+        assert row[2021] == pytest.approx((85 - 80) / 80)
 
     def test_empty_balance_gives_empty_growth(self, sut):
         result = inspect_products(sut, "Z99")
-        assert result.balance_growth.empty
+        assert result.data.balance_growth.empty
 
     def test_empty_detail_gives_empty_growth(self, sut):
         result = inspect_products(sut, "T")
-        assert result.use_detail_growth.empty
+        assert result.data.use_detail_growth.empty
+
+
+# ---------------------------------------------------------------------------
+# Tests: number formatting
+# ---------------------------------------------------------------------------
+
+
+class TestFormatting:
+
+    def test_balance_number_format(self, sut):
+        # 1234567.8 → "1.234.567,8"
+        from sutlab.inspect import _format_number
+        assert _format_number(1234567.8) == "1.234.567,8"
+
+    def test_balance_number_format_one_decimal(self, sut):
+        from sutlab.inspect import _format_number
+        assert _format_number(100.0) == "100,0"
+
+    def test_balance_number_format_nan(self, sut):
+        import numpy as np
+        from sutlab.inspect import _format_number
+        assert _format_number(float("nan")) == ""
+
+    def test_percentage_format(self, sut):
+        # 0.05 → "5,00%"
+        from sutlab.inspect import _format_percentage
+        assert _format_percentage(0.05) == "5,0%"
+
+    def test_percentage_format_nan(self, sut):
+        from sutlab.inspect import _format_percentage
+        assert _format_percentage(float("nan")) == ""
+
+    def test_balance_property_returns_styler(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.balance, Styler)
+
+    def test_balance_distribution_property_returns_styler(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.balance_distribution, Styler)
+
+    def test_balance_growth_property_returns_styler(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.balance_growth, Styler)
+
+
+# ---------------------------------------------------------------------------
+# Tests: balance table row styling
+# ---------------------------------------------------------------------------
+
+
+class TestBalanceStyling:
+
+    def _css(self, result, row_key):
+        """Return the CSS string for the first data column of a given row."""
+        from sutlab.inspect import _apply_balance_style, _DATA_COLORS, _build_balance_row_css
+        css_df = _apply_balance_style(result.data.balance)
+        return css_df.loc[row_key].iloc[0]
+
+    def _index_css(self, result, row_position):
+        """Return the index CSS string for a given row position."""
+        from sutlab.inspect import _build_balance_row_css, _INDEX_COLORS
+        return _build_balance_row_css(result.data.balance, _INDEX_COLORS)[row_position]
+
+    def test_supply_transaction_has_green_background(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "0100", "Output at basic prices"))
+        assert "background-color: #e8f5e9" in css or "background-color: #f1faf2" in css
+
+    def test_total_supply_has_saturated_green(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "", "Total supply"))
+        assert "background-color: #c8e6c9" in css
+
+    def test_total_supply_is_bold(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "", "Total supply"))
+        assert "font-weight: bold" in css
+
+    def test_use_transaction_has_blue_background(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "2000", "Intermediate consumption"))
+        assert "background-color: #e3f2fd" in css or "background-color: #ecf6fe" in css
+
+    def test_total_use_has_saturated_blue(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "", "Total use"))
+        assert "background-color: #bbdefb" in css
+
+    def test_total_use_is_bold(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "", "Total use"))
+        assert "font-weight: bold" in css
+
+    def test_balance_row_is_neutral(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "", "Balance"))
+        assert "background-color: #f5f5f5" in css
+
+    def test_supply_rows_alternate(self, sut):
+        result = inspect_products(sut, "A")
+        css_0100 = self._css(result, ("A", "", "0100", "Output at basic prices"))
+        css_0700 = self._css(result, ("A", "", "0700", "Imports"))
+        assert css_0100 != css_0700
+
+    def test_supply_transaction_is_not_bold(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._css(result, ("A", "", "0100", "Output at basic prices"))
+        assert "font-weight: normal" in css
+
+    def test_index_supply_row_darker_than_data(self, sut):
+        result = inspect_products(sut, "A")
+        data_css = self._css(result, ("A", "", "0100", "Output at basic prices"))
+        idx_css = self._index_css(result, 0)
+        # Index color should differ from data color
+        assert data_css != idx_css
+
+    def test_index_total_supply_has_darker_green(self, sut):
+        result = inspect_products(sut, "A")
+        # Total supply is at position 2 (0100, 0700, Total supply)
+        idx_css = self._index_css(result, 2)
+        assert "background-color: #b8d8ba" in idx_css
+
+    def test_index_total_use_has_darker_blue(self, sut):
+        result = inspect_products(sut, "A")
+        # Total use is at position 5 (0100, 0700, Total supply, 2000, 6001, Total use)
+        idx_css = self._index_css(result, 5)
+        assert "background-color: #a5cff4" in idx_css
+
+    def test_separator_on_balance_row_of_first_product(self, sut):
+        # With two products, the Balance row of the first product gets a border
+        from sutlab.inspect import _build_balance_row_css, _DATA_COLORS
+        result = inspect_products(sut, ["A", "T"])
+        row_css = _build_balance_row_css(result.data.balance, _DATA_COLORS)
+        # Balance row of A is the last row before T's block
+        balance_a_idx = result.data.balance.index.get_loc(("A", "", "", "Balance"))
+        assert "border-bottom" in row_css[balance_a_idx]
+
+    def test_no_separator_on_last_product_balance_row(self, sut):
+        from sutlab.inspect import _build_balance_row_css, _DATA_COLORS
+        result = inspect_products(sut, ["A", "T"])
+        row_css = _build_balance_row_css(result.data.balance, _DATA_COLORS)
+        balance_t_idx = result.data.balance.index.get_loc(("T", "", "", "Balance"))
+        assert "border-bottom" not in row_css[balance_t_idx]
+
+    def test_no_separator_single_product(self, sut):
+        from sutlab.inspect import _build_balance_row_css, _DATA_COLORS
+        result = inspect_products(sut, "A")
+        row_css = _build_balance_row_css(result.data.balance, _DATA_COLORS)
+        balance_idx = result.data.balance.index.get_loc(("A", "", "", "Balance"))
+        assert "border-bottom" not in row_css[balance_idx]
+
+
+# ---------------------------------------------------------------------------
+# Tests: detail table styling
+# ---------------------------------------------------------------------------
+
+
+class TestDetailStyling:
+
+    def _build_css(self, result, side):
+        """Return the data_css list for a detail table via _style_detail_table."""
+        from sutlab.inspect import _style_detail_table, _format_number, _DATA_COLORS
+        df = result.data.supply_detail if side == "supply" else result.data.use_detail
+        color_key = side
+        data_colors = _DATA_COLORS[color_key]
+        # Re-derive data_css by calling the same logic directly
+        product_vals = df.index.get_level_values("product")
+        trans_vals = df.index.get_level_values("transaction")
+        products = list(product_vals.unique())
+        n = len(df)
+        data_css = [""] * n
+        for p_idx, product in enumerate(products):
+            is_last_product = (p_idx == len(products) - 1)
+            prod_positions = [i for i, v in enumerate(product_vals) if v == product]
+            prod_trans = list(dict.fromkeys(trans_vals[i] for i in prod_positions))
+            for t_idx, trans in enumerate(prod_trans):
+                is_last_trans = (t_idx == len(prod_trans) - 1)
+                trans_positions = [i for i in prod_positions if trans_vals[i] == trans]
+                if not is_last_trans:
+                    sep = "; border-bottom: 1px solid #ccc"
+                elif not is_last_product:
+                    sep = "; border-bottom: 2px solid #999"
+                else:
+                    sep = ""
+                for i, i_abs in enumerate(trans_positions):
+                    is_last_row = (i == len(trans_positions) - 1)
+                    data_css[i_abs] = (
+                        f"background-color: {data_colors[i % 2]}"
+                        + (sep if is_last_row else "")
+                    )
+        return data_css
+
+    def test_supply_detail_returns_styler(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.supply_detail, Styler)
+
+    def test_use_detail_returns_styler(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.use_detail, Styler)
+
+    def test_supply_detail_uses_green(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._build_css(result, "supply")
+        assert all("e8f5e9" in c or "f1faf2" in c for c in css if c)
+
+    def test_use_detail_uses_blue(self, sut):
+        result = inspect_products(sut, "A")
+        css = self._build_css(result, "use")
+        assert all("e3f2fd" in c or "ecf6fe" in c for c in css if c)
+
+    def test_rows_alternate_within_transaction_block(self, sut_multi_cat):
+        result = inspect_products(sut_multi_cat, "A")
+        css = self._build_css(result, "supply")
+        # Two categories X and Y under 0100 → alternating colors
+        assert css[0] != css[1]
+
+    def test_transaction_separator_between_blocks(self, columns):
+        # Build a SUT where two supply transactions both have category breakdowns
+        transactions = pd.DataFrame({
+            "code":     ["0100", "0500"],
+            "name":     ["Output", "Another output"],
+            "table":    ["supply", "supply"],
+            "esa_code": ["P1", "P1"],
+        })
+        supply = pd.DataFrame({
+            "year":  [2020, 2020, 2020, 2020],
+            "nrnr":  ["A",  "A",  "A",  "A"],
+            "trans": ["0100", "0100", "0500", "0500"],
+            "brch":  ["X", "Y", "X", "Y"],
+            "bas":   [100.0, 50.0, 80.0, 40.0],
+            "koeb":  [100.0, 50.0, 80.0, 40.0],
+        })
+        use = pd.DataFrame({"year": pd.Series([], dtype=float), "nrnr": [], "trans": [], "brch": [], "bas": [], "koeb": []})
+        from sutlab.sut import SUT, SUTMetadata, SUTClassifications
+        sut = SUT(
+            price_basis="current_year",
+            supply=supply,
+            use=use,
+            metadata=SUTMetadata(columns=columns, classifications=SUTClassifications(transactions=transactions)),
+        )
+        result = inspect_products(sut, "A")
+        css = self._build_css(result, "supply")
+        # 0100 block has categories X and Y (indices 0, 1); last row (index 1) gets 1px separator
+        assert "border-bottom: 1px solid #ccc" in css[1]
+
+    def test_product_separator_between_products(self, sut):
+        result = inspect_products(sut, ["A", "T"])
+        css = self._build_css(result, "supply")
+        # Last row of A's last transaction block gets 2px separator
+        last_a = result.data.supply_detail.index.get_level_values("product").tolist().index("T") - 1
+        assert "border-bottom: 2px solid #999" in css[last_a]
+
+    def test_no_separator_last_product(self, sut):
+        result = inspect_products(sut, ["A", "T"])
+        css = self._build_css(result, "supply")
+        assert "border-bottom" not in css[-1]

@@ -7,8 +7,248 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pandas as pd
+from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
+
+
+def _format_number(value: float) -> str:
+    """Format a raw value with European thousands separator and one decimal.
+
+    Example: 1234567.8 → "1.234.567,8"
+    """
+    if pd.isna(value):
+        return ""
+    formatted = f"{value:,.1f}"
+    return formatted.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def _format_percentage(value: float) -> str:
+    """Format a fraction as a European-style percentage string with two decimals.
+
+    Example: 0.05 → "5,0%"
+    """
+    if pd.isna(value):
+        return ""
+    return f"{value * 100:.1f}".replace(".", ",") + "%"
+
+
+# Balance table row colours.
+# Data cells use lighter shades; index cells use slightly darker shades of the
+# same hue to match the visual convention in default Jupyter DataFrame display.
+_DATA_COLORS = {
+    "supply":        ("#e8f5e9", "#f1faf2"),
+    "supply_total":  "#c8e6c9",
+    "use":           ("#e3f2fd", "#ecf6fe"),
+    "use_total":     "#bbdefb",
+    "balance":       "#f5f5f5",
+}
+_INDEX_COLORS = {
+    "supply":        ("#d8eedb", "#e3f3e5"),
+    "supply_total":  "#b8d8ba",
+    "use":           ("#d0e8f8", "#dbedfa"),
+    "use_total":     "#a5cff4",
+    "balance":       "#e5e5e5",
+}
+
+
+def _build_balance_row_css(df: pd.DataFrame, colors: dict) -> list[str]:
+    """Return a list of CSS strings, one per row of the balance table.
+
+    Determines each row's type (supply transaction, Total supply, use
+    transaction, Total use, Balance) and returns the corresponding
+    background-color and font-weight CSS, using the provided ``colors`` dict.
+    Pass ``_DATA_COLORS`` for data cells and ``_INDEX_COLORS`` for index cells.
+    """
+    trans_txt_vals = df.index.get_level_values("transaction_txt")
+    product_vals = df.index.get_level_values("product")
+    row_css = [""] * len(df)
+
+    for product in product_vals.unique():
+        abs_positions = [i for i, v in enumerate(product_vals) if v == product]
+        block_txts = [trans_txt_vals[i] for i in abs_positions]
+
+        total_supply_pos = block_txts.index("Total supply")
+        supply_counter = 0
+        use_counter = 0
+
+        for j, (i_abs, txt) in enumerate(zip(abs_positions, block_txts)):
+            if txt == "Total supply":
+                bg = colors["supply_total"]
+                bold = True
+            elif txt == "Total use":
+                bg = colors["use_total"]
+                bold = True
+            elif txt == "Balance":
+                bg = colors["balance"]
+                bold = False
+            elif j < total_supply_pos:
+                bg = colors["supply"][supply_counter % 2]
+                supply_counter += 1
+                bold = False
+            else:
+                bg = colors["use"][use_counter % 2]
+                use_counter += 1
+                bold = False
+
+            weight = "bold" if bold else "normal"
+            row_css[i_abs] = f"background-color: {bg}; font-weight: {weight}"
+
+    # Add a separator line after the Balance row of every product block except
+    # the last, so multi-product tables have a clear visual boundary.
+    products_list = list(product_vals.unique())
+    for product in products_list[:-1]:
+        abs_positions = [i for i, v in enumerate(product_vals) if v == product]
+        block_txts = [trans_txt_vals[i] for i in abs_positions]
+        row_css[abs_positions[-1]] += "; border-bottom: 2px solid #999"
+
+    return row_css
+
+
+def _style_balance_table(df: pd.DataFrame, format_func) -> Styler:
+    """Apply colours, bold, and product separators to a balance-shaped table.
+
+    Used by the ``balance``, ``balance_distribution``, and ``balance_growth``
+    properties. ``format_func`` is applied to all data cells.
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    index_css = _build_balance_row_css(df, _INDEX_COLORS)
+
+    trans_vals = df.index.get_level_values("transaction")
+    trans_txt_vals = df.index.get_level_values("transaction_txt")
+    product_vals = df.index.get_level_values("product")
+    products_list = list(product_vals.unique())
+    n = len(df)
+
+    # transaction level: colour non-"" cells; for non-last products, put the
+    # separator border on the Total use row (first of the merged "" span).
+    transaction_css = [
+        css if t != "" else "" for css, t in zip(index_css, trans_vals)
+    ]
+
+    # product and product_txt levels: pandas merges each product block into one
+    # <th>, using CSS from the first row. Put the separator on the first row of
+    # each non-last product block so the border appears after the last row.
+    product_css = [""] * n
+    product_txt_css = [""] * n
+
+    for product in products_list[:-1]:
+        abs_positions = [i for i, v in enumerate(product_vals) if v == product]
+        block_txts = [trans_txt_vals[i] for i in abs_positions]
+
+        product_css[abs_positions[0]] = "border-bottom: 2px solid #999"
+        product_txt_css[abs_positions[0]] = "border-bottom: 2px solid #999"
+
+        total_use_abs = abs_positions[block_txts.index("Total use")]
+        transaction_css[total_use_abs] = "border-bottom: 2px solid #999"
+
+    styler = styler.apply(_apply_balance_style, axis=None)
+    styler = styler.apply_index(
+        lambda s, css=transaction_css: css, level="transaction", axis=0
+    )
+    styler = styler.apply_index(
+        lambda s, css=index_css: css, level="transaction_txt", axis=0
+    )
+    styler = styler.apply_index(
+        lambda s, css=product_css: css, level="product", axis=0
+    )
+    styler = styler.apply_index(
+        lambda s, css=product_txt_css: css, level="product_txt", axis=0
+    )
+    return styler
+
+
+def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler:
+    """Apply row colours and separators to a detail table (supply_detail or use_detail).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        A supply_detail or use_detail DataFrame.
+    format_func : callable
+        Applied to all data cells (e.g. ``_format_number``).
+    color_key : str
+        ``"supply"`` or ``"use"`` — selects the colour set from
+        ``_DATA_COLORS`` / ``_INDEX_COLORS``.
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS[color_key]
+    idx_row_colors = _INDEX_COLORS[color_key]
+    idx_hdr_color = _INDEX_COLORS[f"{color_key}_total"]
+
+    product_vals = df.index.get_level_values("product")
+    trans_vals = df.index.get_level_values("transaction")
+    products = list(product_vals.unique())
+    n = len(df)
+
+    data_css = [""] * n
+    cat_css = [""] * n
+    cat_txt_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+    prod_css = [""] * n
+    prod_txt_css = [""] * n
+
+    for p_idx, product in enumerate(products):
+        is_last_product = (p_idx == len(products) - 1)
+        prod_positions = [i for i, v in enumerate(product_vals) if v == product]
+        # Ordered unique transactions for this product
+        prod_trans = list(dict.fromkeys(trans_vals[i] for i in prod_positions))
+
+        if not is_last_product:
+            prod_css[prod_positions[0]] = "border-bottom: 2px solid #999"
+            prod_txt_css[prod_positions[0]] = "border-bottom: 2px solid #999"
+
+        for t_idx, trans in enumerate(prod_trans):
+            is_last_trans = (t_idx == len(prod_trans) - 1)
+            trans_positions = [i for i in prod_positions if trans_vals[i] == trans]
+
+            if not is_last_trans:
+                sep = "; border-bottom: 1px solid #ccc"
+            elif not is_last_product:
+                sep = "; border-bottom: 2px solid #999"
+            else:
+                sep = ""
+
+            # transaction / transaction_txt: one merged cell per block → CSS on first row
+            trans_css[trans_positions[0]] = f"background-color: {idx_hdr_color}{sep}"
+            trans_txt_css[trans_positions[0]] = f"background-color: {idx_hdr_color}{sep}"
+
+            for i, i_abs in enumerate(trans_positions):
+                is_last_row = (i == len(trans_positions) - 1)
+                row_sep = sep if is_last_row else ""
+                bg_data = data_row_colors[i % 2]
+                bg_idx = idx_row_colors[i % 2]
+                data_css[i_abs] = f"background-color: {bg_data}{row_sep}"
+                cat_css[i_abs] = f"background-color: {bg_idx}{row_sep}"
+                cat_txt_css[i_abs] = f"background-color: {bg_idx}{row_sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
+    styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
+    return styler
+
+
+def _apply_balance_style(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a same-shape DataFrame of CSS strings for the balance table data cells."""
+    row_css = _build_balance_row_css(df, _DATA_COLORS)
+    return pd.DataFrame(
+        {col: row_css for col in df.columns},
+        index=df.index,
+    )
 
 
 # ESA code → attribute name on SUTClassifications for category label lookup.
@@ -23,9 +263,33 @@ _ESA_TO_CLASSIFICATION_ATTR: dict[str, str] = {
 
 
 @dataclass
+class ProductInspectionData:
+    """Raw DataFrames underlying a :class:`ProductInspection`.
+
+    Use these directly for programmatic access. For display in a Jupyter
+    notebook, use the corresponding properties on :class:`ProductInspection`,
+    which return styled versions.
+    """
+
+    balance: pd.DataFrame
+    supply_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
+    balance_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_detail_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_detail_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    balance_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_detail_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_detail_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+
+@dataclass
 class ProductInspection:
     """
     Result of :func:`inspect_products`.
+
+    Raw DataFrames are available under ``result.data``. The properties on
+    this class return :class:`~pandas.io.formats.style.Styler` objects that
+    render with European number formatting in Jupyter notebooks.
 
     Attributes
     ----------
@@ -93,8 +357,9 @@ class ProductInspection:
         ``supply_detail_distribution`` but relative to total use.
 
     balance_growth : pd.DataFrame
-        Same structure as ``balance``. Each value is divided by the value in
-        the previous year. The first year column is ``NaN`` throughout.
+        Same structure as ``balance``. Each value is the change relative to
+        the previous year: ``(current - previous) / previous``, so 5% growth
+        is stored as ``0.05``. The first year column is ``NaN`` throughout.
         Division by zero also yields ``NaN``.
 
     supply_detail_growth : pd.DataFrame
@@ -106,15 +371,43 @@ class ProductInspection:
         growth calculation as ``balance_growth``.
     """
 
-    balance: pd.DataFrame
-    supply_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
-    balance_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_detail_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    balance_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_detail_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    data: ProductInspectionData
+
+    @property
+    def balance(self) -> Styler:
+        return _style_balance_table(self.data.balance, _format_number)
+
+    @property
+    def supply_detail(self) -> Styler:
+        return _style_detail_table(self.data.supply_detail, _format_number, "supply")
+
+    @property
+    def use_detail(self) -> Styler:
+        return _style_detail_table(self.data.use_detail, _format_number, "use")
+
+    @property
+    def balance_distribution(self) -> Styler:
+        return _style_balance_table(self.data.balance_distribution, _format_percentage)
+
+    @property
+    def supply_detail_distribution(self) -> Styler:
+        return _style_detail_table(self.data.supply_detail_distribution, _format_percentage, "supply")
+
+    @property
+    def use_detail_distribution(self) -> Styler:
+        return _style_detail_table(self.data.use_detail_distribution, _format_percentage, "use")
+
+    @property
+    def balance_growth(self) -> Styler:
+        return _style_balance_table(self.data.balance_growth, _format_percentage)
+
+    @property
+    def supply_detail_growth(self) -> Styler:
+        return _style_detail_table(self.data.supply_detail_growth, _format_percentage, "supply")
+
+    @property
+    def use_detail_growth(self) -> Styler:
+        return _style_detail_table(self.data.use_detail_growth, _format_percentage, "use")
 
 
 def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
@@ -216,11 +509,11 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     supply_detail = _build_detail_df(
         sut.supply, matched_products, product_names,
         trans_names, category_names_by_trans, cols, all_ids,
-    )
+    ).sort_index()
     use_detail = _build_detail_df(
         sut.use, matched_products, product_names,
         trans_names, category_names_by_trans, cols, all_ids,
-    )
+    ).sort_index()
     balance_distribution = _build_balance_distribution(balance)
     supply_detail_distribution = _build_detail_distribution(supply_detail)
     use_detail_distribution = _build_detail_distribution(use_detail)
@@ -228,7 +521,7 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     supply_detail_growth = _build_growth_table(supply_detail)
     use_detail_growth = _build_growth_table(use_detail)
 
-    return ProductInspection(
+    data = ProductInspectionData(
         balance=balance,
         supply_detail=supply_detail,
         use_detail=use_detail,
@@ -239,6 +532,7 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
         supply_detail_growth=supply_detail_growth,
         use_detail_growth=use_detail_growth,
     )
+    return ProductInspection(data=data)
 
 
 def _build_category_names_by_trans(
@@ -500,7 +794,8 @@ def _build_balance_distribution(balance: pd.DataFrame) -> pd.DataFrame:
     Within each product block, supply-side rows (up to and including
     "Total supply") are divided by "Total supply" per year. Use-side rows
     (up to and including "Total use") are divided by "Total use" per year.
-    "Balance" is divided by "Total supply". Division by zero yields NaN.
+    The "Balance" row is excluded — it is not meaningful as a share.
+    Division by zero yields NaN.
     """
     if balance.empty:
         return pd.DataFrame()
@@ -529,25 +824,31 @@ def _build_balance_distribution(balance: pd.DataFrame) -> pd.DataFrame:
             i_abs = abs_positions[i_block]
             dist.iloc[i_abs] = balance.iloc[i_abs].astype(float).div(total_use).values
 
-        # "Balance" row — always last, divide by total supply
-        i_abs = abs_positions[-1]
-        dist.iloc[i_abs] = balance.iloc[i_abs].astype(float).div(total_supply).values
-
-    return dist
+    balance_mask = trans_txt_vals == "Balance"
+    return dist[~balance_mask]
 
 
 def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Build year-on-year growth table: each value divided by the previous year's value.
+    """Build year-on-year growth table: change relative to the previous year.
 
-    The first year column is ``NaN`` throughout. Division by zero also yields
-    ``NaN``. The index and column structure are identical to the input.
+    Each value is ``(current - previous) / previous``, so a 5% increase gives
+    ``0.05``. The first year column is ``NaN`` throughout. Division by zero
+    also yields ``NaN``. For balance-shaped tables the "Balance" row is
+    excluded — growth of an imbalance is not meaningful.
     """
     if df.empty:
         return pd.DataFrame()
 
     floats = df.astype(float)
-    growth = floats.div(floats.shift(axis=1))
-    return growth.replace([float("inf"), float("-inf")], float("nan"))
+    previous = floats.shift(axis=1)
+    growth = (floats - previous).div(previous)
+    growth = growth.replace([float("inf"), float("-inf")], float("nan"))
+
+    if "transaction_txt" in growth.index.names:
+        balance_mask = growth.index.get_level_values("transaction_txt") == "Balance"
+        growth = growth[~balance_mask]
+
+    return growth
 
 
 def _build_detail_distribution(detail: pd.DataFrame) -> pd.DataFrame:
