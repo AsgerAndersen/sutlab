@@ -158,6 +158,10 @@ def _style_balance_table(df: pd.DataFrame, format_func) -> Styler:
     styler = styler.apply_index(
         lambda s, css=product_txt_css: css, level="product_txt", axis=0
     )
+    styler = styler.set_table_styles(
+        [{"selector": "", "props": [("display", "block"), ("overflow-y", "auto"), ("max-height", "600px")]}],
+        overwrite=False,
+    )
     return styler
 
 
@@ -239,6 +243,10 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
     styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
     styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
     styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
+    styler = styler.set_table_styles(
+        [{"selector": "", "props": [("display", "block"), ("overflow-y", "auto"), ("max-height", "600px")]}],
+        overwrite=False,
+    )
     return styler
 
 
