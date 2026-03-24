@@ -188,6 +188,23 @@ class TestInspectProductsReturnType:
         result = inspect_products(sut, "A")
         assert isinstance(result.use_detail, Styler)
 
+    def test_price_layers_returns_styler(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        assert isinstance(result.price_layers, Styler)
+
+    def test_price_layers_distribution_returns_styler(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        assert isinstance(result.price_layers_distribution, Styler)
+
+    def test_price_layers_growth_returns_styler(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        assert isinstance(result.price_layers_growth, Styler)
+
+    def test_price_layers_empty_returns_styler(self, sut):
+        """Empty price_layers (no layer columns) still returns a Styler."""
+        result = inspect_products(sut, "A")
+        assert isinstance(result.price_layers, Styler)
+
     def test_data_balance_is_dataframe(self, sut):
         result = inspect_products(sut, "A")
         assert isinstance(result.data.balance, pd.DataFrame)
@@ -1147,3 +1164,418 @@ class TestDetailStyling:
         result = inspect_products(sut, ["A", "T"])
         css = self._build_css(result, "supply")
         assert "border-bottom" not in css[-1]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures: price layers
+# ---------------------------------------------------------------------------
+
+NAN = float("nan")
+
+
+@pytest.fixture
+def columns_with_layers():
+    return SUTColumns(
+        id="year",
+        product="nrnr",
+        transaction="trans",
+        category="brch",
+        price_basic="bas",
+        price_purchasers="koeb",
+        trade_margins="ava",
+        vat="moms",
+    )
+
+
+@pytest.fixture
+def transactions_with_layers():
+    """Supply and use transactions covering layer-bearing and layer-free use rows."""
+    return pd.DataFrame({
+        "code":     ["0100",                   "2000",                     "3110",                  "6001"],
+        "name":     ["Output at basic prices", "Intermediate consumption", "Household consumption", "Exports"],
+        "table":    ["supply",                 "use",                      "use",                   "use"],
+        "esa_code": ["P1",                     "P2",                       "P31",                   "P6"],
+    })
+
+
+@pytest.fixture
+def supply_with_layers():
+    return pd.DataFrame({
+        "year":  [2020, 2021],
+        "nrnr":  ["A",  "A"],
+        "trans": ["0100", "0100"],
+        "brch":  ["X",   "X"],
+        "bas":   [100.0, 110.0],
+        "ava":   [NAN,   NAN],
+        "moms":  [NAN,   NAN],
+        "koeb":  [100.0, 110.0],
+    })
+
+
+@pytest.fixture
+def use_with_layers():
+    """
+    Product A over two years:
+      2000 (IC):     ava only  — 20 bas + 2 ava  → included in ava block
+      3110 (HHcons): ava+moms  — 40 bas + 4 ava + 8 moms → included in both blocks
+      6001 (exports): no layers — excluded from price_layers entirely
+    """
+    return pd.DataFrame({
+        "year":  [2020,   2020,   2020,   2021,   2021,   2021],
+        "nrnr":  ["A",    "A",    "A",    "A",    "A",    "A"],
+        "trans": ["2000", "3110", "6001", "2000", "3110", "6001"],
+        "brch":  ["X",    "HH",   "",     "X",    "HH",   ""],
+        "bas":   [20.0,   40.0,   20.0,   22.0,   44.0,   22.0],
+        "ava":   [2.0,    4.0,    NAN,    3.0,    5.0,    NAN],
+        "moms":  [NAN,    8.0,    NAN,    NAN,    9.0,    NAN],
+        "koeb":  [22.0,   52.0,   20.0,   25.0,   58.0,   22.0],
+    })
+
+
+@pytest.fixture
+def sut_with_layers(supply_with_layers, use_with_layers, columns_with_layers, transactions_with_layers):
+    classifications = SUTClassifications(transactions=transactions_with_layers)
+    metadata = SUTMetadata(columns=columns_with_layers, classifications=classifications)
+    return SUT(
+        price_basis="current_year",
+        supply=supply_with_layers,
+        use=use_with_layers,
+        metadata=metadata,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers — structure
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersStructure:
+
+    def test_index_names(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        assert result.data.price_layers.index.names == [
+            "product", "product_txt", "price_layer", "transaction", "transaction_txt"
+        ]
+
+    def test_columns_are_ids(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        assert list(result.data.price_layers.columns) == [2020, 2021]
+
+    def test_price_layer_values_follow_use_column_order(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        layers = result.data.price_layers.index.get_level_values("price_layer").unique().tolist()
+        # ava comes before moms in the use DataFrame columns
+        assert layers == ["ava", "moms"]
+
+    def test_each_block_ends_with_total_row(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        trans_txt = result.data.price_layers.index.get_level_values("transaction_txt").tolist()
+        layer_vals = result.data.price_layers.index.get_level_values("price_layer").tolist()
+        # Last row of each (product, layer) block must be "Total"
+        for layer in ["ava", "moms"]:
+            positions = [i for i, v in enumerate(layer_vals) if v == layer]
+            assert trans_txt[positions[-1]] == "Total"
+
+    def test_total_row_has_empty_transaction_code(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        df = result.data.price_layers
+        total_rows = df[df.index.get_level_values("transaction_txt") == "Total"]
+        assert (total_rows.index.get_level_values("transaction") == "").all()
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers — transactions included/excluded
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersTransactionFiltering:
+
+    def test_exports_excluded_from_ava_block(self, sut_with_layers):
+        """6001 has ava=NaN — should not appear in the ava block."""
+        result = inspect_products(sut_with_layers, "A")
+        df = result.data.price_layers
+        ava_rows = df[df.index.get_level_values("price_layer") == "ava"]
+        trans_codes = ava_rows.index.get_level_values("transaction").tolist()
+        assert "6001" not in trans_codes
+
+    def test_ic_excluded_from_moms_block(self, sut_with_layers):
+        """2000 has moms=NaN — should not appear in the moms block."""
+        result = inspect_products(sut_with_layers, "A")
+        df = result.data.price_layers
+        moms_rows = df[df.index.get_level_values("price_layer") == "moms"]
+        trans_codes = moms_rows.index.get_level_values("transaction").tolist()
+        assert "2000" not in trans_codes
+
+    def test_ava_block_contains_ic_and_hhcons(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        df = result.data.price_layers
+        ava_rows = df[df.index.get_level_values("price_layer") == "ava"]
+        trans_codes = ava_rows.index.get_level_values("transaction").tolist()
+        assert "2000" in trans_codes
+        assert "3110" in trans_codes
+
+    def test_moms_block_contains_hhcons_only(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        df = result.data.price_layers
+        moms_rows = df[df.index.get_level_values("price_layer") == "moms"]
+        trans_codes = [t for t in moms_rows.index.get_level_values("transaction").tolist() if t != ""]
+        assert trans_codes == ["3110"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers — values
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersValues:
+
+    def _layer_block(self, result, layer):
+        df = result.data.price_layers
+        return df[df.index.get_level_values("price_layer") == layer]
+
+    def test_ava_transaction_values(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        ic_row = ava[ava.index.get_level_values("transaction") == "2000"]
+        assert ic_row[2020].item() == pytest.approx(2.0)
+        assert ic_row[2021].item() == pytest.approx(3.0)
+
+    def test_ava_total_row(self, sut_with_layers):
+        """Total ava for product A: 2000 + 3110 per year."""
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        total = ava[ava.index.get_level_values("transaction_txt") == "Total"]
+        # 2020: 2 (IC) + 4 (HH) = 6; 2021: 3 + 5 = 8
+        assert total[2020].item() == pytest.approx(6.0)
+        assert total[2021].item() == pytest.approx(8.0)
+
+    def test_moms_total_row(self, sut_with_layers):
+        """Total moms equals the single household consumption row."""
+        result = inspect_products(sut_with_layers, "A")
+        moms = self._layer_block(result, "moms")
+        total = moms[moms.index.get_level_values("transaction_txt") == "Total"]
+        assert total[2020].item() == pytest.approx(8.0)
+        assert total[2021].item() == pytest.approx(9.0)
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers — no layers present
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersEmpty:
+
+    def test_empty_when_no_layer_columns_in_sutcolumns(self, sut):
+        """The base sut fixture has no layer columns mapped — price_layers is empty."""
+        result = inspect_products(sut, "A")
+        assert result.data.price_layers.empty
+
+    def test_empty_when_product_has_no_use_rows(self, sut_with_layers):
+        """Product T has no use rows at all — not present in price_layers."""
+        # Add T to supply so it can be queried
+        extra_supply = pd.DataFrame({
+            "year": [2020], "nrnr": ["T"], "trans": ["0100"],
+            "brch": ["Z"], "bas": [10.0], "ava": [NAN], "moms": [NAN], "koeb": [10.0],
+        })
+        new_supply = pd.concat([sut_with_layers.supply, extra_supply], ignore_index=True)
+        import dataclasses
+        sut_t = dataclasses.replace(sut_with_layers, supply=new_supply)
+        result = inspect_products(sut_t, "T")
+        assert result.data.price_layers.empty
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers_distribution
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersDistribution:
+
+    def _layer_block(self, result, layer, table="price_layers_distribution"):
+        df = getattr(result.data, table)
+        return df[df.index.get_level_values("price_layer") == layer]
+
+    def test_total_row_is_one(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        total = ava[ava.index.get_level_values("transaction_txt") == "Total"]
+        assert total[2020].item() == pytest.approx(1.0)
+        assert total[2021].item() == pytest.approx(1.0)
+
+    def test_transaction_shares_sum_to_one(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        non_total = ava[ava.index.get_level_values("transaction_txt") != "Total"]
+        assert non_total[2020].sum() == pytest.approx(1.0)
+        assert non_total[2021].sum() == pytest.approx(1.0)
+
+    def test_ic_share_of_ava_2020(self, sut_with_layers):
+        """IC ava=2, HH ava=4 → IC share = 2/6."""
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        ic_row = ava[ava.index.get_level_values("transaction") == "2000"]
+        assert ic_row[2020].item() == pytest.approx(2 / 6)
+
+    def test_empty_when_no_layers(self, sut):
+        result = inspect_products(sut, "A")
+        assert result.data.price_layers_distribution.empty
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers_growth
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersGrowth:
+
+    def _layer_block(self, result, layer):
+        df = result.data.price_layers_growth
+        return df[df.index.get_level_values("price_layer") == layer]
+
+    def test_first_year_is_nan(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        assert ava[2020].isna().all()
+
+    def test_ava_total_growth(self, sut_with_layers):
+        """Total ava: 6 in 2020, 8 in 2021 → growth = (8-6)/6."""
+        result = inspect_products(sut_with_layers, "A")
+        ava = self._layer_block(result, "ava")
+        total = ava[ava.index.get_level_values("transaction_txt") == "Total"]
+        assert total[2021].item() == pytest.approx((8 - 6) / 6)
+
+    def test_empty_when_no_layers(self, sut):
+        result = inspect_products(sut, "A")
+        assert result.data.price_layers_growth.empty
+
+
+# ---------------------------------------------------------------------------
+# Tests: price_layers — styling
+# ---------------------------------------------------------------------------
+
+
+class TestPriceLayersStyling:
+    """Verify that CSS applied by _style_price_layers_table is correct."""
+
+    def _rebuild_data_css(self, df):
+        """Rebuild data and index CSS lists from _style_price_layers_table internals."""
+        from sutlab.inspect import _LAYER_PALETTES
+        product_vals = df.index.get_level_values("product")
+        layer_vals = df.index.get_level_values("price_layer")
+        trans_txt_vals = df.index.get_level_values("transaction_txt")
+        n = len(df)
+        data_css = [""] * n
+        index_css = [""] * n
+        products = list(dict.fromkeys(product_vals))
+        for p_idx, product in enumerate(products):
+            is_last_product = (p_idx == len(products) - 1)
+            prod_positions = [i for i, v in enumerate(product_vals) if v == product]
+            prod_layers = list(dict.fromkeys(layer_vals[i] for i in prod_positions))
+            for l_idx, layer in enumerate(prod_layers):
+                is_last_layer = (l_idx == len(prod_layers) - 1)
+                palette = _LAYER_PALETTES[l_idx % len(_LAYER_PALETTES)]
+                block_positions = [i for i in prod_positions if layer_vals[i] == layer]
+                block_txts = [trans_txt_vals[i] for i in block_positions]
+                sep = (
+                    "; border-bottom: 1px solid #ccc" if not is_last_layer
+                    else "; border-bottom: 2px solid #999" if not is_last_product
+                    else ""
+                )
+                counter = 0
+                for i, i_abs in enumerate(block_positions):
+                    is_last_row = (i == len(block_positions) - 1)
+                    is_total = (block_txts[i] == "Total")
+                    row_sep = sep if is_last_row else ""
+                    if is_total:
+                        bg_data = palette["data_total"]
+                        bg_index = palette["index_total"]
+                        bold = True
+                    else:
+                        bg_data = palette["data"][counter % 2]
+                        bg_index = palette["index"][counter % 2]
+                        bold = False
+                        counter += 1
+                    weight = "bold" if bold else "normal"
+                    data_css[i_abs] = f"background-color: {bg_data}; font-weight: {weight}{row_sep}"
+                    index_css[i_abs] = f"background-color: {bg_index}; font-weight: {weight}{row_sep}"
+        return data_css, index_css
+
+    def test_first_layer_uses_amber(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        data_css, _ = self._rebuild_data_css(result.data.price_layers)
+        # ava is the first layer — should use amber palette (fffde7 or fffef5 for non-total)
+        ava_positions = [
+            i for i, v in enumerate(
+                result.data.price_layers.index.get_level_values("price_layer")
+            ) if v == "ava"
+        ]
+        non_total = [
+            i for i in ava_positions
+            if result.data.price_layers.index.get_level_values("transaction_txt")[i] != "Total"
+        ]
+        assert any("fffde7" in data_css[i] or "fffef5" in data_css[i] for i in non_total)
+
+    def test_second_layer_uses_purple(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        data_css, _ = self._rebuild_data_css(result.data.price_layers)
+        moms_positions = [
+            i for i, v in enumerate(
+                result.data.price_layers.index.get_level_values("price_layer")
+            ) if v == "moms"
+        ]
+        non_total = [
+            i for i in moms_positions
+            if result.data.price_layers.index.get_level_values("transaction_txt")[i] != "Total"
+        ]
+        assert any("f8f0ff" in data_css[i] or "fbf6ff" in data_css[i] for i in non_total)
+
+    def test_transaction_index_alternates(self, sut_with_layers):
+        """transaction/transaction_txt index cells alternate, not all index_total."""
+        from sutlab.inspect import _LAYER_PALETTES
+        result = inspect_products(sut_with_layers, "A")
+        _, index_css = self._rebuild_data_css(result.data.price_layers)
+        # ava block has two non-total rows — their index should use the two alternating shades
+        df = result.data.price_layers
+        layer_vals = df.index.get_level_values("price_layer").tolist()
+        trans_txt_vals = df.index.get_level_values("transaction_txt").tolist()
+        ava_non_total = [
+            i for i, (l, t) in enumerate(zip(layer_vals, trans_txt_vals))
+            if l == "ava" and t != "Total"
+        ]
+        palette = _LAYER_PALETTES[0]  # amber
+        assert index_css[ava_non_total[0]] != index_css[ava_non_total[1]]
+        assert palette["index"][0] in index_css[ava_non_total[0]]
+
+    def test_total_row_is_bold(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        data_css, _ = self._rebuild_data_css(result.data.price_layers)
+        total_positions = [
+            i for i, v in enumerate(
+                result.data.price_layers.index.get_level_values("transaction_txt")
+            ) if v == "Total"
+        ]
+        assert all("font-weight: bold" in data_css[i] for i in total_positions)
+
+    def test_non_total_rows_not_bold(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        data_css, _ = self._rebuild_data_css(result.data.price_layers)
+        non_total_positions = [
+            i for i, v in enumerate(
+                result.data.price_layers.index.get_level_values("transaction_txt")
+            ) if v != "Total"
+        ]
+        assert all("font-weight: normal" in data_css[i] for i in non_total_positions)
+
+    def test_separator_between_layers(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        data_css, _ = self._rebuild_data_css(result.data.price_layers)
+        df = result.data.price_layers
+        layer_vals = df.index.get_level_values("price_layer").tolist()
+        # Last row of ava block (not last layer) should have 1px separator
+        ava_positions = [i for i, v in enumerate(layer_vals) if v == "ava"]
+        assert "border-bottom: 1px solid #ccc" in data_css[ava_positions[-1]]
+
+    def test_no_separator_last_layer_last_product(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        data_css, _ = self._rebuild_data_css(result.data.price_layers)
+        assert "border-bottom" not in data_css[-1]
