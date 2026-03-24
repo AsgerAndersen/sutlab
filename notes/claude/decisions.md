@@ -156,3 +156,18 @@ Append-only. Each entry: date, decision, brief rationale.
   colour (slightly more saturated) applied to `transaction`/`transaction_txt` index
   levels. Separator between transaction blocks: `1px solid #ccc`; between product
   blocks: `2px solid #999`.
+
+- **2026-03-24**: `price_layers`, `price_layers_distribution`, `price_layers_growth`
+  added to `ProductInspection` / `ProductInspectionData`. MultiIndex:
+  `(product, product_txt, price_layer, transaction, transaction_txt)`. `price_layer`
+  values are the actual use DataFrame column names for intermediate layers (non-`None`
+  optional roles in `SUTColumns`, excluding `price_basic` and `price_purchasers`),
+  in use DataFrame column order. Transactions with all-zero values for a layer are
+  omitted. Each `(product, layer)` block ends with a `("", "Total")` summary row.
+
+- **2026-03-24**: `price_layers` Styler: cycling palette (amber, purple, teal, rose)
+  with light data shades. Within each block: `price_layer` index uses `index_total`
+  shade (block header); `transaction`/`transaction_txt` index alternates between the
+  two lighter index shades (matching the row color, like the balance table); Total row
+  is bold with more saturated shade throughout. Separators: `1px solid #ccc` between
+  layer blocks, `2px solid #999` between product blocks.
