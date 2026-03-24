@@ -408,7 +408,7 @@ def load_sut_from_parquet(
         df = pd.read_parquet(path)
         df[cols.product] = df[cols.product].astype(str)
         df[cols.transaction] = df[cols.transaction].astype(str)
-        df[cols.category] = df[cols.category].astype(str)
+        df[cols.category] = df[cols.category].fillna("").astype(str)
         df.insert(0, cols.id, id_value)
         frames.append(df)
 
