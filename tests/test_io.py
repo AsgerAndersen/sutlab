@@ -536,10 +536,10 @@ def write_targets_file(tmp_path: Path, rows: list[dict], filename="targets.xlsx"
 
 
 def minimal_targets_rows() -> list[dict]:
-    """Minimal valid targets covering one supply and one use row."""
+    """Minimal valid targets covering one supply and one use row (no id column)."""
     return [
-        {"year": 2021, "trans": "0100", "brch": "X",  "maal": 202},
-        {"year": 2021, "trans": "2000", "brch": "X",  "maal": 64},
+        {"trans": "0100", "brch": "X",  "maal": 202},
+        {"trans": "2000", "brch": "X",  "maal": 64},
     ]
 
 
@@ -550,81 +550,106 @@ class TestLoadBalancingTargetsFromExcel:
         return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
 
     def test_returns_balancing_targets(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert isinstance(result, BalancingTargets)
 
     def test_supply_and_use_are_dataframes(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert isinstance(result.supply, pd.DataFrame)
         assert isinstance(result.use, pd.DataFrame)
 
     def test_supply_contains_only_supply_transactions(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert set(result.supply["trans"].unique()) == {"0100", "0700"}
 
     def test_use_contains_only_use_transactions(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
 
     def test_supply_row_count(self, metadata):
         # 0100/X, 0100/Y, 0100/Z, 0700/""
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert len(result.supply) == 4
 
     def test_use_row_count(self, metadata):
         # 2000/X, 2000/Y, 3110/HH, 3200/GOV, 5139/"", 5200/"", 6001/""
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert len(result.use) == 7
 
     def test_column_order(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert list(result.supply.columns) == ["year", "trans", "brch", "maal"]
         assert list(result.use.columns) == ["year", "trans", "brch", "maal"]
 
+    def test_id_column_populated(self, metadata):
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        assert (result.supply["year"] == 2021).all()
+        assert (result.use["year"] == 2021).all()
+
+    def test_id_value_type_preserved(self, metadata):
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        assert result.supply["year"].iloc[0] == 2021
+
+    def test_string_id_value_preserved(self, metadata):
+        result = load_balancing_targets_from_excel(["2021"], [TARGETS_FILE], metadata)
+        assert result.supply["year"].iloc[0] == "2021"
+
+    def test_multiple_years_concatenated(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021, 2022], [TARGETS_FILE, TARGETS_FILE], metadata
+        )
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert set(result.use["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 8
+        assert len(result.use) == 14
+
     def test_transaction_codes_preserve_leading_zeros(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert "0100" in result.supply["trans"].values
         assert "0700" in result.supply["trans"].values
 
     def test_empty_category_filled_with_empty_string(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
-        # imports (0700) have no category
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         imports = result.supply[result.supply["trans"] == "0700"]
         assert imports["brch"].iloc[0] == ""
 
     def test_target_column_is_numeric(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert pd.api.types.is_numeric_dtype(result.supply["maal"])
         assert pd.api.types.is_numeric_dtype(result.use["maal"])
 
     def test_target_values_correct(self, metadata):
-        result = load_balancing_targets_from_excel(TARGETS_FILE, metadata)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         supply_0100_x = result.supply[
             (result.supply["trans"] == "0100") & (result.supply["brch"] == "X")
         ]["maal"].iloc[0]
         assert supply_0100_x == 202
 
-    def test_error_when_target_role_not_set(self, tmp_path, metadata):
+    def test_error_mismatched_lengths(self, metadata):
+        with pytest.raises(ValueError, match="same length"):
+            load_balancing_targets_from_excel([2021, 2022], [TARGETS_FILE], metadata)
+
+    def test_error_when_target_role_not_set(self, metadata):
         bare_columns = SUTColumns(
             id="year", product="nrnr", transaction="trans", category="brch",
             price_basic="bas", price_purchasers="koeb",
         )
         bare_metadata = SUTMetadata(columns=bare_columns, classifications=metadata.classifications)
         with pytest.raises(ValueError, match="target"):
-            load_balancing_targets_from_excel(TARGETS_FILE, bare_metadata)
+            load_balancing_targets_from_excel([2021], [TARGETS_FILE], bare_metadata)
 
     def test_error_when_classifications_absent(self, metadata):
         bare_metadata = SUTMetadata(columns=metadata.columns)
         with pytest.raises(ValueError, match="transactions"):
-            load_balancing_targets_from_excel(TARGETS_FILE, bare_metadata)
+            load_balancing_targets_from_excel([2021], [TARGETS_FILE], bare_metadata)
 
     def test_error_missing_required_column(self, tmp_path, metadata):
-        path = write_targets_file(tmp_path, [{"year": 2021, "trans": "0100", "maal": 202}])
+        path = write_targets_file(tmp_path, [{"trans": "0100", "maal": 202}])
         with pytest.raises(ValueError, match="brch"):
-            load_balancing_targets_from_excel(path, metadata)
+            load_balancing_targets_from_excel([2021], [path], metadata)
 
     def test_error_unknown_transaction_code(self, tmp_path, metadata):
-        rows = minimal_targets_rows() + [{"year": 2021, "trans": "ZZZZ", "brch": "X", "maal": 10}]
+        rows = minimal_targets_rows() + [{"trans": "ZZZZ", "brch": "X", "maal": 10}]
         path = write_targets_file(tmp_path, rows)
         with pytest.raises(ValueError, match="ZZZZ"):
-            load_balancing_targets_from_excel(path, metadata)
+            load_balancing_targets_from_excel([2021], [path], metadata)

@@ -273,10 +273,11 @@ def make_columns() -> pd.DataFrame:
 def make_targets_2021() -> pd.DataFrame:
     """Return balancing targets for 2021.
 
-    One row per (trans, brch) combination. Supply targets are at basic
-    prices; use targets are at purchasers' prices. Values are deliberately
-    slightly different from the actual column totals in the fixture data to
-    simulate a realistic balancing scenario.
+    One row per (trans, brch) combination. No id column — the loader adds
+    the year when loading. Supply targets are at basic prices; use targets
+    are at purchasers' prices. Values are deliberately slightly different
+    from the actual column totals in the fixture data to simulate a realistic
+    balancing scenario.
 
     Actual totals for reference:
         supply: 0100/X=200, 0100/Y=160, 0100/Z=32, 0700/""=60
@@ -286,20 +287,20 @@ def make_targets_2021() -> pd.DataFrame:
     NAN = float("nan")
     rows = [
         # supply targets (basic prices)
-        [2021, "0100", "X",   202],
-        [2021, "0100", "Y",   158],
-        [2021, "0100", "Z",    33],
-        [2021, "0700", NAN,    62],
+        ["0100", "X",   202],
+        ["0100", "Y",   158],
+        ["0100", "Z",    33],
+        ["0700", NAN,    62],
         # use targets (purchasers' prices)
-        [2021, "2000", "X",    64],
-        [2021, "2000", "Y",    71],
-        [2021, "3110", "HH",  160],
-        [2021, "3200", "GOV",  65],
-        [2021, "5139", NAN,    28],
-        [2021, "5200", NAN,    32],
-        [2021, "6001", NAN,    58],
+        ["2000", "X",    64],
+        ["2000", "Y",    71],
+        ["3110", "HH",  160],
+        ["3200", "GOV",  65],
+        ["5139", NAN,    28],
+        ["5200", NAN,    32],
+        ["6001", NAN,    58],
     ]
-    return pd.DataFrame(rows, columns=["year", "trans", "brch", "maal"])
+    return pd.DataFrame(rows, columns=["trans", "brch", "maal"])
 
 
 def make_karakteristiske_brancher() -> pd.DataFrame:
