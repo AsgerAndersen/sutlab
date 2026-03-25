@@ -462,23 +462,29 @@ def load_balancing_targets_from_excel(
     id_values: list[str | int],
     paths: list[str | Path],
     metadata: SUTMetadata,
+    tolerances_path: str | Path | None = None,
 ) -> BalancingTargets:
     """
-    Load a balancing targets collection from one Excel file per id value.
+    Load a balancing targets collection from one Excel file per id value,
+    with optional tolerances from a separate Excel file.
 
-    Each file contains target totals for one collection member (typically one
-    year) with no id column — the corresponding entry in ``id_values`` is
-    added as the id column. Files have columns for transaction, category, and
-    target values, using the same concrete column names as the SUT data (as
-    defined in ``metadata.columns``).
+    Each targets file contains target totals for one collection member
+    (typically one year) with no id column — the corresponding entry in
+    ``id_values`` is added as the id column. Files have columns for
+    transaction, category, and target values, using the same concrete column
+    names as the SUT data (as defined in ``metadata.columns``).
 
     Supply and use rows are split using the ``table`` column of
     ``metadata.classifications.transactions``.
 
-    All columns except the target column are read as strings to preserve
-    leading zeros in transaction codes. Empty category cells are filled with
-    ``""`` to match the SUT data convention for rows with no category
-    (e.g. imports, exports).
+    The optional tolerances file has two sheets: ``"transactions"`` (required
+    if the file is provided) with columns transaction, ``rel``, ``abs``; and
+    ``"categories"`` (optional) with columns transaction, category, ``rel``,
+    ``abs``. No id column in either sheet — tolerances apply across all years.
+
+    All string columns are read with ``dtype=str`` to preserve leading zeros
+    in transaction codes. Empty category cells are filled with ``""`` to match
+    the SUT data convention.
 
     Parameters
     ----------
@@ -486,11 +492,15 @@ def load_balancing_targets_from_excel(
         Id values for each collection member, one per file. The type is
         preserved (e.g. pass integers if you want an integer id column).
     paths : list of str or Path
-        Paths to the Excel files, in the same order as ``id_values``.
+        Paths to the targets Excel files, in the same order as ``id_values``.
     metadata : SUTMetadata
         Metadata for the SUT. ``metadata.columns.target`` must be set.
         ``metadata.classifications.transactions`` must be present — it is
         used to split supply and use rows.
+    tolerances_path : str, Path, or None
+        Path to the tolerances Excel file. If ``None``, no tolerances are
+        loaded and both tolerance fields on the returned
+        :class:`~sutlab.sut.BalancingTargets` are ``None``.
 
     Returns
     -------
@@ -505,10 +515,14 @@ def load_balancing_targets_from_excel(
     ValueError
         If ``metadata.classifications.transactions`` is absent.
     ValueError
-        If any file is missing a required column.
+        If any targets file is missing a required column.
     ValueError
         If any transaction code is not found in
         ``metadata.classifications.transactions``.
+    ValueError
+        If the tolerances file is missing the ``"transactions"`` sheet.
+    ValueError
+        If either tolerances sheet is missing required columns.
     """
     if len(id_values) != len(paths):
         raise ValueError(
@@ -570,4 +584,47 @@ def load_balancing_targets_from_excel(
     supply = combined[supply_mask][col_order].reset_index(drop=True)
     use = combined[~supply_mask][col_order].reset_index(drop=True)
 
-    return BalancingTargets(supply=supply, use=use)
+    # Load tolerances if path provided
+    tolerances_trans = None
+    tolerances_trans_cat = None
+
+    if tolerances_path is not None:
+        sheets = pd.read_excel(tolerances_path, sheet_name=None, dtype=str)
+        sheets = {name: _strip_whitespace(df) for name, df in sheets.items()}
+
+        if "transactions" not in sheets:
+            raise ValueError(
+                f"Tolerances file '{tolerances_path}' must contain a "
+                f"'transactions' sheet."
+            )
+
+        tol_trans_df = sheets["transactions"]
+        required_tol_trans = [cols.transaction, "rel", "abs"]
+        _validate_required_columns(
+            tol_trans_df, required_tol_trans,
+            source=f"'transactions' sheet in tolerances file '{tolerances_path}'"
+        )
+        tol_trans_df["rel"] = pd.to_numeric(tol_trans_df["rel"])
+        tol_trans_df["abs"] = pd.to_numeric(tol_trans_df["abs"])
+        tolerances_trans = tol_trans_df[[cols.transaction, "rel", "abs"]].reset_index(drop=True)
+
+        if "categories" in sheets:
+            tol_cat_df = sheets["categories"]
+            required_tol_cat = [cols.transaction, cols.category, "rel", "abs"]
+            _validate_required_columns(
+                tol_cat_df, required_tol_cat,
+                source=f"'categories' sheet in tolerances file '{tolerances_path}'"
+            )
+            tol_cat_df[cols.category] = tol_cat_df[cols.category].fillna("")
+            tol_cat_df["rel"] = pd.to_numeric(tol_cat_df["rel"])
+            tol_cat_df["abs"] = pd.to_numeric(tol_cat_df["abs"])
+            tolerances_trans_cat = tol_cat_df[
+                [cols.transaction, cols.category, "rel", "abs"]
+            ].reset_index(drop=True)
+
+    return BalancingTargets(
+        supply=supply,
+        use=use,
+        tolerances_trans=tolerances_trans,
+        tolerances_trans_cat=tolerances_trans_cat,
+    )

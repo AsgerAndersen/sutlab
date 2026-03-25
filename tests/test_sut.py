@@ -246,6 +246,56 @@ class TestSetBalancingTargets:
         with pytest.raises(ValueError, match="0100"):
             set_balancing_targets(sut_for_targets, targets)
 
+    def test_tolerances_trans_none_by_default(self, sut_for_targets):
+        result = set_balancing_targets(sut_for_targets, _make_targets())
+        assert result.balancing_targets.tolerances_trans is None
+        assert result.balancing_targets.tolerances_trans_cat is None
+
+    def test_tolerances_trans_attached(self, sut_for_targets):
+        tol = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02], "abs": [5.0, 5.0]})
+        targets = _make_targets()
+        targets_with_tol = BalancingTargets(
+            supply=targets.supply,
+            use=targets.use,
+            tolerances_trans=tol,
+        )
+        result = set_balancing_targets(sut_for_targets, targets_with_tol)
+        assert result.balancing_targets.tolerances_trans is tol
+
+    def test_raises_when_tolerances_trans_missing_trans_code(self, sut_for_targets):
+        # tolerances_trans only covers 0100, but sut also has 2000
+        tol = pd.DataFrame({"trans": ["0100"], "rel": [0.02], "abs": [5.0]})
+        targets = BalancingTargets(supply=_make_targets().supply, use=_make_targets().use, tolerances_trans=tol)
+        with pytest.raises(ValueError, match="2000"):
+            set_balancing_targets(sut_for_targets, targets)
+
+    def test_raises_when_tolerances_trans_missing_required_column(self, sut_for_targets):
+        tol = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02]})  # missing abs
+        targets = BalancingTargets(supply=_make_targets().supply, use=_make_targets().use, tolerances_trans=tol)
+        with pytest.raises(ValueError, match="abs"):
+            set_balancing_targets(sut_for_targets, targets)
+
+    def test_raises_when_tolerances_trans_cat_missing_required_column(self, sut_for_targets):
+        tol_trans = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02], "abs": [5.0, 5.0]})
+        tol_cat = pd.DataFrame({"trans": ["0100"], "brch": ["I1"], "rel": [0.01]})  # missing abs
+        targets = BalancingTargets(
+            supply=_make_targets().supply, use=_make_targets().use,
+            tolerances_trans=tol_trans, tolerances_trans_cat=tol_cat,
+        )
+        with pytest.raises(ValueError, match="abs"):
+            set_balancing_targets(sut_for_targets, targets)
+
+    def test_tolerances_trans_cat_coverage_not_validated(self, sut_for_targets):
+        # tolerances_trans_cat only covers one combo — should not raise
+        tol_trans = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02], "abs": [5.0, 5.0]})
+        tol_cat = pd.DataFrame({"trans": ["0100"], "brch": ["I1"], "rel": [0.01], "abs": [3.0]})
+        targets = BalancingTargets(
+            supply=_make_targets().supply, use=_make_targets().use,
+            tolerances_trans=tol_trans, tolerances_trans_cat=tol_cat,
+        )
+        result = set_balancing_targets(sut_for_targets, targets)
+        assert result.balancing_targets.tolerances_trans_cat is tol_cat
+
 
 # ---------------------------------------------------------------------------
 # Fixtures for get_products tests

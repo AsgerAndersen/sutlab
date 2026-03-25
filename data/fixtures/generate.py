@@ -7,6 +7,7 @@ Run from the project root:
 Writes:
     data/fixtures/ta_l_2021.parquet          combined supply+use, year 2021, current prices
     data/fixtures/ta_targets_2021.xlsx       balancing targets for 2021
+    data/fixtures/ta_tolerances.xlsx         balancing tolerances (all years)
     data/fixtures/metadata/columns.xlsx
     data/fixtures/metadata/ta_classifications.xlsx
     data/fixtures/metadata/karakteristiske_brancher.xlsx
@@ -303,6 +304,27 @@ def make_targets_2021() -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["trans", "brch", "maal"])
 
 
+def make_tolerances() -> dict[str, pd.DataFrame]:
+    """Return tolerance tables for ta_tolerances.xlsx.
+
+    tolerances_trans: one row per transaction, covering all 8 transactions.
+    tolerances_trans_cat: a few (trans, brch) overrides — only 0100/X, 2000/Y,
+    and 3110/HH, to show that not all combinations need to be listed.
+    """
+    transactions = pd.DataFrame({
+        "trans": ["0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"],
+        "rel":   [0.02,   0.02,   0.02,   0.02,   0.02,   0.02,   0.02,   0.02],
+        "abs":   [5.0,    3.0,    5.0,    5.0,    3.0,    2.0,    2.0,    3.0],
+    })
+    categories = pd.DataFrame({
+        "trans": ["0100", "2000", "3110"],
+        "brch":  ["X",    "Y",    "HH"],
+        "rel":   [0.01,   0.03,   0.02],
+        "abs":   [3.0,    7.0,    10.0],
+    })
+    return {"transactions": transactions, "categories": categories}
+
+
 def make_karakteristiske_brancher() -> pd.DataFrame:
     """Return characteristic industry table (primary producer per product)."""
     return pd.DataFrame({
@@ -325,6 +347,12 @@ def main() -> None:
     targets = make_targets_2021()
     targets.to_excel(FIXTURES / "ta_targets_2021.xlsx", index=False)
     print(f"ta_targets_2021.xlsx: {len(targets)} rows")
+
+    tolerances = make_tolerances()
+    with pd.ExcelWriter(FIXTURES / "ta_tolerances.xlsx") as writer:
+        for sheet_name, df in tolerances.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    print("ta_tolerances.xlsx OK")
 
     sheets = make_classifications()
     with pd.ExcelWriter(METADATA / "ta_classifications.xlsx") as writer:

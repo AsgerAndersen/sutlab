@@ -172,10 +172,22 @@ class BalancingTargets:
         Target totals for supply transactions (at basic prices).
     use : DataFrame
         Target totals for use transactions (at purchasers' prices).
+    tolerances_trans : DataFrame or None
+        Tolerances specified at the transaction level. Columns: transaction,
+        ``rel`` (relative tolerance, 0–1), ``abs`` (absolute tolerance). One
+        row per transaction. No id column — applies across all years. When
+        set, must cover all transaction codes present in the SUT data.
+    tolerances_trans_cat : DataFrame or None
+        Exceptions to ``tolerances_trans`` for specific (transaction, category)
+        combinations. Columns: transaction, category, ``rel``, ``abs``. No id
+        column. Coverage is not validated — only combinations that need
+        different tolerances need to be listed.
     """
 
     supply: pd.DataFrame
     use: pd.DataFrame
+    tolerances_trans: pd.DataFrame | None = None
+    tolerances_trans_cat: pd.DataFrame | None = None
 
 
 @dataclass
@@ -395,6 +407,42 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
             raise ValueError(
                 f"targets.{table_name} is missing coverage for some ids:\n"
                 + "\n".join(lines)
+            )
+
+    # Validate tolerances_trans covers all transaction codes in sut
+    if targets.tolerances_trans is not None:
+        tol_trans_col = cols.transaction
+        required_cols_tol = [tol_trans_col, "rel", "abs"]
+        missing_tol_cols = [c for c in required_cols_tol if c not in targets.tolerances_trans.columns]
+        if missing_tol_cols:
+            missing_str = ", ".join(f"'{c}'" for c in missing_tol_cols)
+            present_str = ", ".join(f"'{c}'" for c in targets.tolerances_trans.columns)
+            raise ValueError(
+                f"targets.tolerances_trans is missing required columns: {missing_str}. "
+                f"Found: {present_str}"
+            )
+
+        sut_trans = set(
+            pd.concat([sut.supply[trans_col], sut.use[trans_col]], ignore_index=True).unique()
+        )
+        tol_trans = set(targets.tolerances_trans[tol_trans_col].unique())
+        missing_trans = sut_trans - tol_trans
+        if missing_trans:
+            missing_str = ", ".join(f"'{t}'" for t in sorted(missing_trans))
+            raise ValueError(
+                f"targets.tolerances_trans is missing transaction codes present in "
+                f"the SUT data: {missing_str}"
+            )
+
+    if targets.tolerances_trans_cat is not None:
+        required_cols_tol_cat = [cols.transaction, cols.category, "rel", "abs"]
+        missing_tol_cols = [c for c in required_cols_tol_cat if c not in targets.tolerances_trans_cat.columns]
+        if missing_tol_cols:
+            missing_str = ", ".join(f"'{c}'" for c in missing_tol_cols)
+            present_str = ", ".join(f"'{c}'" for c in targets.tolerances_trans_cat.columns)
+            raise ValueError(
+                f"targets.tolerances_trans_cat is missing required columns: {missing_str}. "
+                f"Found: {present_str}"
             )
 
     return replace(sut, balancing_targets=targets)
