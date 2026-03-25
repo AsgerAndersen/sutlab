@@ -67,6 +67,7 @@ set. Does not mutate the original.
   `load_metadata_classifications_from_excel`). Users navigate the API primarily by name.
   Internal helpers can be as abstract as needed — this principle applies to the public API only.
 - Use native pandas operations (groupby, merge, vectorised column ops) over Python loops on DataFrame rows or ids — both for performance and readability
+- Always use `dropna=False` in `groupby` calls — the default `dropna=True` silently drops NaN group keys (e.g. empty category values)
 - Column names never hardcoded — always via `SUTColumns`
 - Supply holds only basic prices; price layers are a use-side concept
 - DataFrame column order (established by I/O functions, not enforced by dataclass):
