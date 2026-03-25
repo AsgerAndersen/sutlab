@@ -386,7 +386,7 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
 
         if not missing.empty:
             lines = []
-            for id_val, group in missing.groupby(id_col):
+            for id_val, group in missing.groupby(id_col, dropna=False):
                 combos_str = ", ".join(
                     f"({t!r}, {c!r})"
                     for t, c in sorted(zip(group[trans_col], group[cat_col]))

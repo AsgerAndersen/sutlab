@@ -808,12 +808,12 @@ def _build_balance_table(
     # Aggregate to (product, transaction, id) → sum of price_basic
     supply_agg = (
         sut.supply
-        .groupby([prod_col, trans_col, id_col], as_index=False)[bas_col]
+        .groupby([prod_col, trans_col, id_col], as_index=False, dropna=False)[bas_col]
         .sum()
     )
     use_agg = (
         sut.use
-        .groupby([prod_col, trans_col, id_col], as_index=False)[bas_col]
+        .groupby([prod_col, trans_col, id_col], as_index=False, dropna=False)[bas_col]
         .sum()
     )
 
@@ -960,7 +960,7 @@ def _build_detail_df(
         # Aggregate to (product, category, id) → sum of price_basic
         agg = (
             trans_data
-            .groupby([prod_col, cat_col, id_col], as_index=False)[bas_col]
+            .groupby([prod_col, cat_col, id_col], as_index=False, dropna=False)[bas_col]
             .sum()
         )
 
@@ -1135,7 +1135,7 @@ def _build_price_layers_table(
             # Aggregate to (transaction, id) → sum of layer_col
             agg = (
                 prod_use_with_layer
-                .groupby([trans_col, id_col], as_index=False)[layer_col]
+                .groupby([trans_col, id_col], as_index=False, dropna=False)[layer_col]
                 .sum()
             )
 
@@ -1216,7 +1216,7 @@ def _build_price_layers_shares(
     # Compute denominator: total purchasers' price use per (product, year)
     use_purch = (
         sut.use
-        .groupby([prod_col, id_col], as_index=False)[purch_col]
+        .groupby([prod_col, id_col], as_index=False, dropna=False)[purch_col]
         .sum()
     )
 
