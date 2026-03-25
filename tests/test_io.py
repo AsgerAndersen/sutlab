@@ -526,6 +526,7 @@ class TestLoadMetadataColumnsTargetRole:
 # ---------------------------------------------------------------------------
 
 TARGETS_FILE = FIXTURES / "ta_targets_2021.xlsx"
+TOLERANCES_FILE = FIXTURES / "ta_tolerances.xlsx"
 
 
 def write_targets_file(tmp_path: Path, rows: list[dict], filename="targets.xlsx") -> Path:
@@ -653,3 +654,86 @@ class TestLoadBalancingTargetsFromExcel:
         path = write_targets_file(tmp_path, rows)
         with pytest.raises(ValueError, match="ZZZZ"):
             load_balancing_targets_from_excel([2021], [path], metadata)
+
+    def test_tolerances_none_when_path_not_provided(self, metadata):
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        assert result.tolerances_trans is None
+        assert result.tolerances_trans_cat is None
+
+    def test_tolerances_loaded_when_path_provided(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert result.tolerances_trans is not None
+        assert result.tolerances_trans_cat is not None
+
+    def test_tolerances_trans_has_correct_columns(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert list(result.tolerances_trans.columns) == ["trans", "rel", "abs"]
+
+    def test_tolerances_trans_cat_has_correct_columns(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert list(result.tolerances_trans_cat.columns) == ["trans", "brch", "rel", "abs"]
+
+    def test_tolerances_trans_covers_all_transactions(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert set(result.tolerances_trans["trans"]) == {
+            "0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"
+        }
+
+    def test_tolerances_trans_cat_covers_only_some_combinations(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert len(result.tolerances_trans_cat) == 3
+
+    def test_tolerances_numeric_columns(self, metadata):
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert pd.api.types.is_numeric_dtype(result.tolerances_trans["rel"])
+        assert pd.api.types.is_numeric_dtype(result.tolerances_trans["abs"])
+        assert pd.api.types.is_numeric_dtype(result.tolerances_trans_cat["rel"])
+        assert pd.api.types.is_numeric_dtype(result.tolerances_trans_cat["abs"])
+
+    def test_tolerances_trans_cat_none_when_sheet_absent(self, tmp_path, metadata):
+        # Write a tolerances file with only the transactions sheet
+        path = tmp_path / "tolerances_no_cat.xlsx"
+        tol_trans = pd.DataFrame({
+            "trans": ["0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"],
+            "rel": [0.02] * 8,
+            "abs": [5.0] * 8,
+        })
+        with pd.ExcelWriter(path) as writer:
+            tol_trans.to_excel(writer, sheet_name="transactions", index=False)
+        result = load_balancing_targets_from_excel(
+            [2021], [TARGETS_FILE], metadata, tolerances_path=path
+        )
+        assert result.tolerances_trans is not None
+        assert result.tolerances_trans_cat is None
+
+    def test_error_tolerances_missing_transactions_sheet(self, tmp_path, metadata):
+        path = tmp_path / "bad_tolerances.xlsx"
+        pd.DataFrame({"trans": ["0100"], "brch": ["X"], "rel": [0.01], "abs": [3.0]}).to_excel(
+            path, sheet_name="categories", index=False
+        )
+        with pytest.raises(ValueError, match="'transactions'"):
+            load_balancing_targets_from_excel(
+                [2021], [TARGETS_FILE], metadata, tolerances_path=path
+            )
+
+    def test_error_tolerances_trans_missing_column(self, tmp_path, metadata):
+        path = tmp_path / "bad_tolerances.xlsx"
+        pd.DataFrame({"trans": ["0100"], "rel": [0.02]}).to_excel(  # missing abs
+            path, sheet_name="transactions", index=False
+        )
+        with pytest.raises(ValueError, match="abs"):
+            load_balancing_targets_from_excel(
+                [2021], [TARGETS_FILE], metadata, tolerances_path=path
+            )
