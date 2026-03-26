@@ -378,6 +378,82 @@ class TestBalanceTableValues:
 
 
 # ---------------------------------------------------------------------------
+# Tests: balance table price layers row
+# ---------------------------------------------------------------------------
+
+
+class TestBalancePriceLayers:
+
+    def test_price_layers_row_present(self, sut):
+        result = inspect_products(sut, "A")
+        tx_txts = _block_level(result, "A", "transaction_txt")
+        assert "Price layers" in tx_txts
+
+    def test_price_layers_has_empty_transaction_code(self, sut):
+        result = inspect_products(sut, "A")
+        tx_codes = _block_level(result, "A", "transaction")
+        tx_txts = _block_level(result, "A", "transaction_txt")
+        pos = tx_txts.index("Price layers")
+        assert tx_codes[pos] == ""
+
+    def test_price_layers_after_supply_transactions(self, sut):
+        result = inspect_products(sut, "A")
+        tx_txts = _block_level(result, "A", "transaction_txt")
+        layers_pos = tx_txts.index("Price layers")
+        assert tx_txts.index("Output at basic prices") < layers_pos
+        assert tx_txts.index("Imports") < layers_pos
+
+    def test_price_layers_before_total_supply(self, sut):
+        result = inspect_products(sut, "A")
+        tx_txts = _block_level(result, "A", "transaction_txt")
+        assert tx_txts.index("Price layers") < tx_txts.index("Total supply")
+
+    def test_price_layers_zero_when_no_layer_columns(self, sut):
+        # Basic fixture has bas == koeb for all use rows, so price layers = 0
+        result = inspect_products(sut, "A")
+        row = result.data.balance.loc[("A", "", "", "Price layers")]
+        assert row[2020] == 0.0
+        assert row[2021] == 0.0
+
+    def test_price_layers_correct_with_layer_columns(self, sut_with_layers):
+        # 2020: use purch total = 22+52+20 = 94, use basic total = 20+40+20 = 80 → layers = 14
+        # 2021: use purch total = 25+58+22 = 105, use basic total = 22+44+22 = 88 → layers = 17
+        result = inspect_products(sut_with_layers, "A")
+        row = result.data.balance.loc[("A", "", "", "Price layers")]
+        assert row[2020] == pytest.approx(14.0)
+        assert row[2021] == pytest.approx(17.0)
+
+    def test_total_supply_equals_supply_basic_plus_price_layers(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        layers = result.data.balance.loc[("A", "", "", "Price layers")]
+        total_supply = result.data.balance.loc[("A", "", "", "Total supply")]
+        # supply basic = 100 (2020), 110 (2021)
+        assert total_supply[2020] == pytest.approx(100.0 + layers[2020])
+        assert total_supply[2021] == pytest.approx(110.0 + layers[2021])
+
+    def test_use_transaction_values_at_purchasers_prices(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        ic_row = result.data.balance.loc[("A", "", "2000", "Intermediate consumption")]
+        hh_row = result.data.balance.loc[("A", "", "3110", "Household consumption")]
+        assert ic_row[2020] == pytest.approx(22.0)   # koeb, not bas (20)
+        assert hh_row[2020] == pytest.approx(52.0)   # koeb, not bas (40)
+        assert ic_row[2021] == pytest.approx(25.0)
+        assert hh_row[2021] == pytest.approx(58.0)
+
+    def test_total_use_at_purchasers_prices(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        row = result.data.balance.loc[("A", "", "", "Total use")]
+        assert row[2020] == pytest.approx(94.0)   # 22 + 52 + 20
+        assert row[2021] == pytest.approx(105.0)  # 25 + 58 + 22
+
+    def test_supply_only_product_has_zero_price_layers(self, sut):
+        result = inspect_products(sut, "T")
+        row = result.data.balance.loc[("T", "", "", "Price layers")]
+        assert row[2020] == 0.0
+        assert row[2021] == 0.0
+
+
+# ---------------------------------------------------------------------------
 # Tests: supply-only product row structure
 # ---------------------------------------------------------------------------
 
@@ -512,11 +588,13 @@ class TestSupplyDetail:
         trans_codes = result.data.supply_detail.index.get_level_values("transaction").unique().tolist()
         assert "0100" in trans_codes
 
-    def test_transaction_without_categories_is_absent(self, sut):
-        # 0700 (imports) has empty category in the supply fixture
+    def test_transaction_without_categories_appears_as_single_row(self, sut):
+        # 0700 (imports) has empty category — appears as one row with category=""
         result = inspect_products(sut, ["A", "T"])
         trans_codes = result.data.supply_detail.index.get_level_values("transaction").unique().tolist()
-        assert "0700" not in trans_codes
+        assert "0700" in trans_codes
+        cats = result.data.supply_detail.loc[("A", "", "0700")].index.get_level_values("category").tolist()
+        assert cats == [""]
 
     def test_transaction_txt_is_populated(self, sut):
         result = inspect_products(sut, ["A", "T"])
@@ -593,11 +671,13 @@ class TestUseDetail:
         trans_codes = result.data.use_detail.index.get_level_values("transaction").unique().tolist()
         assert "2000" in trans_codes
 
-    def test_transaction_without_categories_is_absent(self, sut):
-        # 6001 (exports) has empty category in the use fixture
+    def test_transaction_without_categories_appears_as_single_row(self, sut):
+        # 6001 (exports) has empty category — appears as one row with category=""
         result = inspect_products(sut, "A")
         trans_codes = result.data.use_detail.index.get_level_values("transaction").unique().tolist()
-        assert "6001" not in trans_codes
+        assert "6001" in trans_codes
+        cats = result.data.use_detail.loc[("A", "", "6001")].index.get_level_values("category").tolist()
+        assert cats == [""]
 
     def test_values_are_correct(self, sut):
         result = inspect_products(sut, "A")
@@ -608,6 +688,55 @@ class TestUseDetail:
     def test_supply_only_product_has_empty_use_detail(self, sut):
         result = inspect_products(sut, "T")
         assert result.data.use_detail.empty
+
+    def test_values_are_at_purchasers_prices(self, sut_with_layers):
+        # IC (2000), category X: bas=20, koeb=22 in 2020
+        result = inspect_products(sut_with_layers, "A")
+        row = result.data.use_detail.loc[("A", "", "2000", "Intermediate consumption", "X", "")]
+        assert row[2020] == pytest.approx(22.0)   # koeb, not bas (20)
+        assert row[2021] == pytest.approx(25.0)
+
+    def test_total_use_row_present_per_product(self, sut):
+        result = inspect_products(sut, "A")
+        trans_txts = result.data.use_detail.index.get_level_values("transaction_txt").tolist()
+        assert "Total use" in trans_txts
+
+    def test_total_use_row_has_empty_transaction_code(self, sut):
+        result = inspect_products(sut, "A")
+        trans_txts = result.data.use_detail.index.get_level_values("transaction_txt").tolist()
+        trans_codes = result.data.use_detail.index.get_level_values("transaction").tolist()
+        pos = trans_txts.index("Total use")
+        assert trans_codes[pos] == ""
+
+    def test_total_use_row_is_last_in_product_block(self, sut):
+        result = inspect_products(sut, "A")
+        trans_txts = result.data.use_detail.loc["A"].index.get_level_values("transaction_txt").tolist()
+        assert trans_txts[-1] == "Total use"
+
+    def test_total_use_row_values_equal_sum_of_all_transactions(self, sut_multi_cat):
+        # IC (2000): X=60, Y=20=80; exports (6001): ""=40 → total = 120 in 2020
+        result = inspect_products(sut_multi_cat, "A")
+        total_row = result.data.use_detail.loc[("A", "", "", "Total use", "", "")]
+        assert total_row[2020] == pytest.approx(120.0)  # 60+20+40
+        assert total_row[2021] == pytest.approx(135.0)  # 63+22+50
+
+    def test_supply_detail_has_total_supply_row(self, sut):
+        result = inspect_products(sut, ["A", "T"])
+        trans_txts = result.data.supply_detail.index.get_level_values("transaction_txt").tolist()
+        assert "Total supply" in trans_txts
+        assert "Total use" not in trans_txts
+
+    def test_total_supply_row_is_last_in_product_block(self, sut):
+        result = inspect_products(sut, "A")
+        trans_txts = result.data.supply_detail.loc["A"].index.get_level_values("transaction_txt").tolist()
+        assert trans_txts[-1] == "Total supply"
+
+    def test_total_supply_row_values_equal_sum_of_all_transactions(self, sut_multi_cat):
+        # 0100: X=60, Y=40; 0700: ""=20 → total = 120 in 2020
+        result = inspect_products(sut_multi_cat, "A")
+        total_row = result.data.supply_detail.loc[("A", "", "", "Total supply", "", "")]
+        assert total_row[2020] == pytest.approx(120.0)
+        assert total_row[2021] == pytest.approx(135.0)
 
 
 # ---------------------------------------------------------------------------
@@ -701,6 +830,56 @@ class TestErrors:
         sut_no_name = SUT(price_basis="current_year", supply=supply, use=use, metadata=meta)
         with pytest.raises(ValueError, match="name"):
             inspect_products(sut_no_name, "A")
+
+    def test_raises_when_id_not_in_collection(self, sut):
+        with pytest.raises(ValueError, match="9999"):
+            inspect_products(sut, "A", ids=9999)
+
+
+# ---------------------------------------------------------------------------
+# Tests: ids argument
+# ---------------------------------------------------------------------------
+
+
+class TestIdsArgument:
+
+    def test_single_id_gives_single_column(self, sut):
+        result = inspect_products(sut, "A", ids=2020)
+        assert list(result.data.balance.columns) == [2020]
+
+    def test_list_of_ids_gives_those_columns(self, sut):
+        result = inspect_products(sut, "A", ids=[2020])
+        assert list(result.data.balance.columns) == [2020]
+
+    def test_all_ids_explicit_same_as_default(self, sut):
+        result_default = inspect_products(sut, "A")
+        result_explicit = inspect_products(sut, "A", ids=[2020, 2021])
+        assert result_default.data.balance.equals(result_explicit.data.balance)
+
+    def test_ids_column_order_follows_sorted_collection_order(self, sut):
+        # Passing ids in reverse order still produces sorted columns
+        result = inspect_products(sut, "A", ids=[2021, 2020])
+        assert list(result.data.balance.columns) == [2020, 2021]
+
+    def test_ids_filters_all_tables(self, sut):
+        result = inspect_products(sut, "A", ids=2020)
+        assert list(result.data.supply_detail.columns) == [2020]
+        assert list(result.data.use_detail.columns) == [2020]
+        assert list(result.data.balance_distribution.columns) == [2020]
+        assert list(result.data.balance_growth.columns) == [2020]
+
+    def test_ids_none_includes_all(self, sut):
+        result = inspect_products(sut, "A", ids=None)
+        assert list(result.data.balance.columns) == [2020, 2021]
+
+    def test_range_argument(self, sut):
+        result = inspect_products(sut, "A", ids=range(2020, 2021))
+        assert list(result.data.balance.columns) == [2020]
+
+    def test_single_id_with_price_layers(self, sut_with_layers):
+        # Regression: _build_price_layers_rates used to expand denom beyond all_ids
+        result = inspect_products(sut_with_layers, "A", ids=2020)
+        assert list(result.data.price_layers_rates.columns) == [2020]
 
 
 # ---------------------------------------------------------------------------
@@ -802,36 +981,39 @@ class TestDetailDistribution:
         assert result.data.use_detail_distribution.index.equals(result.data.use_detail.index)
 
     def test_supply_distribution_values_correct(self, sut_multi_cat):
-        # 2020: X=60, Y=40, total=100 → X=0.6, Y=0.4
+        # 2020: 0100 X=60, Y=40; 0700 ""=20 → total=120
         result = inspect_products(sut_multi_cat, "A")
         dist = result.data.supply_detail_distribution
         x_row = dist.loc[("A", "", "0100", "Output at basic prices", "X", "")]
         y_row = dist.loc[("A", "", "0100", "Output at basic prices", "Y", "")]
-        assert x_row[2020] == pytest.approx(0.6)
-        assert y_row[2020] == pytest.approx(0.4)
+        assert x_row[2020] == pytest.approx(60 / 120)
+        assert y_row[2020] == pytest.approx(40 / 120)
 
     def test_supply_distribution_sums_to_one_per_product_per_year(self, sut_multi_cat):
         result = inspect_products(sut_multi_cat, "A")
         dist = result.data.supply_detail_distribution
         product_data = dist.loc["A"]
-        assert product_data[2020].sum() == pytest.approx(1.0)
-        assert product_data[2021].sum() == pytest.approx(1.0)
+        non_summary = product_data.index.get_level_values("transaction") != ""
+        assert product_data.loc[non_summary][2020].sum() == pytest.approx(1.0)
+        assert product_data.loc[non_summary][2021].sum() == pytest.approx(1.0)
 
     def test_use_distribution_values_correct(self, sut_multi_cat):
-        # 2020: X=60, Y=20, total=80 → X=0.75, Y=0.25
+        # 2020: 2000 X=60, Y=20; 6001 ""=40 → total=120
         result = inspect_products(sut_multi_cat, "A")
         dist = result.data.use_detail_distribution
         x_row = dist.loc[("A", "", "2000", "Intermediate consumption", "X", "")]
         y_row = dist.loc[("A", "", "2000", "Intermediate consumption", "Y", "")]
-        assert x_row[2020] == pytest.approx(0.75)
-        assert y_row[2020] == pytest.approx(0.25)
+        assert x_row[2020] == pytest.approx(60 / 120)
+        assert y_row[2020] == pytest.approx(20 / 120)
 
     def test_use_distribution_sums_to_one_per_product_per_year(self, sut_multi_cat):
         result = inspect_products(sut_multi_cat, "A")
         dist = result.data.use_detail_distribution
         product_data = dist.loc["A"]
-        assert product_data[2020].sum() == pytest.approx(1.0)
-        assert product_data[2021].sum() == pytest.approx(1.0)
+        # Exclude the "Total use" summary row — it equals 1.0 and would inflate the sum
+        non_summary = product_data.index.get_level_values("transaction") != ""
+        assert product_data.loc[non_summary][2020].sum() == pytest.approx(1.0)
+        assert product_data.loc[non_summary][2021].sum() == pytest.approx(1.0)
 
     def test_empty_detail_gives_empty_distribution(self, sut):
         result = inspect_products(sut, "T")
@@ -1026,14 +1208,14 @@ class TestBalanceStyling:
 
     def test_index_total_supply_has_darker_green(self, sut):
         result = inspect_products(sut, "A")
-        # Total supply is at position 2 (0100, 0700, Total supply)
-        idx_css = self._index_css(result, 2)
+        # Total supply is at position 3 (0100, 0700, Price layers, Total supply)
+        idx_css = self._index_css(result, 3)
         assert "background-color: #b8d8ba" in idx_css
 
     def test_index_total_use_has_darker_blue(self, sut):
         result = inspect_products(sut, "A")
-        # Total use is at position 5 (0100, 0700, Total supply, 2000, 6001, Total use)
-        idx_css = self._index_css(result, 5)
+        # Total use is at position 6 (0100, 0700, Price layers, Total supply, 2000, 6001, Total use)
+        idx_css = self._index_css(result, 6)
         assert "background-color: #a5cff4" in idx_css
 
     def test_separator_on_balance_row_of_first_product(self, sut):
@@ -1182,7 +1364,7 @@ def columns_with_layers():
         category="brch",
         price_basic="bas",
         price_purchasers="koeb",
-        trade_margins="ava",
+        wholesale_margins="ava",
         vat="moms",
     )
 
@@ -1450,60 +1632,81 @@ class TestPriceLayersGrowth:
 
 
 # ---------------------------------------------------------------------------
-# Tests: price_layers_shares
+# Tests: price_layers_rates
 # ---------------------------------------------------------------------------
 
 
-class TestPriceLayerShares:
-    """price_layers_shares divides by total purchasers' price use per (product, year)."""
+class TestPriceLayerRates:
+    """price_layers_rates: per-transaction rates, no Total rows.
 
-    # Fixture totals at purchasers' prices for product A:
-    #   2020: 2000(22) + 3110(52) + 6001(20) = 94
-    #   2021: 2000(25) + 3110(58) + 6001(22) = 105
+    Each rate = layer / cumulative denominator for that transaction.
+    Total rows from price_layers are excluded.
+
+    Fixture data for product A, year 2020:
+      2000 (IC):      bas=20, ava=2,  moms=NaN
+      3110 (HHcons):  bas=40, ava=4,  moms=8
+      6001 (exports): bas=20, ava=NaN, moms=NaN
+
+      IC     ava  rate = 2/20
+      HHcons ava  rate = 4/40
+      HHcons moms rate = 8/(40+4) = 8/44
+    """
 
     def _layer_block(self, result, layer):
-        df = result.data.price_layers_shares
+        df = result.data.price_layers_rates
         return df[df.index.get_level_values("price_layer") == layer]
 
-    def test_index_matches_price_layers(self, sut_with_layers):
+    def test_no_total_rows(self, sut_with_layers):
         result = inspect_products(sut_with_layers, "A")
-        assert (
-            result.data.price_layers_shares.index.tolist()
-            == result.data.price_layers.index.tolist()
-        )
+        trans_vals = result.data.price_layers_rates.index.get_level_values("transaction")
+        assert "" not in trans_vals
 
     def test_columns_match_price_layers(self, sut_with_layers):
         result = inspect_products(sut_with_layers, "A")
-        assert list(result.data.price_layers_shares.columns) == list(result.data.price_layers.columns)
+        assert list(result.data.price_layers_rates.columns) == list(result.data.price_layers.columns)
 
-    def test_ava_ic_share_2020(self, sut_with_layers):
-        """IC ava = 2, total purchasers' use = 94 → share = 2/94."""
+    def test_index_names_match_price_layers(self, sut_with_layers):
+        result = inspect_products(sut_with_layers, "A")
+        assert (
+            result.data.price_layers_rates.index.names
+            == result.data.price_layers.index.names
+        )
+
+    def test_ava_ic_rate_2020(self, sut_with_layers):
+        """IC ava=2, IC basic=20 → rate = 2/20."""
         result = inspect_products(sut_with_layers, "A")
         ava = self._layer_block(result, "ava")
         ic_row = ava[ava.index.get_level_values("transaction") == "2000"]
-        assert ic_row[2020].item() == pytest.approx(2 / 94)
+        assert ic_row[2020].item() == pytest.approx(2 / 20)
 
-    def test_ava_total_share_2020(self, sut_with_layers):
-        """Total ava = 6, total purchasers' use = 94 → share = 6/94."""
+    def test_ava_hhcons_rate_2020(self, sut_with_layers):
+        """HHcons ava=4, HHcons basic=40 → rate = 4/40."""
         result = inspect_products(sut_with_layers, "A")
         ava = self._layer_block(result, "ava")
-        total = ava[ava.index.get_level_values("transaction_txt") == "Total"]
-        assert total[2020].item() == pytest.approx(6 / 94)
+        hhcons_row = ava[ava.index.get_level_values("transaction") == "3110"]
+        assert hhcons_row[2020].item() == pytest.approx(4 / 40)
 
-    def test_moms_total_share_2021(self, sut_with_layers):
-        """Total moms = 9, total purchasers' use = 105 → share = 9/105."""
+    def test_moms_hhcons_rate_2020(self, sut_with_layers):
+        """HHcons moms=8, denom = basic+ava = 40+4 = 44 → rate = 8/44."""
         result = inspect_products(sut_with_layers, "A")
         moms = self._layer_block(result, "moms")
-        total = moms[moms.index.get_level_values("transaction_txt") == "Total"]
-        assert total[2021].item() == pytest.approx(9 / 105)
+        hhcons_row = moms[moms.index.get_level_values("transaction") == "3110"]
+        assert hhcons_row[2020].item() == pytest.approx(8 / 44)
+
+    def test_moms_hhcons_rate_2021(self, sut_with_layers):
+        """HHcons 2021: moms=9, denom = basic+ava = 44+5 = 49 → rate = 9/49."""
+        result = inspect_products(sut_with_layers, "A")
+        moms = self._layer_block(result, "moms")
+        hhcons_row = moms[moms.index.get_level_values("transaction") == "3110"]
+        assert hhcons_row[2021].item() == pytest.approx(9 / 49)
 
     def test_returns_styler(self, sut_with_layers):
         result = inspect_products(sut_with_layers, "A")
-        assert isinstance(result.price_layers_shares, Styler)
+        assert isinstance(result.price_layers_rates, Styler)
 
     def test_empty_when_no_layers(self, sut):
         result = inspect_products(sut, "A")
-        assert result.data.price_layers_shares.empty
+        assert result.data.price_layers_rates.empty
 
 
 # ---------------------------------------------------------------------------

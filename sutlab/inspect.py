@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 import pandas as pd
 from pandas.io.formats.style import Styler
 
-from sutlab.sut import SUT, _match_codes, _natural_sort_key
+from sutlab.sut import SUT, _match_codes, _natural_sort_key, get_rows
+from sutlab.compute import compute_price_layer_rates
 
 
 def _format_number(value: float) -> str:
@@ -189,10 +190,6 @@ def _style_balance_table(df: pd.DataFrame, format_func) -> Styler:
     styler = styler.apply_index(
         lambda s, css=product_txt_css: css, level="product_txt", axis=0
     )
-    styler = styler.set_table_styles(
-        [{"selector": "", "props": [("display", "block"), ("overflow-y", "auto"), ("max-height", "600px")]}],
-        overwrite=False,
-    )
     return styler
 
 
@@ -214,6 +211,7 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
         return styler
 
     data_row_colors = _DATA_COLORS[color_key]
+    data_total_color = _DATA_COLORS[f"{color_key}_total"]
     idx_row_colors = _INDEX_COLORS[color_key]
     idx_hdr_color = _INDEX_COLORS[f"{color_key}_total"]
 
@@ -251,6 +249,17 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
             else:
                 sep = ""
 
+            if trans == "":
+                # Product-level summary row ("Total use") — bold, total colour
+                for i, i_abs in enumerate(trans_positions):
+                    row_sep = sep if i == len(trans_positions) - 1 else ""
+                    data_css[i_abs] = f"background-color: {data_total_color}; font-weight: bold{row_sep}"
+                    cat_css[i_abs] = f"background-color: {idx_hdr_color}; font-weight: bold{row_sep}"
+                    cat_txt_css[i_abs] = f"background-color: {idx_hdr_color}; font-weight: bold{row_sep}"
+                trans_css[trans_positions[0]] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                trans_txt_css[trans_positions[0]] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                continue
+
             # transaction / transaction_txt: one merged cell per block → CSS on first row
             trans_css[trans_positions[0]] = f"background-color: {idx_hdr_color}{sep}"
             trans_txt_css[trans_positions[0]] = f"background-color: {idx_hdr_color}{sep}"
@@ -258,11 +267,9 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
             for i, i_abs in enumerate(trans_positions):
                 is_last_row = (i == len(trans_positions) - 1)
                 row_sep = sep if is_last_row else ""
-                bg_data = data_row_colors[i % 2]
-                bg_idx = idx_row_colors[i % 2]
-                data_css[i_abs] = f"background-color: {bg_data}{row_sep}"
-                cat_css[i_abs] = f"background-color: {bg_idx}{row_sep}"
-                cat_txt_css[i_abs] = f"background-color: {bg_idx}{row_sep}"
+                data_css[i_abs] = f"background-color: {data_row_colors[i % 2]}{row_sep}"
+                cat_css[i_abs] = f"background-color: {idx_row_colors[i % 2]}{row_sep}"
+                cat_txt_css[i_abs] = f"background-color: {idx_row_colors[i % 2]}{row_sep}"
 
     styler = styler.apply(
         lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
@@ -274,10 +281,6 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
     styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
     styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
     styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
-    styler = styler.set_table_styles(
-        [{"selector": "", "props": [("display", "block"), ("overflow-y", "auto"), ("max-height", "600px")]}],
-        overwrite=False,
-    )
     return styler
 
 
@@ -379,10 +382,130 @@ def _style_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
     styler = styler.apply_index(lambda s, css=layer_css: css, level="price_layer", axis=0)
     styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
     styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
-    styler = styler.set_table_styles(
-        [{"selector": "", "props": [("display", "block"), ("overflow-y", "auto"), ("max-height", "600px")]}],
-        overwrite=False,
+    return styler
+
+
+def _style_price_layers_detailed_table(df: pd.DataFrame, format_func) -> Styler:
+    """Apply colours, bold, and separators to a price_layers_detailed-shaped table.
+
+    Same palette logic as :func:`_style_price_layers_table` — one palette per
+    layer, cycling if there are more layers than palette entries. Within each
+    ``(product, price_layer)`` block:
+
+    - Each ``(transaction, transaction_txt)`` cell spans its category rows
+      (CSS on first row only). Category rows alternate between the two light
+      data shades of the layer's palette.
+    - The Total row (``transaction == ""``) uses the saturated data shade and
+      is bold throughout.
+    - The ``price_layer`` index cell (one merged cell per block) uses the
+      saturated index shade; the layer separator is placed there.
+
+    Separators: ``1px solid #ddd`` between transaction groups within a layer,
+    ``1px solid #ccc`` between layer blocks within a product,
+    ``2px solid #999`` between product blocks.
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    product_vals = df.index.get_level_values("product")
+    layer_vals = df.index.get_level_values("price_layer")
+    trans_vals = df.index.get_level_values("transaction")
+    n = len(df)
+
+    data_css = [""] * n
+    cat_css = [""] * n
+    cat_txt_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+    layer_css = [""] * n
+    prod_css = [""] * n
+    prod_txt_css = [""] * n
+
+    products = list(dict.fromkeys(product_vals))
+
+    for p_idx, product in enumerate(products):
+        is_last_product = (p_idx == len(products) - 1)
+        prod_positions = [i for i, v in enumerate(product_vals) if v == product]
+        prod_layers = list(dict.fromkeys(layer_vals[i] for i in prod_positions))
+
+        if not is_last_product:
+            prod_css[prod_positions[0]] = "border-bottom: 2px solid #999"
+            prod_txt_css[prod_positions[0]] = "border-bottom: 2px solid #999"
+
+        for l_idx, layer in enumerate(prod_layers):
+            is_last_layer = (l_idx == len(prod_layers) - 1)
+            palette = _LAYER_PALETTES[l_idx % len(_LAYER_PALETTES)]
+
+            block_positions = [i for i in prod_positions if layer_vals[i] == layer]
+            block_trans = list(dict.fromkeys(trans_vals[i] for i in block_positions))
+
+            if not is_last_layer:
+                layer_sep = "; border-bottom: 1px solid #ccc"
+            elif not is_last_product:
+                layer_sep = "; border-bottom: 2px solid #999"
+            else:
+                layer_sep = ""
+
+            # price_layer index: one merged cell per block — CSS on first row
+            layer_css[block_positions[0]] = (
+                f"background-color: {palette['index_total']}{layer_sep}"
+            )
+
+            for t_idx, trans in enumerate(block_trans):
+                is_last_trans = (t_idx == len(block_trans) - 1)
+                trans_positions = [i for i in block_positions if trans_vals[i] == trans]
+
+                sep = layer_sep if is_last_trans else "; border-bottom: 1px solid #ddd"
+
+                if trans == "":
+                    # Total row: bold, saturated palette colour
+                    for i_abs in trans_positions:
+                        data_css[i_abs] = (
+                            f"background-color: {palette['data_total']}; font-weight: bold{sep}"
+                        )
+                        cat_css[i_abs] = (
+                            f"background-color: {palette['index_total']}; font-weight: bold{sep}"
+                        )
+                        cat_txt_css[i_abs] = (
+                            f"background-color: {palette['index_total']}; font-weight: bold{sep}"
+                        )
+                    trans_css[trans_positions[0]] = (
+                        f"background-color: {palette['index_total']}; font-weight: bold{sep}"
+                    )
+                    trans_txt_css[trans_positions[0]] = (
+                        f"background-color: {palette['index_total']}; font-weight: bold{sep}"
+                    )
+                    continue
+
+                # Regular transaction block: transaction\transaction_txt merged on first row
+                trans_css[trans_positions[0]] = (
+                    f"background-color: {palette['index_total']}{sep}"
+                )
+                trans_txt_css[trans_positions[0]] = (
+                    f"background-color: {palette['index_total']}{sep}"
+                )
+
+                for counter, i_abs in enumerate(trans_positions):
+                    is_last_cat = (counter == len(trans_positions) - 1)
+                    row_sep = sep if is_last_cat else ""
+                    bg_data = palette["data"][counter % 2]
+                    bg_index = palette["index"][counter % 2]
+                    data_css[i_abs] = f"background-color: {bg_data}{row_sep}"
+                    cat_css[i_abs] = f"background-color: {bg_index}{row_sep}"
+                    cat_txt_css[i_abs] = f"background-color: {bg_index}{row_sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
     )
+    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=layer_css: css, level="price_layer", axis=0)
+    styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
+    styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
     return styler
 
 
@@ -427,7 +550,11 @@ class ProductInspectionData:
     price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_shares: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layers_detailed: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layers_detailed_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layers_detailed_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    price_layers_detailed_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass
@@ -455,10 +582,15 @@ class ProductInspection:
           (e.g. ``"Output at basic prices"``), or ``"Total supply"``,
           ``"Total use"``, ``"Balance"`` for summary rows.
 
-        Supply transactions appear first, then ``"Total supply"``, then use
-        transactions, then ``"Total use"``, then ``"Balance"`` (Total supply
-        minus Total use). Columns are the collection ids (e.g. years). Values
-        are at basic prices. Missing cells are filled with ``0``.
+        Supply transactions appear first (values at basic prices), then
+        ``"Price layers"`` (total intermediate price layers summed across all
+        use rows for that product and year — the difference between
+        purchasers' and basic prices), then ``"Total supply"`` (basic prices
+        plus price layers, i.e. purchasers' prices), then use transactions
+        (values at purchasers' prices), then ``"Total use"``, then
+        ``"Balance"`` (Total supply minus Total use). All totals are at
+        purchasers' prices. Columns are the collection ids (e.g. years).
+        Missing cells are filled with ``0``.
 
     supply_detail : pd.DataFrame
         Wide-format category breakdown for supply transactions. Rows have a
@@ -485,6 +617,7 @@ class ProductInspection:
 
     use_detail : pd.DataFrame
         Same structure as ``supply_detail``, for use-side transactions.
+        Values are at purchasers' prices.
 
     balance_distribution : pd.DataFrame
         Same structure as ``balance``. Supply-side rows (up to and including
@@ -551,12 +684,34 @@ class ProductInspection:
         Same structure as ``price_layers``, with the same year-on-year
         growth calculation as ``balance_growth``.
 
-    price_layers_shares : pd.DataFrame
-        Same structure as ``price_layers``. Every value is divided by the
-        total use at purchasers' prices for that product and year (sum of
-        the purchasers' price column across all use rows for that product).
-        Expresses each price layer row as a share of the product's total
-        purchasers' price use. Division by zero yields ``NaN``.
+    price_layers_rates : pd.DataFrame
+        Same structure as ``price_layers`` but without Total rows. Each value
+        is divided by the cumulative price level just before that layer is
+        added, computed within each transaction. Division by zero yields
+        ``NaN``.
+
+    price_layers_detailed : pd.DataFrame
+        Category-level breakdown of ``price_layers``. Rows have a seven-level
+        MultiIndex: ``product``, ``product_txt``, ``price_layer``,
+        ``transaction``, ``transaction_txt``, ``category``, ``category_txt``.
+        Within each ``(product, price_layer)`` block, each transaction is
+        further split by category. The block ends with a Total row
+        (``transaction == ""``) whose values match the corresponding Total
+        in ``price_layers``.
+
+    price_layers_detailed_distribution : pd.DataFrame
+        Same structure as ``price_layers_detailed``. Within each
+        ``(product, price_layer)`` block, every row is divided by the Total
+        row for that year. Division by zero yields ``NaN``.
+
+    price_layers_detailed_growth : pd.DataFrame
+        Same structure as ``price_layers_detailed``, with year-on-year growth.
+
+    price_layers_detailed_rates : pd.DataFrame
+        Same structure as ``price_layers_detailed`` but without Total rows.
+        Rates computed within each ``(product, transaction, category)``
+        combination using the same cumulative denominator logic as
+        ``price_layers_rates``. Division by zero yields ``NaN``.
     """
 
     data: ProductInspectionData
@@ -610,11 +765,31 @@ class ProductInspection:
         return _style_price_layers_table(self.data.price_layers_growth, _format_percentage)
 
     @property
-    def price_layers_shares(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_shares, _format_percentage)
+    def price_layers_rates(self) -> Styler:
+        return _style_price_layers_table(self.data.price_layers_rates, _format_percentage)
+
+    @property
+    def price_layers_detailed(self) -> Styler:
+        return _style_price_layers_detailed_table(self.data.price_layers_detailed, _format_number)
+
+    @property
+    def price_layers_detailed_distribution(self) -> Styler:
+        return _style_price_layers_detailed_table(self.data.price_layers_detailed_distribution, _format_percentage)
+
+    @property
+    def price_layers_detailed_growth(self) -> Styler:
+        return _style_price_layers_detailed_table(self.data.price_layers_detailed_growth, _format_percentage)
+
+    @property
+    def price_layers_detailed_rates(self) -> Styler:
+        return _style_price_layers_detailed_table(self.data.price_layers_detailed_rates, _format_percentage)
 
 
-def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
+def inspect_products(
+    sut: SUT,
+    products: str | list[str],
+    ids=None,
+) -> ProductInspection:
     """
     Return inspection tables for one or more products.
 
@@ -626,11 +801,17 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
         Product codes to include. Accepts the same pattern syntax as
         :func:`get_rows`: exact codes, wildcards (``*``), ranges (``:``),
         and negation (``~``).
+    ids : value, list of values, or range, optional
+        Id values (e.g. years) to include as columns. When ``None`` (the
+        default), all ids present in the collection are included. Accepts a
+        single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
+        range (``ids=range(2015, 2022)``). The column order follows the
+        sorted order of the full collection, not the order of the argument.
 
     Returns
     -------
     ProductInspection
-        A dataclass with 12 inspection tables. Raw DataFrames are available
+        A dataclass with 17 inspection tables. Raw DataFrames are available
         under ``result.data``; the same-named properties on the returned
         object give styled versions for Jupyter display. See
         :class:`ProductInspection` for field descriptions.
@@ -646,6 +827,8 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     ValueError
         If ``sut.metadata.classifications.transactions`` does not have a
         ``name`` column.
+    ValueError
+        If any value in ``ids`` is not found in the collection.
     """
     if sut.metadata is None:
         raise ValueError(
@@ -686,6 +869,18 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     use_ids = sut.use[cols.id].unique().tolist()
     all_ids = sorted(set(supply_ids) | set(use_ids))
 
+    if ids is not None:
+        if isinstance(ids, (list, range)):
+            requested_ids = list(ids)
+        else:
+            requested_ids = [ids]
+        missing = [i for i in requested_ids if i not in all_ids]
+        if missing:
+            raise ValueError(
+                f"Id(s) {missing} not found in collection. Available: {all_ids}"
+            )
+        all_ids = [i for i in all_ids if i in requested_ids]
+
     # Transaction name lookup: code → name
     trans_names = {
         str(row["code"]): str(row["name"])
@@ -711,14 +906,24 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     balance = _build_balance_table(
         sut, matched_products, trans_names, product_names, all_ids
     )
-    supply_detail = _build_detail_df(
-        sut.supply, matched_products, product_names,
-        trans_names, category_names_by_trans, cols, all_ids,
-    ).sort_index()
-    use_detail = _build_detail_df(
-        sut.use, matched_products, product_names,
-        trans_names, category_names_by_trans, cols, all_ids,
-    ).sort_index()
+    supply_detail = _append_detail_total(
+        _build_detail_df(
+            sut.supply, matched_products, product_names,
+            trans_names, category_names_by_trans, cols, all_ids,
+            price_col=cols.price_basic,
+        ).sort_index(),
+        all_ids,
+        total_label="Total supply",
+    )
+    use_detail = _append_detail_total(
+        _build_detail_df(
+            sut.use, matched_products, product_names,
+            trans_names, category_names_by_trans, cols, all_ids,
+            price_col=cols.price_purchasers,
+        ).sort_index(),
+        all_ids,
+        total_label="Total use",
+    )
     balance_distribution = _build_balance_distribution(balance)
     supply_detail_distribution = _build_detail_distribution(supply_detail)
     use_detail_distribution = _build_detail_distribution(use_detail)
@@ -730,8 +935,19 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
     )
     price_layers_distribution = _build_price_layers_distribution(price_layers)
     price_layers_growth = _build_growth_table(price_layers)
-    price_layers_shares = _build_price_layers_shares(
+    price_layers_rates = _build_price_layers_rates(
         price_layers, sut, matched_products, all_ids
+    )
+    price_layers_detailed = _build_price_layers_detailed_table(
+        sut, matched_products, trans_names, product_names,
+        category_names_by_trans, all_ids, price_layers,
+    )
+    price_layers_detailed_distribution = _build_price_layers_distribution(
+        price_layers_detailed
+    )
+    price_layers_detailed_growth = _build_growth_table(price_layers_detailed)
+    price_layers_detailed_rates = _build_price_layers_detailed_rates(
+        price_layers_detailed, sut, matched_products, all_ids
     )
 
     data = ProductInspectionData(
@@ -747,7 +963,11 @@ def inspect_products(sut: SUT, products: str | list[str]) -> ProductInspection:
         price_layers=price_layers,
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
-        price_layers_shares=price_layers_shares,
+        price_layers_rates=price_layers_rates,
+        price_layers_detailed=price_layers_detailed,
+        price_layers_detailed_distribution=price_layers_detailed_distribution,
+        price_layers_detailed_growth=price_layers_detailed_growth,
+        price_layers_detailed_rates=price_layers_detailed_rates,
     )
     return ProductInspection(data=data)
 
@@ -804,16 +1024,26 @@ def _build_balance_table(
     prod_col = cols.product
     trans_col = cols.transaction
     bas_col = cols.price_basic
+    purch_col = cols.price_purchasers
 
-    # Aggregate to (product, transaction, id) → sum of price_basic
+    # Aggregate supply to (product, transaction, id) → sum of price_basic
     supply_agg = (
         sut.supply
         .groupby([prod_col, trans_col, id_col], as_index=False, dropna=False)[bas_col]
         .sum()
     )
-    use_agg = (
+    # Aggregate use to (product, transaction, id) → sum of price_purchasers
+    use_agg_purch = (
         sut.use
-        .groupby([prod_col, trans_col, id_col], as_index=False, dropna=False)[bas_col]
+        .groupby([prod_col, trans_col, id_col], as_index=False, dropna=False)[purch_col]
+        .sum()
+    )
+    # Aggregate use to (product, id) → sum of (price_purchasers - price_basic).
+    # Used to build the "Price layers" row on the supply side.
+    use_layers_agg = (
+        sut.use
+        .assign(_layers=sut.use[purch_col] - sut.use[bas_col])
+        .groupby([prod_col, id_col], as_index=False, dropna=False)["_layers"]
         .sum()
     )
 
@@ -844,13 +1074,13 @@ def _build_balance_table(
             supply_trans = []
 
         # --- Use side for this product ---
-        prod_use_agg = use_agg[use_agg[prod_col] == product]
+        prod_use_agg = use_agg_purch[use_agg_purch[prod_col] == product]
 
         if not prod_use_agg.empty:
             prod_use_wide = prod_use_agg.pivot_table(
                 index=trans_col,
                 columns=id_col,
-                values=bas_col,
+                values=purch_col,
                 aggfunc="sum",
                 fill_value=0,
             )
@@ -875,11 +1105,23 @@ def _build_balance_table(
             row_labels.append((product, product_txt, trans, trans_txt))
             row_data.append(prod_supply_wide.loc[trans, all_ids].tolist())
 
+        # "Price layers" — total intermediate price layers from use side
+        # (purchasers' minus basic across all use rows for this product).
+        prod_layers_agg = use_layers_agg[use_layers_agg[prod_col] == product]
+        if not prod_layers_agg.empty:
+            layers_by_id = prod_layers_agg.set_index(id_col)["_layers"]
+            price_layers_total = layers_by_id.reindex(all_ids, fill_value=0.0)
+        else:
+            price_layers_total = pd.Series(0.0, index=all_ids)
+        row_labels.append((product, product_txt, "", "Price layers"))
+        row_data.append(price_layers_total.tolist())
+
         row_labels.append((product, product_txt, "", "Total supply"))
         if supply_trans:
-            total_supply = prod_supply_wide.loc[supply_trans, all_ids].sum()
+            supply_basic_total = prod_supply_wide.loc[supply_trans, all_ids].sum()
         else:
-            total_supply = pd.Series(0.0, index=all_ids)
+            supply_basic_total = pd.Series(0.0, index=all_ids)
+        total_supply = supply_basic_total + price_layers_total
         row_data.append(total_supply.tolist())
 
         for trans in use_trans:
@@ -913,6 +1155,37 @@ def _build_balance_table(
     return pd.concat(blocks)
 
 
+def _append_detail_total(df: pd.DataFrame, all_ids: list, total_label: str) -> pd.DataFrame:
+    """Append a total row at the bottom of each product block.
+
+    ``total_label`` becomes the ``transaction_txt`` value of the summary row
+    (e.g. ``"Total supply"`` or ``"Total use"``). The row sums all
+    transactions and categories for that product and year. Called after
+    ``sort_index()``.
+    """
+    if df.empty:
+        return df
+
+    product_vals = df.index.get_level_values("product")
+    product_txt_vals = df.index.get_level_values("product_txt")
+    ordered_products = list(dict.fromkeys(product_vals))
+    blocks = []
+
+    for product in ordered_products:
+        product_mask = product_vals == product
+        block_rows = df[product_mask]
+        product_txt = product_txt_vals[product_mask][0]
+        total_values = block_rows[all_ids].sum()
+        total_index = pd.MultiIndex.from_tuples(
+            [(product, product_txt, "", total_label, "", "")],
+            names=df.index.names,
+        )
+        total_row = pd.DataFrame([total_values.tolist()], index=total_index, columns=all_ids)
+        blocks.append(pd.concat([block_rows, total_row]))
+
+    return pd.concat(blocks)
+
+
 def _build_detail_df(
     df: pd.DataFrame,
     matched_products: list[str],
@@ -921,32 +1194,29 @@ def _build_detail_df(
     category_names_by_trans: dict[str, dict[str, str]],
     cols,
     all_ids: list,
+    price_col: str,
 ) -> pd.DataFrame:
     """Build a category-breakdown DataFrame for one side (supply or use).
 
     Returns a single DataFrame with a six-level MultiIndex:
     (product, product_txt, transaction, transaction_txt, category, category_txt).
-    Only transactions where at least one selected product has non-empty
-    categories are included. Products with no rows for a given transaction
-    are omitted.
+    Transactions with category breakdowns show one row per category.
+    Transactions with no categories appear as a single row with category="".
+    Products with no rows for a given transaction are omitted.
     """
     id_col = cols.id
     prod_col = cols.product
     trans_col = cols.transaction
     cat_col = cols.category
-    bas_col = cols.price_basic
+    bas_col = price_col
 
-    # Restrict to selected products with non-empty categories
     df_selected = df[df[prod_col].isin(matched_products)]
-    df_with_cats = df_selected[
-        df_selected[cat_col].notna() & (df_selected[cat_col] != "")
-    ]
 
-    if df_with_cats.empty:
+    if df_selected.empty:
         return pd.DataFrame()
 
     trans_codes = sorted(
-        df_with_cats[trans_col].unique().tolist(), key=_natural_sort_key
+        df_selected[trans_col].unique().tolist(), key=_natural_sort_key
     )
 
     row_labels = []
@@ -954,12 +1224,23 @@ def _build_detail_df(
 
     for trans_code in trans_codes:
         trans_txt = trans_names.get(trans_code, trans_code)
-        trans_data = df_with_cats[df_with_cats[trans_col] == trans_code]
+        trans_data = df_selected[df_selected[trans_col] == trans_code]
         cat_name_lookup = category_names_by_trans.get(trans_code, {})
 
-        # Aggregate to (product, category, id) → sum of price_basic
+        # Use only rows with non-empty categories when the transaction has them;
+        # otherwise include all rows (they will aggregate to category="").
+        has_categories = (
+            trans_data[cat_col].notna() & (trans_data[cat_col] != "")
+        ).any()
+        agg_data = (
+            trans_data[trans_data[cat_col].notna() & (trans_data[cat_col] != "")]
+            if has_categories
+            else trans_data
+        )
+
+        # Aggregate to (product, category, id) → sum of price_col
         agg = (
-            trans_data
+            agg_data
             .groupby([prod_col, cat_col, id_col], as_index=False, dropna=False)[bas_col]
             .sum()
         )
@@ -990,6 +1271,7 @@ def _build_detail_df(
                 cat_txt = cat_name_lookup.get(cat, "")
                 row_labels.append((product, product_txt, trans_code, trans_txt, cat, cat_txt))
                 row_data.append(wide.loc[cat, all_ids].tolist())
+
 
     if not row_labels:
         return pd.DataFrame()
@@ -1192,18 +1474,20 @@ def _build_price_layers_table(
     return pd.concat(blocks)
 
 
-def _build_price_layers_shares(
+def _build_price_layers_rates(
     price_layers: pd.DataFrame,
     sut,
     matched_products: list[str],
     all_ids: list,
 ) -> pd.DataFrame:
-    """Build price layer shares relative to total product use at purchasers' prices.
+    """Build price layer rates with the same structure as price_layers.
 
-    Every value in ``price_layers`` is divided by the sum of the purchasers'
-    price column across all use rows for that product and year. The denominator
-    is the same for every row within a product, regardless of layer or
-    transaction. Division by zero yields NaN.
+    Transaction rows use rates computed within each transaction: each layer
+    is divided by the cumulative price for that transaction up to (not
+    including) that layer. Total rows use product-level rates: the summed
+    layer is divided by the product-wide cumulative.
+
+    Delegates computation to :func:`~sutlab.compute.compute_price_layer_rates`.
     """
     if price_layers.empty:
         return pd.DataFrame()
@@ -1211,35 +1495,271 @@ def _build_price_layers_shares(
     cols = sut.metadata.columns
     id_col = cols.id
     prod_col = cols.product
-    purch_col = cols.price_purchasers
+    trans_col = cols.transaction
 
-    # Compute denominator: total purchasers' price use per (product, year)
-    use_purch = (
-        sut.use
-        .groupby([prod_col, id_col], as_index=False, dropna=False)[purch_col]
-        .sum()
-    )
+    # Total rows are excluded — a summed rate across transactions is not
+    # meaningful at the transaction level.
+    non_total_mask = price_layers.index.get_level_values("transaction") != ""
+    price_layers_trans = price_layers[non_total_mask]
 
-    shares = price_layers.copy().astype(float)
-    product_vals = price_layers.index.get_level_values("product")
+    if price_layers_trans.empty:
+        return pd.DataFrame()
 
-    for product in matched_products:
-        prod_rows = price_layers.index.get_level_values("product") == product
-        if not prod_rows.any():
-            continue
+    # Filter to matched products before computing rates.
+    filtered_sut = get_rows(sut, products=matched_products)
 
-        denom = pd.Series(0.0, index=all_ids)
-        prod_use_purch = use_purch[use_purch[prod_col] == product]
-        for _, row in prod_use_purch.iterrows():
-            denom[row[id_col]] = row[purch_col]
+    trans_rates = compute_price_layer_rates(filtered_sut, "transaction")
 
-        abs_positions = [i for i, v in enumerate(product_vals) if v == product]
-        for i_abs in abs_positions:
-            shares.iloc[i_abs] = (
-                price_layers.iloc[i_abs].astype(float).div(denom).values
+    if trans_rates.empty:
+        return pd.DataFrame()
+
+    # Build lookup: (product, transaction) → DataFrame indexed by id_col
+    trans_lookup = {
+        (prod, trans): group.set_index(id_col)
+        for (prod, trans), group in trans_rates.groupby(
+            [prod_col, trans_col], dropna=False
+        )
+    }
+
+    rates = price_layers_trans.copy().astype(float)
+    product_vals = price_layers_trans.index.get_level_values("product")
+    layer_vals = price_layers_trans.index.get_level_values("price_layer")
+    trans_vals = price_layers_trans.index.get_level_values("transaction")
+
+    for i in range(len(price_layers_trans)):
+        product = product_vals[i]
+        layer_col = layer_vals[i]
+        transaction = trans_vals[i]
+
+        group = trans_lookup.get((product, transaction))
+
+        if group is None or layer_col not in group.columns:
+            rates.iloc[i] = float("nan")
+        else:
+            rates.iloc[i] = (
+                group[layer_col].reindex(all_ids, fill_value=float("nan")).values
             )
 
-    return shares
+    return rates
+
+
+def _build_price_layers_detailed_table(
+    sut,
+    matched_products: list[str],
+    trans_names: dict[str, str],
+    product_names: dict[str, str],
+    category_names_by_trans: dict[str, dict[str, str]],
+    all_ids: list,
+    price_layers: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build the category-level price layers table.
+
+    Extends ``price_layers`` with a ``category`` / ``category_txt`` dimension.
+    The MultiIndex has levels ``(product, product_txt, price_layer, transaction,
+    transaction_txt, category, category_txt)``. Within each
+    ``(product, price_layer)`` block, each transaction is split by category.
+    The block ends with a Total row whose values match the corresponding Total
+    in ``price_layers``.
+    """
+    if price_layers.empty:
+        return pd.DataFrame()
+
+    cols = sut.metadata.columns
+    id_col = cols.id
+    prod_col = cols.product
+    trans_col = cols.transaction
+    cat_col = cols.category
+
+    layer_cols = _get_price_layer_columns(cols, sut.use)
+    if not layer_cols:
+        return pd.DataFrame()
+
+    # Collect Total row values from price_layers for each (product, layer).
+    # These become the Total rows in the detailed table.
+    total_lookup: dict[tuple, list] = {}
+    product_vals_pl = price_layers.index.get_level_values("product")
+    layer_vals_pl = price_layers.index.get_level_values("price_layer")
+    trans_vals_pl = price_layers.index.get_level_values("transaction")
+
+    for i in range(len(price_layers)):
+        if trans_vals_pl[i] == "":
+            total_lookup[(product_vals_pl[i], layer_vals_pl[i])] = (
+                price_layers.iloc[i].tolist()
+            )
+
+    # Also collect the transaction order for each (product, layer) block
+    # so the detailed table preserves the same ordering as price_layers.
+    trans_order_lookup: dict[tuple, list] = {}
+    for i in range(len(price_layers)):
+        if trans_vals_pl[i] != "":
+            key = (product_vals_pl[i], layer_vals_pl[i])
+            if key not in trans_order_lookup:
+                trans_order_lookup[key] = []
+            trans_code = trans_vals_pl[i]
+            if trans_code not in trans_order_lookup[key]:
+                trans_order_lookup[key].append(trans_code)
+
+    blocks = []
+
+    for product in matched_products:
+        product_txt = product_names.get(product, "")
+        prod_use = sut.use[sut.use[prod_col] == product]
+
+        if prod_use.empty:
+            continue
+
+        for layer_col in layer_cols:
+            prod_use_with_layer = prod_use[prod_use[layer_col].notna()]
+
+            if prod_use_with_layer.empty:
+                continue
+
+            trans_codes = trans_order_lookup.get((product, layer_col), [])
+            if not trans_codes:
+                continue
+
+            # Aggregate layer_col by (transaction, category, id)
+            agg = (
+                prod_use_with_layer
+                .groupby([trans_col, cat_col, id_col], as_index=False, dropna=False)[layer_col]
+                .sum()
+            )
+
+            row_labels = []
+            row_data = []
+
+            for trans_code in trans_codes:
+                trans_txt = trans_names.get(trans_code, trans_code)
+                cat_name_lookup = category_names_by_trans.get(trans_code, {})
+
+                trans_agg = agg[agg[trans_col] == trans_code]
+                if trans_agg.empty:
+                    continue
+
+                wide = trans_agg.pivot_table(
+                    index=cat_col,
+                    columns=id_col,
+                    values=layer_col,
+                    aggfunc="sum",
+                    fill_value=0,
+                )
+                wide.columns.name = None
+                for id_val in all_ids:
+                    if id_val not in wide.columns:
+                        wide[id_val] = 0
+                wide = wide[all_ids]
+
+                # Drop category rows that are all zero across every id
+                non_zero_mask = (wide != 0).any(axis=1)
+                wide = wide[non_zero_mask]
+
+                if wide.empty:
+                    continue
+
+                categories = sorted(wide.index.tolist(), key=_natural_sort_key)
+                for cat in categories:
+                    cat_txt = cat_name_lookup.get(str(cat), "")
+                    row_labels.append(
+                        (product, product_txt, layer_col,
+                         trans_code, trans_txt, cat, cat_txt)
+                    )
+                    row_data.append(wide.loc[cat, all_ids].tolist())
+
+            if not row_labels:
+                continue
+
+            # Total row: same values as price_layers Total for this (product, layer)
+            total_values = total_lookup.get((product, layer_col))
+            if total_values is not None:
+                row_labels.append(
+                    (product, product_txt, layer_col, "", "Total", "", "")
+                )
+                row_data.append(total_values)
+
+            block = pd.DataFrame(
+                row_data,
+                index=pd.MultiIndex.from_tuples(
+                    row_labels,
+                    names=["product", "product_txt", "price_layer",
+                           "transaction", "transaction_txt",
+                           "category", "category_txt"],
+                ),
+                columns=all_ids,
+            )
+            blocks.append(block)
+
+    if not blocks:
+        return pd.DataFrame()
+
+    return pd.concat(blocks)
+
+
+def _build_price_layers_detailed_rates(
+    price_layers_detailed: pd.DataFrame,
+    sut,
+    matched_products: list[str],
+    all_ids: list,
+) -> pd.DataFrame:
+    """Build category-level price layer rates with the same structure as
+    price_layers_detailed, minus the Total rows.
+
+    Rates are computed within each ``(product, transaction, category)``
+    combination using :func:`~sutlab.compute.compute_price_layer_rates`
+    at ``aggregation_level="category"``.
+    """
+    if price_layers_detailed.empty:
+        return pd.DataFrame()
+
+    cols = sut.metadata.columns
+    id_col = cols.id
+    prod_col = cols.product
+    trans_col = cols.transaction
+    cat_col = cols.category
+
+    # Total rows are excluded — a summed rate across categories is not
+    # meaningful at the category level.
+    non_total_mask = price_layers_detailed.index.get_level_values("transaction") != ""
+    price_layers_trans = price_layers_detailed[non_total_mask]
+
+    if price_layers_trans.empty:
+        return pd.DataFrame()
+
+    filtered_sut = get_rows(sut, products=matched_products)
+    cat_rates = compute_price_layer_rates(filtered_sut, "category")
+
+    if cat_rates.empty:
+        return pd.DataFrame()
+
+    # Build lookup: (product, transaction, category) → DataFrame indexed by id_col
+    cat_lookup = {
+        (prod, trans, cat): group.set_index(id_col)
+        for (prod, trans, cat), group in cat_rates.groupby(
+            [prod_col, trans_col, cat_col], dropna=False
+        )
+    }
+
+    rates = price_layers_trans.copy().astype(float)
+    product_vals = price_layers_trans.index.get_level_values("product")
+    layer_vals = price_layers_trans.index.get_level_values("price_layer")
+    trans_vals = price_layers_trans.index.get_level_values("transaction")
+    cat_vals = price_layers_trans.index.get_level_values("category")
+
+    for i in range(len(price_layers_trans)):
+        product = product_vals[i]
+        layer_col = layer_vals[i]
+        transaction = trans_vals[i]
+        category = cat_vals[i]
+
+        group = cat_lookup.get((product, transaction, category))
+
+        if group is None or layer_col not in group.columns:
+            rates.iloc[i] = float("nan")
+        else:
+            rates.iloc[i] = (
+                group[layer_col].reindex(all_ids, fill_value=float("nan")).values
+            )
+
+    return rates
 
 
 def _build_price_layers_distribution(price_layers: pd.DataFrame) -> pd.DataFrame:
@@ -1294,7 +1814,8 @@ def _build_detail_distribution(detail: pd.DataFrame) -> pd.DataFrame:
     for product in product_vals.unique():
         product_mask = product_vals == product
         product_data = detail.loc[product_mask]
-        col_totals = product_data.sum(axis=0)
+        non_summary_mask = product_data.index.get_level_values("transaction") != ""
+        col_totals = product_data.loc[non_summary_mask].sum(axis=0)
         dist.loc[product_mask] = product_data.div(col_totals, axis="columns").values
 
     return dist

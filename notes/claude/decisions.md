@@ -180,3 +180,77 @@ Append-only. Each entry: date, decision, brief rationale.
   two lighter index shades (matching the row color, like the balance table); Total row
   is bold with more saturated shade throughout. Separators: `1px solid #ccc` between
   layer blocks, `2px solid #999` between product blocks.
+
+- **2026-03-25**: Balance table updated to show both sides at purchasers' prices (user
+  feedback after showing the functionality). Supply transactions remain at basic prices;
+  a new "Price layers" row is inserted between supply transactions and "Total supply",
+  showing the total of all intermediate price layers from the use side (sum of
+  `price_purchasers - price_basic` across all use rows for that product and year).
+  "Total supply" = supply basic total + price layers. Use transaction rows and "Total
+  use" are now at purchasers' prices. "Total use" styled bold with `supply_total` green
+  shade. "Price layers" row uses the regular alternating supply colour (not bold, not
+  the total shade).
+
+- **2026-03-25**: `inspect_products` gains an optional `ids` argument (single value,
+  list, or range) to restrict which collection members appear as columns in all 13
+  tables. Default `None` = all ids. Unknown ids raise a `ValueError` with available
+  ids listed. Ordering follows the original collection order, not the request order.
+
+- **2026-03-25**: `use_detail` values are now at purchasers' prices (previously basic
+  prices). `_build_detail_df` takes a `price_col` parameter; supply_detail passes
+  `price_basic`, use_detail passes `price_purchasers`.
+
+- **2026-03-25**: Detail tables (`supply_detail`, `use_detail`) gain a per-product
+  summary row at the bottom of each product block: "Total supply" and "Total use"
+  respectively. MultiIndex: `(product, product_txt, "", total_label, "", "")`. Summary
+  rows are appended after `sort_index()` so they always appear last. Styled bold with
+  the total colour; excluded from distribution denominators.
+
+- **2026-03-25**: Uncategorized transactions (empty category column) are included in
+  detail tables. Per-transaction logic: if a transaction has any categorized rows, only
+  those are shown; if a transaction has no categorized rows (e.g. exports), it appears
+  as a single row with `category=""`. Aggregated across all rows for that transaction
+  when the category is empty.
+
+- **2026-03-26**: `price_layers_shares` renamed to `price_layers_rates`. Computation
+  changed from "share of total purchasers' price" to step-wise rate: each layer value
+  divided by the cumulative price just before it is added (basic + all preceding layers).
+  Rates are computed per transaction row (not product-level). Total rows removed from
+  `price_layers_rates` — they are not meaningful as rates. Renamed on `ProductInspection`,
+  `ProductInspectionData`, and in all tests and docs.
+
+- **2026-03-26**: `compute_price_layer_rates(sut, aggregation_level)` added in new
+  module `sutlab/compute.py`. General-purpose function for use both in inspection and
+  post-balancing validation. Returns long-format wide-per-layer DataFrame with `id` first
+  and sorted by key columns. `aggregation_level`: `"product"`, `"transaction"`, or
+  `"category"`. Hardcoded Danish default denominators (`_DEFAULT_DENOMINATORS` dict):
+  `wholesale_margins→[basic]`, `retail_margins→[basic, wholesale]`,
+  `product_taxes_less_subsidies→[basic, wholesale, retail]`,
+  `vat→[basic, wholesale, retail, ptls]`. Raises `ValueError` for layers present in data
+  but not in `_DEFAULT_DENOMINATORS` — non-Danish layer structures not yet supported.
+  Filtering to specific products should be done via `get_rows` before calling (performance).
+  Product-specific denominator overrides deferred to future metadata design.
+
+- **2026-03-26**: `price_layers_detailed`, `price_layers_detailed_distribution`,
+  `price_layers_detailed_growth`, `price_layers_detailed_rates` added to
+  `ProductInspection` / `ProductInspectionData`. 7-level MultiIndex:
+  `(product, product_txt, price_layer, transaction, transaction_txt, category, category_txt)`.
+  `price_layers_detailed` totals match the corresponding `price_layers` totals exactly.
+  `price_layers_detailed_rates` has no Total rows; rates computed at `(transaction, category)`
+  level via `compute_price_layer_rates(..., "category")`.
+  Distribution/growth builders reused unchanged (operate only on levels present in both
+  5- and 7-level indexed tables).
+
+- **2026-03-26**: Removed hardcoded `overflow-y: auto; max-height: 600px` from all four
+  styling functions (`_style_balance_table`, `_style_detail_table`,
+  `_style_price_layers_table`, `_style_price_layers_detailed_table`). These constraints
+  were causing unwanted inner scrollbars in all styled output tables. Tables now render
+  at full height; scrolling is handled by the notebook environment only.
+
+- **2026-03-26**: Output cell height control investigated and abandoned for now. Attempted:
+  (1) CSS injection via `IPython.display.HTML` — sandboxed in JupyterLab, no effect;
+  (2) JavaScript injection via `IPython.display.Javascript` with multiple CSS selectors —
+  no effect (likely VS Code Jupyter renders differently from JupyterLab);
+  (3) `output_height` parameter on `inspect_products` wrapping Styler HTML in a scrollable
+  div — not working well. All three approaches removed. User will configure output height
+  via VS Code notebook settings if needed.

@@ -11,15 +11,16 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 13 tables (balance, supply/use detail, price layers, price layer shares, and distribution/growth variants) + tests (`tests/test_inspect.py`) + fixture data (`data/fixtures/`) + user documentation (`docs/`)
-- **What's next**: Further inspection functions, balancing functions
+- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + tests (`tests/test_inspect.py`, `tests/test_compute.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/compute.py`) + fixture data (`data/fixtures/`) + user documentation (`docs/`)
+- **What's next**: Further inspection functions, balancing functions. Output cell height control deferred — removing the hardcoded scroll constraints from styling functions (this session) should help; further control left to user's VS Code notebook settings.
 
 ## Architecture
 
 ### Module structure
 - `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`; and `set_balancing_id`, `get_rows`, `get_product_codes`, `get_transaction_codes`, `get_ids`, `get_industry_codes`, `get_individual_consumption_codes`, `get_collective_consumption_codes`
 - `sutlab/io.py` — I/O functions: `load_metadata_columns_from_excel`, `load_metadata_classifications_from_excel`, `load_metadata_from_excel`, `load_sut_from_parquet(id_values, paths, metadata, price_basis)` — accepts lists to load a multi-member collection in one call
-- `sutlab/inspect.py` — `inspect_products` → `ProductInspection` (13 tables: balance, supply_detail, use_detail, price_layers, price_layers_shares, and distribution/growth variants)
+- `sutlab/compute.py` — General-purpose computation functions: `compute_price_layer_rates(sut, aggregation_level)` — computes step-wise price layer rates at product/transaction/category level; uses hardcoded Danish default denominators; raises on unsupported layers
+- `sutlab/inspect.py` — `inspect_products(sut, products, ids=None)` → `ProductInspection` (17 tables: balance, supply_detail, use_detail, price_layers, price_layers_rates, price_layers_detailed, price_layers_detailed_rates, and distribution/growth variants for all groups). Balance and use_detail at purchasers' prices; detail tables include uncategorized transactions and per-product Total rows.
 
 ### Core data representation
 
@@ -102,7 +103,6 @@ set. Does not mutate the original.
 ## Open design questions
 - What other inspection functions are needed beyond `inspect_products`?
 - How are locks/cells referenced in balancing operations?
-- Are price-layer share tables stored on the SUT object or computed on the fly?
 - What is the exact interface for the GDP decomposition argument to inspection functions?
 - Should `SUT` expose methods that delegate to free functions (pandas-style interface)? Deferred — implementation would be trivial when decided.
 

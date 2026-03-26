@@ -19,3 +19,4 @@ from sutlab.sut import (
     get_ids,
 )
 from sutlab.inspect import inspect_products
+from sutlab.compute import compute_price_layer_rates
