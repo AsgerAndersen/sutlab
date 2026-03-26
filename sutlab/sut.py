@@ -66,10 +66,6 @@ class SUTColumns:
         rather than split into taxes and subsidies.
     vat : str or None
         Column name for VAT (e.g. ``'moms'``).
-    target : str or None
-        Column name for balancing target values in the targets DataFrame
-        (e.g. ``'maal'``). Only required when loading or validating balancing
-        targets.
     """
 
     id: str
@@ -86,7 +82,6 @@ class SUTColumns:
     product_subsidies: str | None = None
     product_taxes_less_subsidies: str | None = None
     vat: str | None = None
-    target: str | None = None
 
 
 @dataclass
@@ -150,18 +145,107 @@ class SUTMetadata:
 
 
 @dataclass
+class TargetTolerances:
+    """
+    Tolerances for balancing target deviations at two aggregation levels.
+
+    A tolerance defines how close a column total must be to the target before
+    it is considered balanced. For each (transaction, category) combination,
+    the effective tolerance is looked up in :attr:`trans_cat` first; if absent,
+    the transaction-level value from :attr:`trans` is used.
+
+    Parameters
+    ----------
+    transactions : DataFrame or None
+        Transaction-level tolerances. Columns: transaction column name,
+        ``rel`` (relative tolerance, 0–1), ``abs`` (absolute tolerance). One
+        row per transaction code. No id column — applies across all years.
+        When set, must cover all transaction codes present in the SUT data.
+    categories : DataFrame or None
+        Overrides for specific (transaction, category) combinations. Columns:
+        transaction column name, category column name, ``rel``, ``abs``. No
+        id column. Partial coverage — only combinations that need a different
+        tolerance from the transaction-level default need to be listed.
+    """
+
+    transactions: pd.DataFrame | None = None
+    categories: pd.DataFrame | None = None
+
+
+@dataclass
+class Locks:
+    """
+    Specification of cells that balancing functions must never modify.
+
+    A cell (product, transaction, category) is locked if it matches **any**
+    of the four lock levels — OR logic across all levels.
+
+    Parameters
+    ----------
+    products : DataFrame or None
+        Lock all cells for the listed products. Single-column DataFrame using
+        the actual product column name (e.g. ``'nrnr'``).
+    transactions : DataFrame or None
+        Lock all cells for the listed transactions. Single-column DataFrame
+        using the actual transaction column name (e.g. ``'trans'``).
+    categories : DataFrame or None
+        Lock all cells for the listed (transaction, category) combinations.
+        Two-column DataFrame using the actual transaction and category column
+        names.
+    cells : DataFrame or None
+        Lock specific (product, transaction, category) combinations. Three-
+        column DataFrame using the actual product, transaction, and category
+        column names. Each row corresponds to one locked cell.
+    """
+
+    products: pd.DataFrame | None = None
+    transactions: pd.DataFrame | None = None
+    categories: pd.DataFrame | None = None
+    cells: pd.DataFrame | None = None
+
+
+@dataclass
+class BalancingConfig:
+    """
+    Configuration for balancing functions.
+
+    Holds settings that apply across all balancing operations, regardless of
+    which id is currently being balanced. Typically loaded from Excel via
+    :func:`~sutlab.io.load_balancing_config_from_excel` and attached to a
+    :class:`SUT` via :func:`set_balancing_config`.
+
+    Parameters
+    ----------
+    target_tolerances : TargetTolerances or None
+        Tolerances defining how close a column total must be to its target
+        before the column is considered balanced. ``None`` if no tolerances
+        are configured.
+    locks : Locks or None
+        Cells that balancing functions must never modify, regardless of any
+        other selection arguments. ``None`` if no cells are locked.
+    """
+
+    target_tolerances: TargetTolerances | None = None
+    locks: Locks | None = None
+
+
+@dataclass
 class BalancingTargets:
     """
     Target column totals for one balancing round, split into supply and use.
 
-    Each DataFrame has one row per (id, transaction, category) combination.
-    Supply targets are at basic prices; use targets are at purchasers' prices.
-    This is implicit — the price column in both DataFrames is the one mapped
-    to the ``target`` role in :class:`SUTColumns`.
+    The DataFrames mirror the SUT supply and use format but without the
+    product dimension. Column names match the actual column names in the SUT
+    DataFrames (i.e. the concrete names from :class:`SUTColumns`).
 
-    Column names match the actual column names in the SUT DataFrames (i.e.
-    the concrete names from :class:`SUTColumns`, not fixed canonical names).
-    Column order: id, transaction, category, target.
+    - Supply column order: id, transaction, category, price_basic
+    - Use column order: id, transaction, category, price_basic,
+      [price layers], price_purchasers
+
+    A NaN value in a price column means no target for that price basis for
+    that (id, transaction, category) combination. Currently only
+    ``price_basic`` (supply) and ``price_purchasers`` (use) carry non-NaN
+    values, but the structure is ready for layer-level targets.
 
     Typically produced by :func:`~sutlab.io.load_balancing_targets_from_excel`
     and attached to a :class:`SUT` via :func:`set_balancing_targets`.
@@ -169,25 +253,16 @@ class BalancingTargets:
     Parameters
     ----------
     supply : DataFrame
-        Target totals for supply transactions (at basic prices).
+        Target totals for supply transactions. Column order:
+        id, transaction, category, price_basic.
     use : DataFrame
-        Target totals for use transactions (at purchasers' prices).
-    tolerances_trans : DataFrame or None
-        Tolerances specified at the transaction level. Columns: transaction,
-        ``rel`` (relative tolerance, 0–1), ``abs`` (absolute tolerance). One
-        row per transaction. No id column — applies across all years. When
-        set, must cover all transaction codes present in the SUT data.
-    tolerances_trans_cat : DataFrame or None
-        Exceptions to ``tolerances_trans`` for specific (transaction, category)
-        combinations. Columns: transaction, category, ``rel``, ``abs``. No id
-        column. Coverage is not validated — only combinations that need
-        different tolerances need to be listed.
+        Target totals for use transactions. Column order:
+        id, transaction, category, price_basic, [price layers],
+        price_purchasers.
     """
 
     supply: pd.DataFrame
     use: pd.DataFrame
-    tolerances_trans: pd.DataFrame | None = None
-    tolerances_trans_cat: pd.DataFrame | None = None
 
 
 @dataclass
@@ -231,6 +306,10 @@ class SUT:
     balancing_targets : BalancingTargets or None
         Target column totals for the current balancing round. Set via
         :func:`set_balancing_targets`. ``None`` if no targets have been loaded.
+    balancing_config : BalancingConfig or None
+        Configuration for balancing functions: tolerances and locked cells.
+        Set via :func:`set_balancing_config`. ``None`` if no configuration
+        has been loaded.
     metadata : SUTMetadata or None
         Column specifications and optional classification tables. Required by
         functions that need to look up labels or validate codes. If ``None``,
@@ -242,6 +321,7 @@ class SUT:
     use: pd.DataFrame
     balancing_id: str | int | None = None
     balancing_targets: BalancingTargets | None = None
+    balancing_config: BalancingConfig | None = None
     metadata: SUTMetadata | None = None
 
 
@@ -298,12 +378,7 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
     Return a new SUT with ``balancing_targets`` set to the given targets.
 
     The original SUT is not modified. Validates that the targets DataFrames
-    contain the required columns and that all (transaction, category)
-    combinations present in ``sut.supply`` and ``sut.use`` are covered in the
-    corresponding targets table, for each id value that appears in both.
-
-    Id values present in ``sut`` but absent from ``targets`` are allowed —
-    targets need not cover every member of the collection.
+    contain the minimum required columns.
 
     Parameters
     ----------
@@ -325,14 +400,11 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
     ValueError
         If ``sut.metadata`` is ``None``.
     ValueError
-        If ``sut.metadata.columns.target`` is ``None`` — the target column
-        role must be defined in the columns metadata.
+        If ``targets.supply`` is missing any of: id, transaction, category,
+        price_basic columns.
     ValueError
-        If either targets DataFrame is missing a required column.
-    ValueError
-        If any (transaction, category) combination present in ``sut.supply``
-        or ``sut.use`` is missing from the corresponding targets table, for
-        a matched id value.
+        If ``targets.use`` is missing any of: id, transaction, category,
+        price_purchasers columns.
     """
     if sut.metadata is None:
         raise ValueError(
@@ -342,110 +414,50 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
 
     cols = sut.metadata.columns
 
-    if cols.target is None:
+    supply_required = [cols.id, cols.transaction, cols.category, cols.price_basic]
+    supply_missing = [c for c in supply_required if c not in targets.supply.columns]
+    if supply_missing:
+        missing_str = ", ".join(f"'{c}'" for c in supply_missing)
+        present_str = ", ".join(f"'{c}'" for c in targets.supply.columns)
         raise ValueError(
-            "sut.metadata.columns.target is required to call set_balancing_targets. "
-            "Add a 'target' role to the columns metadata."
+            f"targets.supply is missing required columns: {missing_str}. "
+            f"Found: {present_str}"
         )
 
-    required_cols = [cols.id, cols.transaction, cols.category, cols.target]
-
-    for table_name, targets_df in [("supply", targets.supply), ("use", targets.use)]:
-        missing = [c for c in required_cols if c not in targets_df.columns]
-        if missing:
-            missing_str = ", ".join(f"'{c}'" for c in missing)
-            present_str = ", ".join(f"'{c}'" for c in targets_df.columns)
-            raise ValueError(
-                f"targets.{table_name} is missing required columns: {missing_str}. "
-                f"Found: {present_str}"
-            )
-
-    id_col = cols.id
-    trans_col = cols.transaction
-    cat_col = cols.category
-
-    for sut_df, targets_df, table_name in [
-        (sut.supply, targets.supply, "supply"),
-        (sut.use, targets.use, "use"),
-    ]:
-        sut_ids = set(sut_df[id_col].astype(str).unique())
-        target_ids = set(targets_df[id_col].astype(str).unique())
-        common_ids = sut_ids & target_ids
-
-        if not common_ids:
-            continue
-
-        # Unique (id, trans, cat) combinations required by the sut, for matched ids only
-        sut_combos = (
-            sut_df[sut_df[id_col].astype(str).isin(common_ids)]
-            [[id_col, trans_col, cat_col]]
-            .drop_duplicates()
-            .assign(**{id_col: lambda df: df[id_col].astype(str)})
+    use_required = [cols.id, cols.transaction, cols.category, cols.price_purchasers]
+    use_missing = [c for c in use_required if c not in targets.use.columns]
+    if use_missing:
+        missing_str = ", ".join(f"'{c}'" for c in use_missing)
+        present_str = ", ".join(f"'{c}'" for c in targets.use.columns)
+        raise ValueError(
+            f"targets.use is missing required columns: {missing_str}. "
+            f"Found: {present_str}"
         )
-
-        # Unique (id, trans, cat) combinations present in targets
-        target_combos = (
-            targets_df[[id_col, trans_col, cat_col]]
-            .drop_duplicates()
-            .assign(**{id_col: lambda df: df[id_col].astype(str)})
-        )
-
-        # Left merge: rows without a match in targets are missing coverage
-        merged = sut_combos.merge(
-            target_combos, on=[id_col, trans_col, cat_col], how="left", indicator=True
-        )
-        missing = merged[merged["_merge"] == "left_only"].drop(columns="_merge")
-
-        if not missing.empty:
-            lines = []
-            for id_val, group in missing.groupby(id_col, dropna=False):
-                combos_str = ", ".join(
-                    f"({t!r}, {c!r})"
-                    for t, c in sorted(zip(group[trans_col], group[cat_col]))
-                )
-                lines.append(f"  id '{id_val}': {combos_str}")
-            raise ValueError(
-                f"targets.{table_name} is missing coverage for some ids:\n"
-                + "\n".join(lines)
-            )
-
-    # Validate tolerances_trans covers all transaction codes in sut
-    if targets.tolerances_trans is not None:
-        tol_trans_col = cols.transaction
-        required_cols_tol = [tol_trans_col, "rel", "abs"]
-        missing_tol_cols = [c for c in required_cols_tol if c not in targets.tolerances_trans.columns]
-        if missing_tol_cols:
-            missing_str = ", ".join(f"'{c}'" for c in missing_tol_cols)
-            present_str = ", ".join(f"'{c}'" for c in targets.tolerances_trans.columns)
-            raise ValueError(
-                f"targets.tolerances_trans is missing required columns: {missing_str}. "
-                f"Found: {present_str}"
-            )
-
-        sut_trans = set(
-            pd.concat([sut.supply[trans_col], sut.use[trans_col]], ignore_index=True).unique()
-        )
-        tol_trans = set(targets.tolerances_trans[tol_trans_col].unique())
-        missing_trans = sut_trans - tol_trans
-        if missing_trans:
-            missing_str = ", ".join(f"'{t}'" for t in sorted(missing_trans))
-            raise ValueError(
-                f"targets.tolerances_trans is missing transaction codes present in "
-                f"the SUT data: {missing_str}"
-            )
-
-    if targets.tolerances_trans_cat is not None:
-        required_cols_tol_cat = [cols.transaction, cols.category, "rel", "abs"]
-        missing_tol_cols = [c for c in required_cols_tol_cat if c not in targets.tolerances_trans_cat.columns]
-        if missing_tol_cols:
-            missing_str = ", ".join(f"'{c}'" for c in missing_tol_cols)
-            present_str = ", ".join(f"'{c}'" for c in targets.tolerances_trans_cat.columns)
-            raise ValueError(
-                f"targets.tolerances_trans_cat is missing required columns: {missing_str}. "
-                f"Found: {present_str}"
-            )
 
     return replace(sut, balancing_targets=targets)
+
+
+def set_balancing_config(sut: SUT, config: BalancingConfig) -> SUT:
+    """
+    Return a new SUT with ``balancing_config`` set to the given configuration.
+
+    The original SUT is not modified.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to update.
+    config : BalancingConfig
+        Balancing configuration to attach, containing tolerances and locked
+        cells.
+
+    Returns
+    -------
+    SUT
+        A new SUT with ``balancing_config`` set. The underlying data is
+        shared with the original (not copied).
+    """
+    return replace(sut, balancing_config=config)
 
 
 # ---------------------------------------------------------------------------
