@@ -294,3 +294,20 @@ Append-only. Each entry: date, decision, brief rationale.
 - **2026-03-26**: Fixture fix: supply rows (`0100`, `0700`) now correctly have
   `koeb = NaN`. Supply is valued at basic prices only; purchasers' price is a
   use-side concept. `generate.py` updated with a separate `supply_row` helper.
+
+- **2026-03-26**: `balance_columns` function signature settled:
+  `balance_columns(sut, transactions, categories, adjust_products) -> SUT`.
+  `transactions` and `categories` identify which column totals to balance (AND logic —
+  each (transaction, category) combination is balanced independently against its target).
+  `adjust_products` is the set of products whose rows may be scaled to hit the target;
+  all other products in those columns are treated as fixed. Operates on the member
+  identified by `sut.balancing_id`. Returns a new SUT with updated supply/use DataFrames;
+  the rest of the collection is carried along untouched.
+
+- **2026-03-26**: `balance_columns` scaling logic settled. For each (transaction,
+  category) column: fixed rows = locked rows (any match across the four `Locks` levels
+  via OR logic) + rows whose product is not in `adjust_products`. Adjustable rows =
+  `adjust_products` rows that are not locked. Scale factor =
+  `(target - sum_fixed) / sum_adjustable`. Each adjustable row is multiplied by this
+  factor. Locks are evaluated before scaling; a product in `adjust_products` that is
+  also locked is treated as fixed.
