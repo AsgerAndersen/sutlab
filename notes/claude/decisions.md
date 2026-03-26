@@ -254,3 +254,43 @@ Append-only. Each entry: date, decision, brief rationale.
   (3) `output_height` parameter on `inspect_products` wrapping Styler HTML in a scrollable
   div — not working well. All three approaches removed. User will configure output height
   via VS Code notebook settings if needed.
+
+- **2026-03-26**: `BalancingTargets` format changed. Supply and use DataFrames now mirror
+  the SUT long-format without the product dimension: same column names (via `SUTColumns`),
+  same price columns. Supply column order: `id, transaction, category, price_basic`. Use
+  column order: `id, transaction, category, price_basic, [price layers], price_purchasers`.
+  NaN in a price column means no target for that combination. Currently only `price_basic`
+  (supply) and `price_purchasers` (use) carry non-NaN values. The `target` role removed
+  from `SUTColumns`.
+
+- **2026-03-26**: `set_balancing_targets` simplified — validates required columns only,
+  no longer checks (transaction, category) coverage. Coverage validation is the
+  balancing function's responsibility.
+
+- **2026-03-26**: Tolerances removed from `BalancingTargets`. New `BalancingConfig`
+  dataclass added to `SUT` (field `balancing_config`, set via `set_balancing_config`).
+  `BalancingConfig` has two fields: `target_tolerances: TargetTolerances | None` and
+  `locks: Locks | None`.
+
+- **2026-03-26**: `TargetTolerances` dataclass: `transactions` (transaction-level
+  tolerances; columns: transaction col name, `rel`, `abs`) and `categories` (overrides
+  for specific transaction-category pairs; columns: transaction col name, category col
+  name, `rel`, `abs`). No id column — applies across all years.
+
+- **2026-03-26**: `Locks` dataclass: `products`, `transactions`, `categories`, `cells` —
+  all `DataFrame | None`. A cell is locked if it matches any level (OR logic). Column
+  names match actual data column names. Excel file sheet names: `products`,
+  `transactions`, `categories`, `cells`.
+
+- **2026-03-26**: `load_balancing_config_from_excel(metadata, *, tolerances_path,
+  locks_path)` added to `sutlab/io.py`. Sub-loaders are private. Same decision applied
+  retrospectively to metadata sub-loaders: `load_metadata_columns_from_excel` and
+  `load_metadata_classifications_from_excel` are now private (`_` prefix). Only
+  `load_metadata_from_excel` is public.
+
+- **2026-03-26**: All metadata loaders select only their specified columns from each
+  sheet. Extra columns added by users (notes, scratch work) are silently ignored.
+
+- **2026-03-26**: Fixture fix: supply rows (`0100`, `0700`) now correctly have
+  `koeb = NaN`. Supply is valued at basic prices only; purchasers' price is a
+  use-side concept. `generate.py` updated with a separate `supply_row` helper.

@@ -9,7 +9,16 @@ from typing import Literal
 
 import pandas as pd
 
-from sutlab.sut import BalancingTargets, SUT, SUTClassifications, SUTColumns, SUTMetadata
+from sutlab.sut import (
+    BalancingConfig,
+    BalancingTargets,
+    Locks,
+    SUT,
+    SUTClassifications,
+    SUTColumns,
+    SUTMetadata,
+    TargetTolerances,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -24,7 +33,6 @@ _REQUIRED_ROLES: set[str] = {
 _OPTIONAL_ROLES: set[str] = {
     "trade_margins", "wholesale_margins", "retail_margins", "transport_margins",
     "product_taxes", "product_subsidies", "product_taxes_less_subsidies", "vat",
-    "target",
 }
 
 _ALL_KNOWN_ROLES: set[str] = _REQUIRED_ROLES | _OPTIONAL_ROLES
@@ -91,7 +99,7 @@ def _validate_required_columns(
 # Public API
 # ---------------------------------------------------------------------------
 
-def load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
+def _load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
     """
     Load column role mappings from a two-column Excel file.
 
@@ -107,6 +115,7 @@ def load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
     Optional roles: ``trade_margins``, ``wholesale_margins``,
     ``retail_margins``, ``transport_margins``, ``product_taxes``,
     ``product_subsidies``, ``product_taxes_less_subsidies``, ``vat``.
+
 
     Parameters
     ----------
@@ -180,11 +189,10 @@ def load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
         product_subsidies=role_to_col.get("product_subsidies"),
         product_taxes_less_subsidies=role_to_col.get("product_taxes_less_subsidies"),
         vat=role_to_col.get("vat"),
-        target=role_to_col.get("target"),
     )
 
 
-def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifications:
+def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifications:
     """
     Load classification tables from a multi-sheet Excel file.
 
@@ -229,13 +237,13 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
         _validate_required_columns(
             df, ["dimension", "classification"], source="'classifications' sheet"
         )
-        classification_names = df
+        classification_names = df[["dimension", "classification"]].copy()
 
     products = None
     if "products" in all_sheets:
         df = all_sheets["products"]
         _validate_required_columns(df, ["code", "name"], source="'products' sheet")
-        products = df
+        products = df[["code", "name"]].copy()
 
     transactions = None
     if "transactions" in all_sheets:
@@ -258,13 +266,13 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
                 f"Invalid values in 'esa_code' column of 'transactions' sheet: {invalid_str}. "
                 f"Valid values are: {valid_str}."
             )
-        transactions = df
+        transactions = df[["code", "name", "table", "esa_code"]].copy()
 
     industries = None
     if "industries" in all_sheets:
         df = all_sheets["industries"]
         _validate_required_columns(df, ["code", "name"], source="'industries' sheet")
-        industries = df
+        industries = df[["code", "name"]].copy()
 
     individual_consumption = None
     if "individual_consumption" in all_sheets:
@@ -272,7 +280,7 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
         _validate_required_columns(
             df, ["code", "name"], source="'individual_consumption' sheet"
         )
-        individual_consumption = df
+        individual_consumption = df[["code", "name"]].copy()
 
     collective_consumption = None
     if "collective_consumption" in all_sheets:
@@ -280,7 +288,7 @@ def load_metadata_classifications_from_excel(path: str | Path) -> SUTClassificat
         _validate_required_columns(
             df, ["code", "name"], source="'collective_consumption' sheet"
         )
-        collective_consumption = df
+        collective_consumption = df[["code", "name"]].copy()
 
     return SUTClassifications(
         classification_names=classification_names,
@@ -323,8 +331,8 @@ def load_metadata_from_excel(
     ValueError
         Any error raised by the underlying loader functions.
     """
-    columns = load_metadata_columns_from_excel(columns_path)
-    classifications = load_metadata_classifications_from_excel(classifications_path)
+    columns = _load_metadata_columns_from_excel(columns_path)
+    classifications = _load_metadata_classifications_from_excel(classifications_path)
 
     if classifications.transactions is None:
         raise ValueError(
@@ -462,29 +470,32 @@ def load_balancing_targets_from_excel(
     id_values: list[str | int],
     paths: list[str | Path],
     metadata: SUTMetadata,
-    tolerances_path: str | Path | None = None,
 ) -> BalancingTargets:
     """
-    Load a balancing targets collection from one Excel file per id value,
-    with optional tolerances from a separate Excel file.
+    Load a balancing targets collection from one Excel file per id value.
 
-    Each targets file contains target totals for one collection member
-    (typically one year) with no id column — the corresponding entry in
-    ``id_values`` is added as the id column. Files have columns for
-    transaction, category, and target values, using the same concrete column
-    names as the SUT data (as defined in ``metadata.columns``).
+    Each targets file mirrors the combined SUT long-format but without the
+    product dimension. It must contain the transaction, category, and all
+    price columns defined in ``metadata.columns`` (basic price, any price
+    layers, and purchasers' price). No id column in the file — the
+    corresponding entry in ``id_values`` is added on load.
 
     Supply and use rows are split using the ``table`` column of
     ``metadata.classifications.transactions``.
 
-    The optional tolerances file has two sheets: ``"transactions"`` (required
-    if the file is provided) with columns transaction, ``rel``, ``abs``; and
-    ``"categories"`` (optional) with columns transaction, category, ``rel``,
-    ``abs``. No id column in either sheet — tolerances apply across all years.
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
 
-    All string columns are read with ``dtype=str`` to preserve leading zeros
-    in transaction codes. Empty category cells are filled with ``""`` to match
-    the SUT data convention.
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    All columns are read with ``dtype=str`` to preserve leading zeros in
+    transaction codes. Price columns are converted to numeric after loading.
+    Empty category cells are filled with ``""`` to match the SUT convention.
 
     Parameters
     ----------
@@ -494,13 +505,8 @@ def load_balancing_targets_from_excel(
     paths : list of str or Path
         Paths to the targets Excel files, in the same order as ``id_values``.
     metadata : SUTMetadata
-        Metadata for the SUT. ``metadata.columns.target`` must be set.
-        ``metadata.classifications.transactions`` must be present — it is
-        used to split supply and use rows.
-    tolerances_path : str, Path, or None
-        Path to the tolerances Excel file. If ``None``, no tolerances are
-        loaded and both tolerance fields on the returned
-        :class:`~sutlab.sut.BalancingTargets` are ``None``.
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
 
     Returns
     -------
@@ -511,32 +517,17 @@ def load_balancing_targets_from_excel(
     ValueError
         If ``id_values`` and ``paths`` have different lengths.
     ValueError
-        If ``metadata.columns.target`` is ``None``.
-    ValueError
         If ``metadata.classifications.transactions`` is absent.
     ValueError
         If any targets file is missing a required column.
     ValueError
         If any transaction code is not found in
         ``metadata.classifications.transactions``.
-    ValueError
-        If the tolerances file is missing the ``"transactions"`` sheet.
-    ValueError
-        If either tolerances sheet is missing required columns.
     """
     if len(id_values) != len(paths):
         raise ValueError(
             f"id_values and paths must have the same length. "
             f"Got {len(id_values)} id values and {len(paths)} paths."
-        )
-
-    cols = metadata.columns
-
-    if cols.target is None:
-        raise ValueError(
-            "metadata.columns.target is required to call "
-            "load_balancing_targets_from_excel. "
-            "Add a 'target' role to the columns metadata."
         )
 
     if metadata.classifications is None or metadata.classifications.transactions is None:
@@ -545,7 +536,19 @@ def load_balancing_targets_from_excel(
             "and use rows in load_balancing_targets_from_excel."
         )
 
-    required_cols = [cols.transaction, cols.category, cols.target]
+    cols = metadata.columns
+
+    # Price layer columns present in metadata (in order)
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+
+    # All price columns: these must all be present in the targets file
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    required_cols = [cols.transaction, cols.category] + price_cols
 
     frames = []
     for id_value, path in zip(id_values, paths):
@@ -560,8 +563,9 @@ def load_balancing_targets_from_excel(
     # Fill empty category cells with "" to match SUT data convention
     combined[cols.category] = combined[cols.category].fillna("")
 
-    # Convert target column from string to numeric
-    combined[cols.target] = pd.to_numeric(combined[cols.target])
+    # Convert all price columns from string to numeric
+    for col in price_cols:
+        combined[col] = pd.to_numeric(combined[col])
 
     # Validate all transaction codes are known
     trans_df = metadata.classifications.transactions
@@ -580,51 +584,213 @@ def load_balancing_targets_from_excel(
     supply_codes = set(trans_df.loc[trans_df["table"] == "supply", "code"])
     supply_mask = combined[cols.transaction].isin(supply_codes)
 
-    col_order = [cols.id, cols.transaction, cols.category, cols.target]
-    supply = combined[supply_mask][col_order].reset_index(drop=True)
-    use = combined[~supply_mask][col_order].reset_index(drop=True)
+    # Supply: id, transaction, category, price_basic
+    supply_col_order = [cols.id, cols.transaction, cols.category, cols.price_basic]
+    supply = combined[supply_mask][supply_col_order].reset_index(drop=True)
 
-    # Load tolerances if path provided
-    tolerances_trans = None
-    tolerances_trans_cat = None
-
-    if tolerances_path is not None:
-        sheets = pd.read_excel(tolerances_path, sheet_name=None, dtype=str)
-        sheets = {name: _strip_whitespace(df) for name, df in sheets.items()}
-
-        if "transactions" not in sheets:
-            raise ValueError(
-                f"Tolerances file '{tolerances_path}' must contain a "
-                f"'transactions' sheet."
-            )
-
-        tol_trans_df = sheets["transactions"]
-        required_tol_trans = [cols.transaction, "rel", "abs"]
-        _validate_required_columns(
-            tol_trans_df, required_tol_trans,
-            source=f"'transactions' sheet in tolerances file '{tolerances_path}'"
-        )
-        tol_trans_df["rel"] = pd.to_numeric(tol_trans_df["rel"])
-        tol_trans_df["abs"] = pd.to_numeric(tol_trans_df["abs"])
-        tolerances_trans = tol_trans_df[[cols.transaction, "rel", "abs"]].reset_index(drop=True)
-
-        if "categories" in sheets:
-            tol_cat_df = sheets["categories"]
-            required_tol_cat = [cols.transaction, cols.category, "rel", "abs"]
-            _validate_required_columns(
-                tol_cat_df, required_tol_cat,
-                source=f"'categories' sheet in tolerances file '{tolerances_path}'"
-            )
-            tol_cat_df[cols.category] = tol_cat_df[cols.category].fillna("")
-            tol_cat_df["rel"] = pd.to_numeric(tol_cat_df["rel"])
-            tol_cat_df["abs"] = pd.to_numeric(tol_cat_df["abs"])
-            tolerances_trans_cat = tol_cat_df[
-                [cols.transaction, cols.category, "rel", "abs"]
-            ].reset_index(drop=True)
-
-    return BalancingTargets(
-        supply=supply,
-        use=use,
-        tolerances_trans=tolerances_trans,
-        tolerances_trans_cat=tolerances_trans_cat,
+    # Use: id, transaction, category, price_basic, [layers], price_purchasers
+    use_col_order = (
+        [cols.id, cols.transaction, cols.category, cols.price_basic]
+        + layer_cols
+        + [cols.price_purchasers]
     )
+    use = combined[~supply_mask][use_col_order].reset_index(drop=True)
+
+    return BalancingTargets(supply=supply, use=use)
+
+
+def _load_balancing_config_tolerances_from_excel(
+    path: str | Path,
+    metadata: SUTMetadata,
+) -> TargetTolerances:
+    """Load a TargetTolerances from a two-sheet Excel file.
+
+    Known sheets: ``transactions`` (transaction-level tolerances) and
+    ``categories`` (transaction-category overrides). Both are optional.
+    Unknown sheets are silently ignored.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the tolerances Excel file.
+    metadata : SUTMetadata
+        Metadata for the SUT. Used to identify the actual transaction and
+        category column names.
+
+    Returns
+    -------
+    TargetTolerances
+
+    Raises
+    ------
+    ValueError
+        If a present sheet is missing required columns.
+    """
+    cols = metadata.columns
+    all_sheets = pd.read_excel(path, sheet_name=None, dtype=str)
+    all_sheets = {name: _strip_whitespace(df) for name, df in all_sheets.items()}
+
+    trans = None
+    if "transactions" in all_sheets:
+        df = all_sheets["transactions"]
+        _validate_required_columns(
+            df,
+            [cols.transaction, "rel", "abs"],
+            source="'transactions' sheet in tolerances file",
+        )
+        trans = df[[cols.transaction, "rel", "abs"]].copy()
+        trans["rel"] = pd.to_numeric(trans["rel"])
+        trans["abs"] = pd.to_numeric(trans["abs"])
+
+    trans_cat = None
+    if "categories" in all_sheets:
+        df = all_sheets["categories"]
+        _validate_required_columns(
+            df,
+            [cols.transaction, cols.category, "rel", "abs"],
+            source="'categories' sheet in tolerances file",
+        )
+        trans_cat = df[[cols.transaction, cols.category, "rel", "abs"]].copy()
+        trans_cat["rel"] = pd.to_numeric(trans_cat["rel"])
+        trans_cat["abs"] = pd.to_numeric(trans_cat["abs"])
+
+    return TargetTolerances(transactions=trans, categories=trans_cat)
+
+
+def _load_balancing_config_locks_from_excel(
+    path: str | Path,
+    metadata: SUTMetadata,
+) -> Locks:
+    """Load a Locks specification from a multi-sheet Excel file.
+
+    Known sheets: ``products``, ``trans``, ``trans_cat``, ``cells``. All are
+    optional. Unknown sheets are silently ignored.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the locks Excel file.
+    metadata : SUTMetadata
+        Metadata for the SUT. Used to identify the actual product, transaction,
+        and category column names.
+
+    Returns
+    -------
+    Locks
+
+    Raises
+    ------
+    ValueError
+        If a present sheet is missing required columns.
+    """
+    cols = metadata.columns
+    all_sheets = pd.read_excel(path, sheet_name=None, dtype=str)
+    all_sheets = {name: _strip_whitespace(df) for name, df in all_sheets.items()}
+
+    products = None
+    if "products" in all_sheets:
+        df = all_sheets["products"]
+        _validate_required_columns(
+            df, [cols.product], source="'products' sheet in locks file"
+        )
+        products = df[[cols.product]].copy()
+
+    trans = None
+    if "transactions" in all_sheets:
+        df = all_sheets["transactions"]
+        _validate_required_columns(
+            df, [cols.transaction], source="'transactions' sheet in locks file"
+        )
+        trans = df[[cols.transaction]].copy()
+
+    trans_cat = None
+    if "categories" in all_sheets:
+        df = all_sheets["categories"]
+        _validate_required_columns(
+            df,
+            [cols.transaction, cols.category],
+            source="'categories' sheet in locks file",
+        )
+        trans_cat = df[[cols.transaction, cols.category]].copy()
+
+    cells = None
+    if "cells" in all_sheets:
+        df = all_sheets["cells"]
+        _validate_required_columns(
+            df,
+            [cols.product, cols.transaction, cols.category],
+            source="'cells' sheet in locks file",
+        )
+        cells = df[[cols.product, cols.transaction, cols.category]].copy()
+
+    return Locks(products=products, transactions=trans, categories=trans_cat, cells=cells)
+
+
+def load_balancing_config_from_excel(
+    metadata: SUTMetadata,
+    *,
+    tolerances_path: str | Path | None = None,
+    locks_path: str | Path | None = None,
+) -> BalancingConfig:
+    """
+    Load balancing configuration from Excel files.
+
+    Loads target tolerances and/or locked cells from the provided file paths
+    and returns a :class:`~sutlab.sut.BalancingConfig`. At least one path
+    must be provided.
+
+    The tolerances file has two optional sheets:
+
+    - ``transactions`` — columns: transaction column name, ``rel``
+      (relative tolerance, 0–1), ``abs`` (absolute tolerance). One row per
+      transaction code.
+    - ``categories`` — columns: transaction column name, category column name,
+      ``rel``, ``abs``. Overrides for specific (transaction, category) pairs.
+
+    The locks file has four optional sheets:
+
+    - ``products`` — single column: product column name.
+    - ``transactions`` — single column: transaction column name.
+    - ``categories`` — two columns: transaction and category column names.
+    - ``cells`` — three columns: product, transaction, and category column names.
+
+    Column names in all sheets must match the actual data column names defined
+    in ``metadata.columns``.
+
+    Parameters
+    ----------
+    metadata : SUTMetadata
+        Metadata for the SUT. Used to identify actual column names.
+    tolerances_path : str, Path, or None
+        Path to the tolerances Excel file. ``None`` if no tolerances file is
+        provided.
+    locks_path : str, Path, or None
+        Path to the locks Excel file. ``None`` if no locks file is provided.
+
+    Returns
+    -------
+    BalancingConfig
+
+    Raises
+    ------
+    ValueError
+        If both ``tolerances_path`` and ``locks_path`` are ``None``.
+    ValueError
+        If any present sheet in either file is missing required columns.
+    """
+    if tolerances_path is None and locks_path is None:
+        raise ValueError(
+            "At least one of tolerances_path or locks_path must be provided."
+        )
+
+    target_tolerances = None
+    if tolerances_path is not None:
+        target_tolerances = _load_balancing_config_tolerances_from_excel(
+            tolerances_path, metadata
+        )
+
+    locks = None
+    if locks_path is not None:
+        locks = _load_balancing_config_locks_from_excel(locks_path, metadata)
+
+    return BalancingConfig(target_tolerances=target_tolerances, locks=locks)

@@ -9,13 +9,23 @@ import pandas as pd
 import pytest
 
 from sutlab.io import (
+    _load_metadata_classifications_from_excel,
+    _load_metadata_columns_from_excel,
+    load_balancing_config_from_excel,
     load_balancing_targets_from_excel,
-    load_metadata_classifications_from_excel,
-    load_metadata_columns_from_excel,
     load_metadata_from_excel,
     load_sut_from_parquet,
 )
-from sutlab.sut import BalancingTargets, SUT, SUTClassifications, SUTColumns, SUTMetadata
+from sutlab.sut import (
+    BalancingConfig,
+    BalancingTargets,
+    Locks,
+    SUT,
+    SUTClassifications,
+    SUTColumns,
+    SUTMetadata,
+    TargetTolerances,
+)
 
 
 FIXTURES = Path(__file__).parent.parent / "data" / "fixtures"
@@ -68,17 +78,17 @@ def minimal_transactions_df() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Tests for load_metadata_columns_from_excel
+# Tests for _load_metadata_columns_from_excel
 # ---------------------------------------------------------------------------
 
 class TestLoadMetadataColumnsFromExcel:
 
     def test_returns_sut_columns(self):
-        result = load_metadata_columns_from_excel(COLUMNS_FILE)
+        result = _load_metadata_columns_from_excel(COLUMNS_FILE)
         assert isinstance(result, SUTColumns)
 
     def test_required_fields_loaded_correctly(self):
-        result = load_metadata_columns_from_excel(COLUMNS_FILE)
+        result = _load_metadata_columns_from_excel(COLUMNS_FILE)
         assert result.id == "year"
         assert result.product == "nrnr"
         assert result.transaction == "trans"
@@ -87,12 +97,12 @@ class TestLoadMetadataColumnsFromExcel:
         assert result.price_purchasers == "koeb"
 
     def test_optional_fields_loaded_correctly(self):
-        result = load_metadata_columns_from_excel(COLUMNS_FILE)
+        result = _load_metadata_columns_from_excel(COLUMNS_FILE)
         assert result.trade_margins == "ava"
         assert result.vat == "moms"
 
     def test_absent_optional_fields_are_none(self):
-        result = load_metadata_columns_from_excel(COLUMNS_FILE)
+        result = _load_metadata_columns_from_excel(COLUMNS_FILE)
         assert result.wholesale_margins is None
         assert result.retail_margins is None
         assert result.transport_margins is None
@@ -104,7 +114,7 @@ class TestLoadMetadataColumnsFromExcel:
         rows = minimal_columns_rows()
         rows[0]["column"] = 2021  # year column as integer in Excel
         path = write_columns_file(tmp_path, rows)
-        result = load_metadata_columns_from_excel(path)
+        result = _load_metadata_columns_from_excel(path)
         assert result.id == "2021"
         assert isinstance(result.id, str)
 
@@ -112,14 +122,14 @@ class TestLoadMetadataColumnsFromExcel:
         rows = minimal_columns_rows()
         rows[1]["role"] = "  product  "  # whitespace around role
         path = write_columns_file(tmp_path, rows)
-        result = load_metadata_columns_from_excel(path)
+        result = _load_metadata_columns_from_excel(path)
         assert result.product == "nrnr"
 
     def test_strips_whitespace_from_column(self, tmp_path):
         rows = minimal_columns_rows()
         rows[1]["column"] = "  nrnr  "  # whitespace around column name
         path = write_columns_file(tmp_path, rows)
-        result = load_metadata_columns_from_excel(path)
+        result = _load_metadata_columns_from_excel(path)
         assert result.product == "nrnr"
 
     def test_error_missing_role_header(self, tmp_path):
@@ -128,7 +138,7 @@ class TestLoadMetadataColumnsFromExcel:
             path, index=False
         )
         with pytest.raises(ValueError, match="'role'"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_missing_column_header(self, tmp_path):
         path = tmp_path / "columns.xlsx"
@@ -136,37 +146,37 @@ class TestLoadMetadataColumnsFromExcel:
             path, index=False
         )
         with pytest.raises(ValueError, match="'column'"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_unknown_role(self, tmp_path):
         rows = minimal_columns_rows() + [{"column": "x", "role": "made_up_role"}]
         path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError, match="made_up_role"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_unknown_role_lists_known_roles(self, tmp_path):
         rows = minimal_columns_rows() + [{"column": "x", "role": "made_up_role"}]
         path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError, match="price_basic"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_duplicate_role(self, tmp_path):
         rows = minimal_columns_rows() + [{"column": "other_year", "role": "id"}]
         path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError, match="'id'"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_duplicate_column_name(self, tmp_path):
         rows = minimal_columns_rows() + [{"column": "year", "role": "trade_margins"}]
         path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError, match="'year'"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_missing_required_role(self, tmp_path):
         rows = [r for r in minimal_columns_rows() if r["role"] != "id"]
         path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError, match="'id'"):
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
 
     def test_error_message_lists_all_missing_required_roles(self, tmp_path):
         # Only price_basic and price_purchasers present — four roles missing
@@ -176,7 +186,7 @@ class TestLoadMetadataColumnsFromExcel:
         ]
         path = write_columns_file(tmp_path, rows)
         with pytest.raises(ValueError) as exc_info:
-            load_metadata_columns_from_excel(path)
+            _load_metadata_columns_from_excel(path)
         message = str(exc_info.value)
         assert "id" in message
         assert "product" in message
@@ -185,28 +195,28 @@ class TestLoadMetadataColumnsFromExcel:
 
 
 # ---------------------------------------------------------------------------
-# Tests for load_metadata_classifications_from_excel
+# Tests for _load_metadata_classifications_from_excel
 # ---------------------------------------------------------------------------
 
 class TestLoadMetadataClassificationsFromExcel:
 
     def test_returns_sut_classifications(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert isinstance(result, SUTClassifications)
 
     def test_classification_names_loaded(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.classification_names is not None
         assert "dimension" in result.classification_names.columns
         assert "classification" in result.classification_names.columns
 
     def test_products_loaded(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.products is not None
         assert set(result.products["code"]) == {"A", "B", "C", "T"}
 
     def test_transactions_loaded_with_required_columns(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.transactions is not None
         assert "code" in result.transactions.columns
         assert "name" in result.transactions.columns
@@ -214,16 +224,16 @@ class TestLoadMetadataClassificationsFromExcel:
         assert "esa_code" in result.transactions.columns
 
     def test_transactions_esa_code_values_are_valid(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         valid = {"P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
         assert set(result.transactions["esa_code"]).issubset(valid)
 
     def test_transactions_table_values_are_supply_or_use(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert set(result.transactions["table"]).issubset({"supply", "use"})
 
     def test_supply_transaction_codes_correct(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         supply_codes = set(
             result.transactions.loc[
                 result.transactions["table"] == "supply", "code"
@@ -232,7 +242,7 @@ class TestLoadMetadataClassificationsFromExcel:
         assert supply_codes == {"0100", "0700"}
 
     def test_industries_loaded(self):
-        result = load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
+        result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE)
         assert result.industries is not None
         assert set(result.industries["code"]) == {"X", "Y", "Z"}
 
@@ -241,7 +251,7 @@ class TestLoadMetadataClassificationsFromExcel:
         path = write_classifications_file(
             tmp_path, {"transactions": minimal_transactions_df()}
         )
-        result = load_metadata_classifications_from_excel(path)
+        result = _load_metadata_classifications_from_excel(path)
         assert result.classification_names is None
         assert result.products is None
         assert result.industries is None
@@ -253,17 +263,18 @@ class TestLoadMetadataClassificationsFromExcel:
             "transactions": minimal_transactions_df(),
             "my_custom_sheet": pd.DataFrame({"x": [1]}),
         })
-        result = load_metadata_classifications_from_excel(path)
+        result = _load_metadata_classifications_from_excel(path)
         assert result.transactions is not None
 
-    def test_extra_columns_in_sheet_are_kept(self, tmp_path):
-        # Extra columns beyond the required ones should not be dropped
+    def test_extra_columns_in_sheet_are_ignored(self, tmp_path):
+        # Extra columns beyond the required ones are silently dropped
         products = pd.DataFrame({
             "code": ["A"], "name": ["Product A"], "extra_col": [99]
         })
         path = write_classifications_file(tmp_path, {"transactions": minimal_transactions_df(), "products": products})
-        result = load_metadata_classifications_from_excel(path)
-        assert "extra_col" in result.products.columns
+        result = _load_metadata_classifications_from_excel(path)
+        assert "extra_col" not in result.products.columns
+        assert list(result.products.columns) == ["code", "name"]
 
     def test_strips_whitespace_from_all_sheets(self, tmp_path):
         transactions = pd.DataFrame({
@@ -273,7 +284,7 @@ class TestLoadMetadataClassificationsFromExcel:
             "esa_code": ["  P1  "],
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
-        result = load_metadata_classifications_from_excel(path)
+        result = _load_metadata_classifications_from_excel(path)
         assert result.transactions["code"].iloc[0] == "0100"
         assert result.transactions["table"].iloc[0] == "supply"
 
@@ -281,7 +292,7 @@ class TestLoadMetadataClassificationsFromExcel:
         transactions = pd.DataFrame({"code": ["0100"], "name": ["Output"]})
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="'table'"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_invalid_table_value(self, tmp_path):
         transactions = pd.DataFrame({
@@ -292,7 +303,7 @@ class TestLoadMetadataClassificationsFromExcel:
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="'wrong'"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_invalid_table_value_lists_valid_values(self, tmp_path):
         transactions = pd.DataFrame({
@@ -303,7 +314,7 @@ class TestLoadMetadataClassificationsFromExcel:
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="supply"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_transactions_missing_esa_code_column(self, tmp_path):
         transactions = pd.DataFrame({
@@ -313,7 +324,7 @@ class TestLoadMetadataClassificationsFromExcel:
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="'esa_code'"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_invalid_esa_code_value(self, tmp_path):
         transactions = pd.DataFrame({
@@ -324,7 +335,7 @@ class TestLoadMetadataClassificationsFromExcel:
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="'WRONG'"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_invalid_esa_code_lists_valid_values(self, tmp_path):
         transactions = pd.DataFrame({
@@ -335,21 +346,21 @@ class TestLoadMetadataClassificationsFromExcel:
         })
         path = write_classifications_file(tmp_path, {"transactions": transactions})
         with pytest.raises(ValueError, match="P1"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_sheet_missing_required_column(self, tmp_path):
         path = write_classifications_file(tmp_path, {
             "products": pd.DataFrame({"code": ["A"]}),  # missing 'name'
         })
         with pytest.raises(ValueError, match="'name'"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
     def test_error_message_names_the_offending_sheet(self, tmp_path):
         path = write_classifications_file(tmp_path, {
             "products": pd.DataFrame({"code": ["A"]}),  # missing 'name'
         })
         with pytest.raises(ValueError, match="'products'"):
-            load_metadata_classifications_from_excel(path)
+            _load_metadata_classifications_from_excel(path)
 
 
 # ---------------------------------------------------------------------------
@@ -506,27 +517,10 @@ class TestLoadSutFromParquet:
 
 
 # ---------------------------------------------------------------------------
-# Tests for target role in load_metadata_columns_from_excel
-# ---------------------------------------------------------------------------
-
-class TestLoadMetadataColumnsTargetRole:
-
-    def test_target_field_loaded_from_fixture(self):
-        result = load_metadata_columns_from_excel(COLUMNS_FILE)
-        assert result.target == "maal"
-
-    def test_target_field_is_none_when_absent(self, tmp_path):
-        path = write_columns_file(tmp_path, minimal_columns_rows())
-        result = load_metadata_columns_from_excel(path)
-        assert result.target is None
-
-
-# ---------------------------------------------------------------------------
 # Tests for load_balancing_targets_from_excel
 # ---------------------------------------------------------------------------
 
 TARGETS_FILE = FIXTURES / "ta_targets_2021.xlsx"
-TOLERANCES_FILE = FIXTURES / "ta_tolerances.xlsx"
 
 
 def write_targets_file(tmp_path: Path, rows: list[dict], filename="targets.xlsx") -> Path:
@@ -536,11 +530,18 @@ def write_targets_file(tmp_path: Path, rows: list[dict], filename="targets.xlsx"
     return path
 
 
+NAN = float("nan")
+
+
 def minimal_targets_rows() -> list[dict]:
-    """Minimal valid targets covering one supply and one use row (no id column)."""
+    """Minimal valid targets: one supply row and one use row.
+
+    Mirrors the fixture metadata columns: trans, brch, bas, ava, moms, koeb.
+    Supply rows have bas non-NaN; use rows have koeb non-NaN.
+    """
     return [
-        {"trans": "0100", "brch": "X",  "maal": 202},
-        {"trans": "2000", "brch": "X",  "maal": 64},
+        {"trans": "0100", "brch": "X",  "bas": 202, "ava": NAN, "moms": NAN, "koeb": NAN},
+        {"trans": "2000", "brch": "X",  "bas": NAN, "ava": NAN, "moms": NAN, "koeb":  64},
     ]
 
 
@@ -577,10 +578,13 @@ class TestLoadBalancingTargetsFromExcel:
         result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         assert len(result.use) == 7
 
-    def test_column_order(self, metadata):
+    def test_supply_column_order(self, metadata):
         result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
-        assert list(result.supply.columns) == ["year", "trans", "brch", "maal"]
-        assert list(result.use.columns) == ["year", "trans", "brch", "maal"]
+        assert list(result.supply.columns) == ["year", "trans", "brch", "bas"]
+
+    def test_use_column_order(self, metadata):
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        assert list(result.use.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
 
     def test_id_column_populated(self, metadata):
         result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
@@ -614,30 +618,44 @@ class TestLoadBalancingTargetsFromExcel:
         imports = result.supply[result.supply["trans"] == "0700"]
         assert imports["brch"].iloc[0] == ""
 
-    def test_target_column_is_numeric(self, metadata):
+    def test_price_columns_are_numeric(self, metadata):
         result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
-        assert pd.api.types.is_numeric_dtype(result.supply["maal"])
-        assert pd.api.types.is_numeric_dtype(result.use["maal"])
+        assert pd.api.types.is_numeric_dtype(result.supply["bas"])
+        assert pd.api.types.is_numeric_dtype(result.use["koeb"])
 
-    def test_target_values_correct(self, metadata):
+    def test_supply_target_values_correct(self, metadata):
         result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
         supply_0100_x = result.supply[
             (result.supply["trans"] == "0100") & (result.supply["brch"] == "X")
-        ]["maal"].iloc[0]
+        ]["bas"].iloc[0]
         assert supply_0100_x == 202
+
+    def test_use_target_values_correct(self, metadata):
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        use_2000_x = result.use[
+            (result.use["trans"] == "2000") & (result.use["brch"] == "X")
+        ]["koeb"].iloc[0]
+        assert use_2000_x == 64
+
+    def test_supply_nontargeted_price_columns_are_nan(self, metadata):
+        # Supply rows: only bas carries a target; ava, moms, koeb are not in supply output
+        # (supply output is id, trans, brch, bas only — layers are excluded)
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        assert "ava" not in result.supply.columns
+        assert "koeb" not in result.supply.columns
+
+    def test_use_nontargeted_price_columns_are_nan(self, metadata):
+        # Use rows: only koeb carries a target; bas, ava, moms are NaN in the fixture
+        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
+        use_2000_x = result.use[
+            (result.use["trans"] == "2000") & (result.use["brch"] == "X")
+        ]
+        assert pd.isna(use_2000_x["bas"].iloc[0])
+        assert pd.isna(use_2000_x["ava"].iloc[0])
 
     def test_error_mismatched_lengths(self, metadata):
         with pytest.raises(ValueError, match="same length"):
             load_balancing_targets_from_excel([2021, 2022], [TARGETS_FILE], metadata)
-
-    def test_error_when_target_role_not_set(self, metadata):
-        bare_columns = SUTColumns(
-            id="year", product="nrnr", transaction="trans", category="brch",
-            price_basic="bas", price_purchasers="koeb",
-        )
-        bare_metadata = SUTMetadata(columns=bare_columns, classifications=metadata.classifications)
-        with pytest.raises(ValueError, match="target"):
-            load_balancing_targets_from_excel([2021], [TARGETS_FILE], bare_metadata)
 
     def test_error_when_classifications_absent(self, metadata):
         bare_metadata = SUTMetadata(columns=metadata.columns)
@@ -645,95 +663,229 @@ class TestLoadBalancingTargetsFromExcel:
             load_balancing_targets_from_excel([2021], [TARGETS_FILE], bare_metadata)
 
     def test_error_missing_required_column(self, tmp_path, metadata):
-        path = write_targets_file(tmp_path, [{"trans": "0100", "maal": 202}])
+        # File missing brch (category column)
+        path = write_targets_file(tmp_path, [
+            {"trans": "0100", "bas": 202, "ava": NAN, "moms": NAN, "koeb": NAN}
+        ])
         with pytest.raises(ValueError, match="brch"):
             load_balancing_targets_from_excel([2021], [path], metadata)
 
+    def test_error_missing_price_column(self, tmp_path, metadata):
+        # File missing koeb (price_purchasers column)
+        path = write_targets_file(tmp_path, [
+            {"trans": "0100", "brch": "X", "bas": 202, "ava": NAN, "moms": NAN}
+        ])
+        with pytest.raises(ValueError, match="koeb"):
+            load_balancing_targets_from_excel([2021], [path], metadata)
+
     def test_error_unknown_transaction_code(self, tmp_path, metadata):
-        rows = minimal_targets_rows() + [{"trans": "ZZZZ", "brch": "X", "maal": 10}]
+        rows = minimal_targets_rows() + [
+            {"trans": "ZZZZ", "brch": "X", "bas": NAN, "ava": NAN, "moms": NAN, "koeb": 10}
+        ]
         path = write_targets_file(tmp_path, rows)
         with pytest.raises(ValueError, match="ZZZZ"):
             load_balancing_targets_from_excel([2021], [path], metadata)
 
-    def test_tolerances_none_when_path_not_provided(self, metadata):
-        result = load_balancing_targets_from_excel([2021], [TARGETS_FILE], metadata)
-        assert result.tolerances_trans is None
-        assert result.tolerances_trans_cat is None
 
-    def test_tolerances_loaded_when_path_provided(self, metadata):
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
-        )
-        assert result.tolerances_trans is not None
-        assert result.tolerances_trans_cat is not None
+# ---------------------------------------------------------------------------
+# Tests for load_balancing_config_from_excel
+# ---------------------------------------------------------------------------
 
-    def test_tolerances_trans_has_correct_columns(self, metadata):
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
-        )
-        assert list(result.tolerances_trans.columns) == ["trans", "rel", "abs"]
+TOLERANCES_FILE = FIXTURES / "ta_tolerances.xlsx"
+LOCKS_FILE = FIXTURES / "balancing_locks.xlsx"
 
-    def test_tolerances_trans_cat_has_correct_columns(self, metadata):
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
-        )
-        assert list(result.tolerances_trans_cat.columns) == ["trans", "brch", "rel", "abs"]
 
-    def test_tolerances_trans_covers_all_transactions(self, metadata):
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+def write_tolerances_file(
+    tmp_path: Path, sheets: dict[str, pd.DataFrame], filename="tolerances.xlsx"
+) -> Path:
+    """Write a tolerances Excel file from a dict of sheet DataFrames."""
+    path = tmp_path / filename
+    with pd.ExcelWriter(path) as writer:
+        for sheet_name, df in sheets.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    return path
+
+
+def write_locks_file(
+    tmp_path: Path, sheets: dict[str, pd.DataFrame], filename="locks.xlsx"
+) -> Path:
+    """Write a locks Excel file from a dict of sheet DataFrames."""
+    path = tmp_path / filename
+    with pd.ExcelWriter(path) as writer:
+        for sheet_name, df in sheets.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    return path
+
+
+class TestLoadBalancingConfigFromExcel:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    # --- return types ---
+
+    def test_returns_balancing_config(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
         )
-        assert set(result.tolerances_trans["trans"]) == {
+        assert isinstance(result, BalancingConfig)
+
+    def test_tolerances_only_locks_is_none(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert result.locks is None
+
+    def test_locks_only_tolerances_is_none(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, locks_path=LOCKS_FILE
+        )
+        assert result.target_tolerances is None
+
+    def test_both_paths_both_fields_populated(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE, locks_path=LOCKS_FILE
+        )
+        assert result.target_tolerances is not None
+        assert result.locks is not None
+
+    def test_error_if_no_paths_provided(self, metadata):
+        with pytest.raises(ValueError, match="tolerances_path"):
+            load_balancing_config_from_excel(metadata)
+
+    # --- tolerances ---
+
+    def test_tolerances_returns_target_tolerances(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert isinstance(result.target_tolerances, TargetTolerances)
+
+    def test_tolerances_trans_loaded(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert result.target_tolerances.transactions is not None
+        assert set(result.target_tolerances.transactions["trans"]) == {
             "0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"
         }
 
-    def test_tolerances_trans_cat_covers_only_some_combinations(self, metadata):
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+    def test_tolerances_trans_cat_loaded(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
         )
-        assert len(result.tolerances_trans_cat) == 3
+        assert result.target_tolerances.categories is not None
+        assert len(result.target_tolerances.categories) == 3
 
-    def test_tolerances_numeric_columns(self, metadata):
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=TOLERANCES_FILE
+    def test_tolerances_trans_rel_abs_are_numeric(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
         )
-        assert pd.api.types.is_numeric_dtype(result.tolerances_trans["rel"])
-        assert pd.api.types.is_numeric_dtype(result.tolerances_trans["abs"])
-        assert pd.api.types.is_numeric_dtype(result.tolerances_trans_cat["rel"])
-        assert pd.api.types.is_numeric_dtype(result.tolerances_trans_cat["abs"])
+        assert pd.api.types.is_numeric_dtype(result.target_tolerances.transactions["rel"])
+        assert pd.api.types.is_numeric_dtype(result.target_tolerances.transactions["abs"])
 
-    def test_tolerances_trans_cat_none_when_sheet_absent(self, tmp_path, metadata):
-        # Write a tolerances file with only the transactions sheet
-        path = tmp_path / "tolerances_no_cat.xlsx"
-        tol_trans = pd.DataFrame({
-            "trans": ["0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"],
-            "rel": [0.02] * 8,
-            "abs": [5.0] * 8,
+    def test_tolerances_trans_cat_rel_abs_are_numeric(self, metadata):
+        result = load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE
+        )
+        assert pd.api.types.is_numeric_dtype(result.target_tolerances.categories["rel"])
+        assert pd.api.types.is_numeric_dtype(result.target_tolerances.categories["abs"])
+
+    def test_tolerances_absent_sheet_gives_none(self, tmp_path, metadata):
+        # File with only transactions sheet — trans_cat should be None
+        trans_df = pd.DataFrame({
+            "trans": ["0100"], "rel": [0.02], "abs": [5.0]
         })
-        with pd.ExcelWriter(path) as writer:
-            tol_trans.to_excel(writer, sheet_name="transactions", index=False)
-        result = load_balancing_targets_from_excel(
-            [2021], [TARGETS_FILE], metadata, tolerances_path=path
-        )
-        assert result.tolerances_trans is not None
-        assert result.tolerances_trans_cat is None
+        path = write_tolerances_file(tmp_path, {"transactions": trans_df})
+        result = load_balancing_config_from_excel(metadata, tolerances_path=path)
+        assert result.target_tolerances.transactions is not None
+        assert result.target_tolerances.categories is None
 
-    def test_error_tolerances_missing_transactions_sheet(self, tmp_path, metadata):
-        path = tmp_path / "bad_tolerances.xlsx"
-        pd.DataFrame({"trans": ["0100"], "brch": ["X"], "rel": [0.01], "abs": [3.0]}).to_excel(
-            path, sheet_name="categories", index=False
-        )
+    def test_tolerances_strips_whitespace(self, tmp_path, metadata):
+        trans_df = pd.DataFrame({
+            "trans": ["  0100  "], "rel": ["0.02"], "abs": ["5.0"]
+        })
+        path = write_tolerances_file(tmp_path, {"transactions": trans_df})
+        result = load_balancing_config_from_excel(metadata, tolerances_path=path)
+        assert result.target_tolerances.transactions["trans"].iloc[0] == "0100"
+
+    def test_tolerances_error_missing_column(self, tmp_path, metadata):
+        # Missing 'abs' column
+        trans_df = pd.DataFrame({"trans": ["0100"], "rel": [0.02]})
+        path = write_tolerances_file(tmp_path, {"transactions": trans_df})
+        with pytest.raises(ValueError, match="'abs'"):
+            load_balancing_config_from_excel(metadata, tolerances_path=path)
+
+    def test_tolerances_error_mentions_sheet_name(self, tmp_path, metadata):
+        trans_df = pd.DataFrame({"trans": ["0100"], "rel": [0.02]})
+        path = write_tolerances_file(tmp_path, {"transactions": trans_df})
         with pytest.raises(ValueError, match="'transactions'"):
-            load_balancing_targets_from_excel(
-                [2021], [TARGETS_FILE], metadata, tolerances_path=path
-            )
+            load_balancing_config_from_excel(metadata, tolerances_path=path)
 
-    def test_error_tolerances_trans_missing_column(self, tmp_path, metadata):
-        path = tmp_path / "bad_tolerances.xlsx"
-        pd.DataFrame({"trans": ["0100"], "rel": [0.02]}).to_excel(  # missing abs
-            path, sheet_name="transactions", index=False
-        )
-        with pytest.raises(ValueError, match="abs"):
-            load_balancing_targets_from_excel(
-                [2021], [TARGETS_FILE], metadata, tolerances_path=path
-            )
+    # --- locks ---
+
+    def test_locks_returns_locks(self, metadata):
+        result = load_balancing_config_from_excel(metadata, locks_path=LOCKS_FILE)
+        assert isinstance(result.locks, Locks)
+
+    def test_locks_products_loaded(self, metadata):
+        result = load_balancing_config_from_excel(metadata, locks_path=LOCKS_FILE)
+        assert result.locks.products is not None
+        assert list(result.locks.products["nrnr"]) == ["C"]
+
+    def test_locks_trans_loaded(self, metadata):
+        result = load_balancing_config_from_excel(metadata, locks_path=LOCKS_FILE)
+        assert result.locks.transactions is not None
+        assert set(result.locks.transactions["trans"]) == {"3200", "6001"}
+
+    def test_locks_absent_sheets_are_none(self, metadata):
+        # Fixture has only products and trans sheets — trans_cat and cells absent
+        result = load_balancing_config_from_excel(metadata, locks_path=LOCKS_FILE)
+        assert result.locks.categories is None
+        assert result.locks.cells is None
+
+    def test_locks_all_sheets_loaded(self, tmp_path, metadata):
+        products_df = pd.DataFrame({"nrnr": ["A"]})
+        trans_df = pd.DataFrame({"trans": ["2000"]})
+        trans_cat_df = pd.DataFrame({"trans": ["3110"], "brch": ["HH"]})
+        cells_df = pd.DataFrame({"nrnr": ["B"], "trans": ["2000"], "brch": ["X"]})
+        path = write_locks_file(tmp_path, {
+            "products": products_df,
+            "transactions": trans_df,
+            "categories": trans_cat_df,
+            "cells": cells_df,
+        })
+        result = load_balancing_config_from_excel(metadata, locks_path=path)
+        assert result.locks.products is not None
+        assert result.locks.transactions is not None
+        assert result.locks.categories is not None
+        assert result.locks.cells is not None
+
+    def test_locks_strips_whitespace(self, tmp_path, metadata):
+        products_df = pd.DataFrame({"nrnr": ["  C  "]})
+        path = write_locks_file(tmp_path, {"products": products_df})
+        result = load_balancing_config_from_excel(metadata, locks_path=path)
+        assert result.locks.products["nrnr"].iloc[0] == "C"
+
+    def test_locks_error_missing_column(self, tmp_path, metadata):
+        # products sheet with wrong column name
+        products_df = pd.DataFrame({"wrong_col": ["C"]})
+        path = write_locks_file(tmp_path, {"products": products_df})
+        with pytest.raises(ValueError, match="'nrnr'"):
+            load_balancing_config_from_excel(metadata, locks_path=path)
+
+    def test_locks_error_mentions_sheet_name(self, tmp_path, metadata):
+        products_df = pd.DataFrame({"wrong_col": ["C"]})
+        path = write_locks_file(tmp_path, {"products": products_df})
+        with pytest.raises(ValueError, match="'products'"):
+            load_balancing_config_from_excel(metadata, locks_path=path)
+
+    def test_locks_unknown_sheets_ignored(self, tmp_path, metadata):
+        products_df = pd.DataFrame({"nrnr": ["C"]})
+        path = write_locks_file(tmp_path, {
+            "products": products_df,
+            "unknown_sheet": pd.DataFrame({"x": [1]}),
+        })
+        result = load_balancing_config_from_excel(metadata, locks_path=path)
+        assert result.locks.products is not None

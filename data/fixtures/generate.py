@@ -262,12 +262,10 @@ def make_columns() -> pd.DataFrame:
     return pd.DataFrame({
         "column": ["year", "nrnr",    "trans",        "brch",
                    "bas",           "koeb",
-                   "ava",           "moms",
-                   "maal"],
+                   "ava",           "moms"],
         "role":   ["id",  "product", "transaction",   "category",
                    "price_basic",   "price_purchasers",
-                   "trade_margins", "vat",
-                   "target"],
+                   "trade_margins", "vat"],
     })
 
 
@@ -275,10 +273,15 @@ def make_targets_2021() -> pd.DataFrame:
     """Return balancing targets for 2021.
 
     One row per (trans, brch) combination. No id column — the loader adds
-    the year when loading. Supply targets are at basic prices; use targets
-    are at purchasers' prices. Values are deliberately slightly different
-    from the actual column totals in the fixture data to simulate a realistic
-    balancing scenario.
+    the year when loading. Mirrors the combined SUT long format without the
+    product dimension: columns are trans, brch, bas, ava, moms, koeb.
+
+    Supply rows have a non-NaN value in bas (basic prices) only.
+    Use rows have a non-NaN value in koeb (purchasers' prices) only.
+    All other price cells are NaN.
+
+    Values are deliberately slightly different from the actual column totals
+    in the fixture data to simulate a realistic balancing scenario.
 
     Actual totals for reference:
         supply: 0100/X=200, 0100/Y=160, 0100/Z=32, 0700/""=60
@@ -286,22 +289,23 @@ def make_targets_2021() -> pd.DataFrame:
                 5139/""=30, 5200/""=30, 6001/""=60
     """
     NAN = float("nan")
+    #            trans     brch    bas   ava   moms   koeb
     rows = [
-        # supply targets (basic prices)
-        ["0100", "X",   202],
-        ["0100", "Y",   158],
-        ["0100", "Z",    33],
-        ["0700", NAN,    62],
-        # use targets (purchasers' prices)
-        ["2000", "X",    64],
-        ["2000", "Y",    71],
-        ["3110", "HH",  160],
-        ["3200", "GOV",  65],
-        ["5139", NAN,    28],
-        ["5200", NAN,    32],
-        ["6001", NAN,    58],
+        # supply targets — only bas is non-NaN
+        ["0100", "X",   202,  NAN,  NAN,  NAN],
+        ["0100", "Y",   158,  NAN,  NAN,  NAN],
+        ["0100", "Z",    33,  NAN,  NAN,  NAN],
+        ["0700", "",     62,  NAN,  NAN,  NAN],
+        # use targets — only koeb is non-NaN
+        ["2000", "X",   NAN,  NAN,  NAN,   64],
+        ["2000", "Y",   NAN,  NAN,  NAN,   71],
+        ["3110", "HH",  NAN,  NAN,  NAN,  160],
+        ["3200", "GOV", NAN,  NAN,  NAN,   65],
+        ["5139", "",    NAN,  NAN,  NAN,   28],
+        ["5200", "",    NAN,  NAN,  NAN,   32],
+        ["6001", "",    NAN,  NAN,  NAN,   58],
     ]
-    return pd.DataFrame(rows, columns=["trans", "brch", "maal"])
+    return pd.DataFrame(rows, columns=["trans", "brch", "bas", "ava", "moms", "koeb"])
 
 
 def make_tolerances() -> dict[str, pd.DataFrame]:
@@ -323,6 +327,17 @@ def make_tolerances() -> dict[str, pd.DataFrame]:
         "abs":   [3.0,    7.0,    10.0],
     })
     return {"transactions": transactions, "categories": categories}
+
+
+def make_locks() -> dict[str, pd.DataFrame]:
+    """Return lock tables for balancing_locks.xlsx.
+
+    Locks product C (all transactions/categories) and transactions 3200 and
+    6001 (all products/categories). trans_cat and cells sheets are absent.
+    """
+    products = pd.DataFrame({"nrnr": ["C"]})
+    transactions = pd.DataFrame({"trans": ["3200", "6001"]})
+    return {"products": products, "transactions": transactions}
 
 
 def make_karakteristiske_brancher() -> pd.DataFrame:
@@ -353,6 +368,12 @@ def main() -> None:
         for sheet_name, df in tolerances.items():
             df.to_excel(writer, sheet_name=sheet_name, index=False)
     print("ta_tolerances.xlsx OK")
+
+    locks = make_locks()
+    with pd.ExcelWriter(FIXTURES / "balancing_locks.xlsx") as writer:
+        for sheet_name, df in locks.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    print("balancing_locks.xlsx OK")
 
     sheets = make_classifications()
     with pd.ExcelWriter(METADATA / "ta_classifications.xlsx") as writer:

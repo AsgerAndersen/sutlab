@@ -138,36 +138,16 @@ class TestMarkForBalancing:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def columns_with_target():
-    return SUTColumns(
-        id="year",
-        product="nrnr",
-        transaction="trans",
-        category="brch",
-        price_basic="bas",
-        price_purchasers="koeb",
-        target="maal",
-    )
-
-
-@pytest.fixture
-def metadata_with_target(columns_with_target):
-    return SUTMetadata(columns=columns_with_target)
-
-
-@pytest.fixture
-def sut_for_targets(supply, use, metadata_with_target):
-    return SUT(price_basis="current_year", supply=supply, use=use, metadata=metadata_with_target)
-
-
 def _make_targets(years=None) -> BalancingTargets:
-    """Build a BalancingTargets that covers all (trans, brch) combos in the
-    supply/use fixtures (years 2018, 2019; trans 0100/I1 and 2000/I1)."""
+    """Build a BalancingTargets for the supply/use fixtures.
+
+    Fixtures have years 2018 and 2019; transactions 0100/I1 (supply) and
+    2000/I1 (use). Supply targets use ``bas``; use targets use ``koeb``.
+    """
     if years is None:
         years = [2018, 2019]
-    supply_rows = [{"year": y, "trans": "0100", "brch": "I1", "maal": 200.0} for y in years]
-    use_rows = [{"year": y, "trans": "2000", "brch": "I1", "maal": 100.0} for y in years]
+    supply_rows = [{"year": y, "trans": "0100", "brch": "I1", "bas": 200.0} for y in years]
+    use_rows = [{"year": y, "trans": "2000", "brch": "I1", "koeb": 100.0} for y in years]
     return BalancingTargets(
         supply=pd.DataFrame(supply_rows),
         use=pd.DataFrame(use_rows),
@@ -176,31 +156,31 @@ def _make_targets(years=None) -> BalancingTargets:
 
 class TestSetBalancingTargets:
 
-    def test_returns_sut_with_targets_set(self, sut_for_targets):
+    def test_returns_sut_with_targets_set(self, sut):
         targets = _make_targets()
-        result = set_balancing_targets(sut_for_targets, targets)
+        result = set_balancing_targets(sut, targets)
         assert result.balancing_targets is targets
 
-    def test_does_not_mutate_original(self, sut_for_targets):
+    def test_does_not_mutate_original(self, sut):
         targets = _make_targets()
-        set_balancing_targets(sut_for_targets, targets)
-        assert sut_for_targets.balancing_targets is None
+        set_balancing_targets(sut, targets)
+        assert sut.balancing_targets is None
 
-    def test_data_is_shared_not_copied(self, sut_for_targets):
+    def test_data_is_shared_not_copied(self, sut):
         targets = _make_targets()
-        result = set_balancing_targets(sut_for_targets, targets)
-        assert result.supply is sut_for_targets.supply
+        result = set_balancing_targets(sut, targets)
+        assert result.supply is sut.supply
 
-    def test_other_fields_are_preserved(self, sut_for_targets):
+    def test_other_fields_are_preserved(self, sut):
         targets = _make_targets()
-        result = set_balancing_targets(sut_for_targets, targets)
-        assert result.price_basis == sut_for_targets.price_basis
-        assert result.metadata is sut_for_targets.metadata
+        result = set_balancing_targets(sut, targets)
+        assert result.price_basis == sut.price_basis
+        assert result.metadata is sut.metadata
 
-    def test_targets_covering_subset_of_ids_is_allowed(self, sut_for_targets):
+    def test_targets_covering_subset_of_ids_is_allowed(self, sut):
         # Targets only cover 2019, but sut has both 2018 and 2019 — should not raise
         targets = _make_targets(years=[2019])
-        result = set_balancing_targets(sut_for_targets, targets)
+        result = set_balancing_targets(sut, targets)
         assert result.balancing_targets is targets
 
     def test_raises_when_metadata_is_none(self, supply, use):
@@ -208,93 +188,29 @@ class TestSetBalancingTargets:
         with pytest.raises(ValueError, match="metadata"):
             set_balancing_targets(sut_no_meta, _make_targets())
 
-    def test_raises_when_target_role_not_set(self, sut):
-        # sut uses metadata without a target role
-        with pytest.raises(ValueError, match="target"):
-            set_balancing_targets(sut, _make_targets())
-
-    def test_raises_when_supply_targets_missing_column(self, sut_for_targets):
+    def test_raises_when_supply_targets_missing_column(self, sut):
         targets = BalancingTargets(
-            supply=pd.DataFrame({"year": [2019], "trans": ["0100"]}),  # missing brch, maal
-            use=pd.DataFrame({"year": [2019], "trans": ["2000"], "brch": ["I1"], "maal": [100.0]}),
+            supply=pd.DataFrame({"year": [2019], "trans": ["0100"]}),  # missing brch, bas
+            use=pd.DataFrame({"year": [2019], "trans": ["2000"], "brch": ["I1"], "koeb": [100.0]}),
         )
         with pytest.raises(ValueError, match="supply"):
-            set_balancing_targets(sut_for_targets, targets)
+            set_balancing_targets(sut, targets)
 
-    def test_raises_when_coverage_incomplete_supply(self, sut_for_targets):
-        # supply targets exist for 2018/2019 but are missing the I1 category
+    def test_raises_when_use_targets_missing_column(self, sut):
         targets = BalancingTargets(
-            supply=pd.DataFrame({"year": [2018, 2019], "trans": ["0100", "0100"], "brch": ["I2", "I2"], "maal": [200.0, 200.0]}),
-            use=pd.DataFrame({"year": [2018, 2019], "trans": ["2000", "2000"], "brch": ["I1", "I1"], "maal": [100.0, 100.0]}),
-        )
-        with pytest.raises(ValueError, match="supply"):
-            set_balancing_targets(sut_for_targets, targets)
-
-    def test_raises_when_coverage_incomplete_use(self, sut_for_targets):
-        targets = BalancingTargets(
-            supply=pd.DataFrame({"year": [2018, 2019], "trans": ["0100", "0100"], "brch": ["I1", "I1"], "maal": [200.0, 200.0]}),
-            use=pd.DataFrame({"year": [2018, 2019], "trans": ["2000", "2000"], "brch": ["I2", "I2"], "maal": [100.0, 100.0]}),
+            supply=pd.DataFrame({"year": [2019], "trans": ["0100"], "brch": ["I1"], "bas": [200.0]}),
+            use=pd.DataFrame({"year": [2019], "trans": ["2000"]}),  # missing brch, koeb
         )
         with pytest.raises(ValueError, match="use"):
-            set_balancing_targets(sut_for_targets, targets)
+            set_balancing_targets(sut, targets)
 
-    def test_error_message_names_missing_combinations(self, sut_for_targets):
+    def test_error_names_missing_supply_columns(self, sut):
         targets = BalancingTargets(
-            supply=pd.DataFrame({"year": [2018, 2019], "trans": ["0100", "0100"], "brch": ["I2", "I2"], "maal": [200.0, 200.0]}),
-            use=pd.DataFrame({"year": [2018, 2019], "trans": ["2000", "2000"], "brch": ["I1", "I1"], "maal": [100.0, 100.0]}),
+            supply=pd.DataFrame({"year": [2019], "trans": ["0100"]}),  # missing brch, bas
+            use=pd.DataFrame({"year": [2019], "trans": ["2000"], "brch": ["I1"], "koeb": [100.0]}),
         )
-        with pytest.raises(ValueError, match="0100"):
-            set_balancing_targets(sut_for_targets, targets)
-
-    def test_tolerances_trans_none_by_default(self, sut_for_targets):
-        result = set_balancing_targets(sut_for_targets, _make_targets())
-        assert result.balancing_targets.tolerances_trans is None
-        assert result.balancing_targets.tolerances_trans_cat is None
-
-    def test_tolerances_trans_attached(self, sut_for_targets):
-        tol = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02], "abs": [5.0, 5.0]})
-        targets = _make_targets()
-        targets_with_tol = BalancingTargets(
-            supply=targets.supply,
-            use=targets.use,
-            tolerances_trans=tol,
-        )
-        result = set_balancing_targets(sut_for_targets, targets_with_tol)
-        assert result.balancing_targets.tolerances_trans is tol
-
-    def test_raises_when_tolerances_trans_missing_trans_code(self, sut_for_targets):
-        # tolerances_trans only covers 0100, but sut also has 2000
-        tol = pd.DataFrame({"trans": ["0100"], "rel": [0.02], "abs": [5.0]})
-        targets = BalancingTargets(supply=_make_targets().supply, use=_make_targets().use, tolerances_trans=tol)
-        with pytest.raises(ValueError, match="2000"):
-            set_balancing_targets(sut_for_targets, targets)
-
-    def test_raises_when_tolerances_trans_missing_required_column(self, sut_for_targets):
-        tol = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02]})  # missing abs
-        targets = BalancingTargets(supply=_make_targets().supply, use=_make_targets().use, tolerances_trans=tol)
-        with pytest.raises(ValueError, match="abs"):
-            set_balancing_targets(sut_for_targets, targets)
-
-    def test_raises_when_tolerances_trans_cat_missing_required_column(self, sut_for_targets):
-        tol_trans = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02], "abs": [5.0, 5.0]})
-        tol_cat = pd.DataFrame({"trans": ["0100"], "brch": ["I1"], "rel": [0.01]})  # missing abs
-        targets = BalancingTargets(
-            supply=_make_targets().supply, use=_make_targets().use,
-            tolerances_trans=tol_trans, tolerances_trans_cat=tol_cat,
-        )
-        with pytest.raises(ValueError, match="abs"):
-            set_balancing_targets(sut_for_targets, targets)
-
-    def test_tolerances_trans_cat_coverage_not_validated(self, sut_for_targets):
-        # tolerances_trans_cat only covers one combo — should not raise
-        tol_trans = pd.DataFrame({"trans": ["0100", "2000"], "rel": [0.02, 0.02], "abs": [5.0, 5.0]})
-        tol_cat = pd.DataFrame({"trans": ["0100"], "brch": ["I1"], "rel": [0.01], "abs": [3.0]})
-        targets = BalancingTargets(
-            supply=_make_targets().supply, use=_make_targets().use,
-            tolerances_trans=tol_trans, tolerances_trans_cat=tol_cat,
-        )
-        result = set_balancing_targets(sut_for_targets, targets)
-        assert result.balancing_targets.tolerances_trans_cat is tol_cat
+        with pytest.raises(ValueError, match="brch"):
+            set_balancing_targets(sut, targets)
 
 
 # ---------------------------------------------------------------------------
