@@ -11,8 +11,8 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + tests (`tests/test_inspect.py`, `tests/test_compute.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/compute.py`) + `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks` dataclasses + `set_balancing_targets`, `set_balancing_config` + `load_balancing_targets_from_excel`, `load_balancing_config_from_excel` + fixture data (`data/fixtures/`) + user documentation (`docs/`)
-- **What's next**: `balance_columns` function and further balancing/inspection functions
+- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + tests (`tests/test_inspect.py`, `tests/test_compute.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/compute.py`) + `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks` dataclasses + `set_balancing_targets`, `set_balancing_config` + `load_balancing_targets_from_excel`, `load_balancing_config_from_excel` + fixture data (`data/fixtures/`) + user documentation (`docs/`) + `balance_columns` (`sutlab/balancing.py`) + tests (`tests/test_balancing.py`)
+- **What's next**: Further balancing/inspection functions
 
 ## Architecture
 
@@ -21,6 +21,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 - `sutlab/io.py` — I/O functions (public): `load_metadata_from_excel`, `load_sut_from_parquet(id_values, paths, metadata, price_basis)`, `load_balancing_targets_from_excel(id_values, paths, metadata)`, `load_balancing_config_from_excel(metadata, *, tolerances_path, locks_path)`. Sub-loaders are private helpers.
 - `sutlab/compute.py` — General-purpose computation functions: `compute_price_layer_rates(sut, aggregation_level)` — computes step-wise price layer rates at product/transaction/category level; uses hardcoded Danish default denominators; raises on unsupported layers
 - `sutlab/inspect.py` — `inspect_products(sut, products, ids=None)` → `ProductInspection` (17 tables: balance, supply_detail, use_detail, price_layers, price_layers_rates, price_layers_detailed, price_layers_detailed_rates, and distribution/growth variants for all groups). Balance and use_detail at purchasers' prices; detail tables include uncategorized transactions and per-product Total rows.
+- `sutlab/balancing.py` — `balance_columns(sut, transactions=None, categories=None, adjust_products=None)` → `SUT`. Scales adjustable rows to hit column targets. Transaction/category locks skip silently; product/cell locks covering all adjustable rows raise an informative error.
 
 ### Core data representation
 
