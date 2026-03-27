@@ -311,3 +311,39 @@ Append-only. Each entry: date, decision, brief rationale.
   `(target - sum_fixed) / sum_adjustable`. Each adjustable row is multiplied by this
   factor. Locks are evaluated before scaling; a product in `adjust_products` that is
   also locked is treated as fixed.
+
+- **2026-03-27**: `balance_columns` remaining design decisions settled:
+  - Tolerances: deferred — not used actively in this iteration.
+  - Zero adjustable total: raise an informative error if `sum_adjustable == 0` and
+    `target - sum_fixed != 0`. If both are zero the column is already balanced — no-op,
+    no error.
+  - Diagnostics: none. Post-balancing validation is handled by separate inspect functions.
+  - Price layer scaling (use side): targets are in purchasers' prices; scale factor is
+    computed from purchasers' prices. The same factor is then applied to ALL price columns
+    (`price_basic`, all intermediate layers, `price_purchasers`) on adjustable rows.
+    Rationale: preserves the ratio between price layers. Supply side: only `price_basic`,
+    scale factor computed from basic prices.
+
+- **2026-03-27**: `balance_columns` arguments made optional. `transactions`, `categories`,
+  and `adjust_products` all default to `None`. `None` semantics: `transactions=None` →
+  all transactions with a non-NaN target value in `balancing_targets`; `categories=None`
+  → all categories from those target rows for the selected transactions;
+  `adjust_products=None` → all products in the balancing member (locks still apply).
+  All three arguments support the same pattern syntax as `get_rows` (exact, wildcard,
+  range, negation) via `_match_codes` imported from `sutlab.sut`.
+
+- **2026-03-27**: `balance_columns` implemented in `sutlab/balancing.py`. Private helpers:
+  `_evaluate_locks(df, locks, cols)` → boolean Series (OR across four lock levels);
+  `_get_use_price_columns(use_df, cols)` → list of price column names in chain order.
+  Core logic: vectorized groupby + transform("sum") to broadcast group-level fixed/adjustable
+  sums to each row; scale factor computed and applied in one `.multiply()` call. No row loops.
+  Tests in `tests/test_balancing.py` (31 tests, all passing). `balance_columns` exported
+  from `sutlab/__init__.py`.
+
+- **2026-03-27**: `balance_columns` zero-adjustable error refined. Transaction/category
+  locks represent a deliberate decision to exclude an entire column from balancing — such
+  columns are silently skipped even if `sum_adjustable == 0` and `deficit != 0`. Product
+  locks or cell locks that happen to cover all adjustable rows are NOT silently skipped:
+  the user likely does not realise the implication, so an informative error is raised.
+  Distinguishing rule: check whether the (transaction, category) pair is covered by
+  `locks.transactions` or `locks.categories`; if yes, skip; otherwise raise.
