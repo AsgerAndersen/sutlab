@@ -20,4 +20,4 @@ from sutlab.sut import (
 )
 from sutlab.inspect import inspect_products
 from sutlab.compute import compute_price_layer_rates
-from sutlab.balancing import balance_columns
+from sutlab.balancing import balance_columns, balance_products_use

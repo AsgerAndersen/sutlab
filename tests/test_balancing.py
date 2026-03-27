@@ -7,7 +7,7 @@ from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.balancing import balance_columns, _evaluate_locks, _get_use_price_columns
+from sutlab.balancing import balance_columns, balance_products_use, _evaluate_locks, _get_use_price_columns
 from sutlab.sut import _match_codes
 from sutlab.sut import (
     SUT,
@@ -581,3 +581,238 @@ class TestGetUsePriceColumns:
         )
         result = _get_use_price_columns(use_df, cols_with_extra)
         assert "det" not in result
+
+
+# ---------------------------------------------------------------------------
+# Fixture for balance_products_use tests
+#
+# Reuses supply_df, use_df, cols, locks from above. No balancing_targets needed.
+#
+# Targets (derived from supply):
+#   Product A: supply total bas = 100 (0100/X) + 10 (0700/"") = 110
+#   Product B: supply total bas = 100 (0100/X) + 10 (0700/"") = 110
+#   Product C: supply total bas = 100 (0100/X) — locked, skipped
+#
+# Use totals (bas) for 2021:
+#   Product A: 10 (3110/HH) + 15 (2000/X) = 25  → scale = 110/25 = 4.4
+#   Product B: 20 (3110/HH) + 15 (2000/X) = 35  → scale = 110/35 = 22/7
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sut_rows(supply_df, use_df, cols, locks):
+    config = BalancingConfig(locks=locks)
+    return SUT(
+        price_basis="current_year",
+        supply=supply_df,
+        use=use_df,
+        balancing_id=2021,
+        balancing_config=config,
+        metadata=SUTMetadata(columns=cols),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests: basic product use balancing
+# ---------------------------------------------------------------------------
+
+
+class TestBalanceProductsUse:
+
+    def test_scale_computed_from_basic_prices(self, sut_rows):
+        # Product A: supply bas = 110, use bas = 25 → scale = 4.4
+        result = balance_products_use(sut_rows, products="A")
+        row = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        assert row["bas"] == pytest.approx(10.0 * 4.4)
+
+    def test_all_price_cols_scaled_equally(self, sut_rows):
+        # All price columns must be multiplied by the same factor
+        result = balance_products_use(sut_rows, products="A")
+        scale = 4.4
+        row = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        assert row["bas"] == pytest.approx(10.0 * scale)
+        assert row["ava"] == pytest.approx(1.0 * scale)
+        assert row["moms"] == pytest.approx(2.0 * scale)
+        assert row["koeb"] == pytest.approx(13.0 * scale)
+
+    def test_price_layer_rate_preserved(self, sut_rows):
+        # ava/bas must be the same before and after balancing
+        result = balance_products_use(sut_rows, products="A")
+        row_before = _get_row(sut_rows.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_after = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        assert row_after["ava"] / row_after["bas"] == pytest.approx(
+            row_before["ava"] / row_before["bas"]
+        )
+
+    def test_use_basic_total_matches_supply_total(self, sut_rows):
+        # After balancing, sum of use bas for A must equal sum of supply bas for A
+        result = balance_products_use(sut_rows, products="A")
+        use_total = result.use[
+            (result.use["year"] == 2021) & (result.use["nrnr"] == "A")
+        ]["bas"].sum()
+        supply_total = sut_rows.supply[
+            (sut_rows.supply["year"] == 2021) & (sut_rows.supply["nrnr"] == "A")
+        ]["bas"].sum()
+        assert use_total == pytest.approx(supply_total)
+
+    def test_multiple_products_balanced_independently(self, sut_rows):
+        # A and B have different use totals (25 vs 35) but same supply (110):
+        # they get different scale factors.
+        result = balance_products_use(sut_rows, products=["A", "B"])
+        scale_a = 110 / 25
+        scale_b = 110 / 35
+        row_a = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_b = _get_row(result.use, year=2021, nrnr="B", trans="3110", brch="HH")
+        assert row_a["bas"] == pytest.approx(10.0 * scale_a)
+        assert row_b["bas"] == pytest.approx(20.0 * scale_b)
+
+    def test_locked_product_skipped_silently(self, sut_rows):
+        # Product C is locked; balance_products_use(sut) should not raise
+        # and C rows should be unchanged.
+        result = balance_products_use(sut_rows)
+        row_c = _get_row(result.use, year=2021, nrnr="C", trans="3110", brch="HH")
+        assert row_c["bas"] == pytest.approx(30.0)
+        assert row_c["koeb"] == pytest.approx(39.0)
+
+    def test_non_balancing_member_unchanged(self, sut_rows):
+        result = balance_products_use(sut_rows)
+        orig = _get_row(sut_rows.use, year=2020, nrnr="A", trans="3110", brch="HH")
+        new = _get_row(result.use, year=2020, nrnr="A", trans="3110", brch="HH")
+        assert new["koeb"] == pytest.approx(orig["koeb"])
+
+    def test_supply_unchanged(self, sut_rows):
+        # balance_products_use only modifies use; supply must be untouched.
+        result = balance_products_use(sut_rows)
+        pd.testing.assert_frame_equal(result.supply, sut_rows.supply)
+
+    def test_nan_layer_stays_nan(self, sut_rows):
+        # 2000/X rows have moms=NaN; scaling must not turn that into a number.
+        import math
+        result = balance_products_use(sut_rows, products="A")
+        row = _get_row(result.use, year=2021, nrnr="A", trans="2000", brch="X")
+        assert math.isnan(row["moms"])
+
+    def test_adjust_transactions_filter(self, sut_rows):
+        # Only 3110 rows are adjustable; 2000 rows are fixed.
+        # A: adjustable bas = 10 (3110/HH), fixed bas = 15 (2000/X)
+        # scale = (110 - 15) / 10 = 9.5
+        result = balance_products_use(sut_rows, products="A", adjust_transactions="3110")
+        row_3110 = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_2000 = _get_row(result.use, year=2021, nrnr="A", trans="2000", brch="X")
+        assert row_3110["bas"] == pytest.approx(10.0 * 9.5)
+        assert row_2000["bas"] == pytest.approx(15.0)  # unchanged
+
+    def test_adjust_categories_filter(self, sut_rows):
+        # Only rows with category HH are adjustable.
+        # Same outcome as adjust_transactions="3110" for product A (HH only appears in 3110)
+        result = balance_products_use(sut_rows, products="A", adjust_categories="HH")
+        row_3110 = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_2000 = _get_row(result.use, year=2021, nrnr="A", trans="2000", brch="X")
+        assert row_3110["bas"] == pytest.approx(10.0 * 9.5)
+        assert row_2000["bas"] == pytest.approx(15.0)  # unchanged
+
+    def test_products_wildcard_pattern(self, sut_rows):
+        # "A*" should match only "A" in the fixture
+        result_wildcard = balance_products_use(sut_rows, products="A*")
+        result_explicit = balance_products_use(sut_rows, products="A")
+        pd.testing.assert_frame_equal(result_wildcard.use, result_explicit.use)
+
+    def test_products_none_uses_intersection_excluding_locks(self, sut_rows):
+        # products=None → A and B balanced, C skipped (locked).
+        result = balance_products_use(sut_rows)
+        use_total_a = result.use[
+            (result.use["year"] == 2021) & (result.use["nrnr"] == "A")
+        ]["bas"].sum()
+        use_total_b = result.use[
+            (result.use["year"] == 2021) & (result.use["nrnr"] == "B")
+        ]["bas"].sum()
+        supply_total_a = sut_rows.supply[
+            (sut_rows.supply["year"] == 2021) & (sut_rows.supply["nrnr"] == "A")
+        ]["bas"].sum()
+        supply_total_b = sut_rows.supply[
+            (sut_rows.supply["year"] == 2021) & (sut_rows.supply["nrnr"] == "B")
+        ]["bas"].sum()
+        assert use_total_a == pytest.approx(supply_total_a)
+        assert use_total_b == pytest.approx(supply_total_b)
+
+    def test_already_balanced_product_unchanged(self, supply_df, use_df, cols):
+        # Make use bas for product A equal to supply bas for A (110).
+        use_balanced = use_df.copy()
+        # Set A/3110/HH bas=95, A/2000/X bas=15 → total=110
+        use_balanced.loc[
+            (use_balanced["year"] == 2021) &
+            (use_balanced["nrnr"] == "A") &
+            (use_balanced["trans"] == "3110"), "bas"
+        ] = 95.0
+        sut = SUT(
+            price_basis="current_year",
+            supply=supply_df,
+            use=use_balanced,
+            balancing_id=2021,
+            metadata=SUTMetadata(columns=cols),
+        )
+        result = balance_products_use(sut, products="A")
+        row = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        assert row["bas"] == pytest.approx(95.0)
+
+
+# ---------------------------------------------------------------------------
+# Tests: balance_products_use error handling
+# ---------------------------------------------------------------------------
+
+
+class TestBalanceProductsUseErrors:
+
+    def test_no_metadata_raises(self, supply_df, use_df):
+        sut = SUT(
+            price_basis="current_year",
+            supply=supply_df,
+            use=use_df,
+            balancing_id=2021,
+        )
+        with pytest.raises(ValueError, match="sut.metadata is required"):
+            balance_products_use(sut)
+
+    def test_no_balancing_id_raises(self, supply_df, use_df, cols):
+        sut = SUT(
+            price_basis="current_year",
+            supply=supply_df,
+            use=use_df,
+            metadata=SUTMetadata(columns=cols),
+        )
+        with pytest.raises(ValueError, match="balancing_id is not set"):
+            balance_products_use(sut)
+
+    def test_empty_products_filter_raises(self, sut_rows):
+        with pytest.raises(ValueError, match="matched no products"):
+            balance_products_use(sut_rows, products="Z")
+
+    def test_transaction_lock_covering_all_rows_raises(self, supply_df, use_df, cols):
+        # Lock both 3110 and 2000 — all use rows for A are locked, but not via
+        # a product lock → should raise, not skip silently.
+        locks = Locks(transactions=pd.DataFrame({"trans": ["3110", "2000"]}))
+        config = BalancingConfig(locks=locks)
+        sut = SUT(
+            price_basis="current_year",
+            supply=supply_df,
+            use=use_df,
+            balancing_id=2021,
+            balancing_config=config,
+            metadata=SUTMetadata(columns=cols),
+        )
+        with pytest.raises(ValueError, match="adjustable rows sum to zero"):
+            balance_products_use(sut, products="A")
+
+    def test_error_message_names_problematic_product(self, supply_df, use_df, cols):
+        locks = Locks(transactions=pd.DataFrame({"trans": ["3110", "2000"]}))
+        config = BalancingConfig(locks=locks)
+        sut = SUT(
+            price_basis="current_year",
+            supply=supply_df,
+            use=use_df,
+            balancing_id=2021,
+            balancing_config=config,
+            metadata=SUTMetadata(columns=cols),
+        )
+        with pytest.raises(ValueError, match="'A'"):
+            balance_products_use(sut, products="A")
