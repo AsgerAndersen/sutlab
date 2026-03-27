@@ -340,6 +340,16 @@ Append-only. Each entry: date, decision, brief rationale.
   Tests in `tests/test_balancing.py` (31 tests, all passing). `balance_columns` exported
   from `sutlab/__init__.py`.
 
+- **2026-03-27**: `balance_products_use(sut, products=None, adjust_transactions=None, adjust_categories=None)`
+  added to `sutlab/balancing.py`. Scales use rows so each product's total use in basic prices
+  equals its supply total (derived internally from `sut.supply` — `balancing_targets` not
+  required). Scale factor computed from basic prices and applied to all price columns (same
+  principle as `balance_columns` use side: preserve price layer rate ratios). Only products
+  present in both supply and use are eligible (intersection). Product locks silently skip a
+  product; transaction/category/cell locks covering all rows of a product raise an error.
+  Private helper `_balance_rows_table` mirrors `_balance_table` but groups by product.
+  19 new tests, 58 total passing.
+
 - **2026-03-27**: `balance_columns` zero-adjustable error refined. Transaction/category
   locks represent a deliberate decision to exclude an entire column from balancing — such
   columns are silently skipped even if `sum_adjustable == 0` and `deficit != 0`. Product
