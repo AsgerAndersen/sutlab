@@ -117,10 +117,10 @@ SUT with one field updated. Does not mutate the original.
 
 ## Open design questions
 - What other inspection functions are needed beyond `inspect_products`?
-- How are locks/cells referenced in balancing operations?
 - What is the exact interface for the GDP decomposition argument to inspection functions?
 - Should `SUT` expose methods that delegate to free functions (pandas-style interface)? Deferred — implementation would be trivial when decided.
-- `balance_columns` open questions: tolerance logic (rel OR abs vs AND?), behaviour when current total is zero but target is non-zero, whether to return diagnostics alongside the updated SUT. (Function signature and scaling logic are settled — see `notes/claude/decisions.md`.)
+- `balance_columns` tolerance logic: `rel OR abs` vs `AND`? (Tolerances are loaded but not yet actively used in balancing.)
+- What further balancing functions are needed beyond `balance_columns` and `balance_products_use`?
 
 ## Project structure
 CLAUDE.md is the authoritative record of the current state. `notes/claude/` holds
