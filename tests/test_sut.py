@@ -543,10 +543,10 @@ class TestGetRows:
 @pytest.fixture
 def classified_transactions():
     return pd.DataFrame({
-        "code":     ["0100", "2000", "3110", "3200"],
-        "name":     ["Output", "Intermediate", "Household", "Government"],
-        "table":    ["supply", "use",    "use",  "use"],
-        "esa_code": ["P1",     "P2",     "P31",  "P32"],
+        "trans":     ["0100", "2000", "3110", "3200"],
+        "trans_txt": ["Output", "Intermediate", "Household", "Government"],
+        "table":     ["supply", "use",    "use",  "use"],
+        "esa_code":  ["P1",     "P2",     "P31",  "P32"],
     })
 
 

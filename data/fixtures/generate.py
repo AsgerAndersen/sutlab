@@ -212,12 +212,12 @@ def make_classifications() -> dict[str, pd.DataFrame]:
                            "FIXTURE_INDUSTRIES", "FIXTURE_IC", "FIXTURE_CC"],
     })
     products = pd.DataFrame({
-        "code": ["A",         "B",         "C",         "T"],
-        "name": ["Product A", "Product B", "Product C", "Trade services"],
+        "nrnr":     ["A",         "B",         "C",         "T"],
+        "nrnr_txt": ["Product A", "Product B", "Product C", "Trade services"],
     })
     transactions = pd.DataFrame({
-        "code": ["0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"],
-        "name": [
+        "trans": ["0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"],
+        "trans_txt": [
             "Output at basic prices",
             "Imports",
             "Intermediate consumption",
@@ -231,16 +231,16 @@ def make_classifications() -> dict[str, pd.DataFrame]:
         "esa_code": ["P1",     "P7",     "P2",   "P31",  "P32",  "P51g",  "P52",  "P6"],
     })
     industries = pd.DataFrame({
-        "code": ["X",          "Y",          "Z"],
-        "name": ["Industry X", "Industry Y", "Trade industry"],
+        "brch":     ["X",          "Y",          "Z"],
+        "brch_txt": ["Industry X", "Industry Y", "Trade industry"],
     })
     individual_consumption = pd.DataFrame({
-        "code": ["HH"],
-        "name": ["Households"],
+        "brch":     ["HH"],
+        "brch_txt": ["Households"],
     })
     collective_consumption = pd.DataFrame({
-        "code": ["GOV"],
-        "name": ["Government"],
+        "brch":     ["GOV"],
+        "brch_txt": ["Government"],
     })
     return {
         "classifications":        classifications,

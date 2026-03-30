@@ -51,9 +51,9 @@ two-column Excel table (`column`, `role`). Required roles: `id`, `product`, `tra
 
 **`SUTClassifications`** — optional classification tables, all fields `DataFrame | None`.
 - `classification_names` — maps dimension names to classification system names; `dimension` and `classification` columns
-- `products`, `industries`, `individual_consumption`, `collective_consumption` — `code` and `name` columns
-- `transactions` — `code`, `name`, `table`, and `esa_code` columns; `table` is `"supply"` or `"use"`,
-  required and validated on load. Used to split the combined parquet file into supply and use tables.
+- `products` — key column named after the actual product column (e.g. `nrnr`), label column named `{col}_txt` (e.g. `nrnr_txt`)
+- `transactions` — key column named after the actual transaction column (e.g. `trans`), label column `trans_txt`, plus `table` and `esa_code`; `table` is `"supply"` or `"use"`, required and validated on load. Used to split the combined parquet file into supply and use tables.
+- `industries`, `individual_consumption`, `collective_consumption` — key column named after the actual category column (e.g. `brch`), label column `brch_txt`. These three all live in the `category` column of the data — which classification applies depends on the transaction code (P1/P2 → industries, P31 → individual_consumption, P32 → collective_consumption).
 
 **`BalancingTargets`** — target column totals, split into supply and use. Mirrors the SUT
 long-format without the product dimension. Supply: `id, transaction, category, price_basic`.

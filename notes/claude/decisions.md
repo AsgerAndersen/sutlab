@@ -347,3 +347,16 @@ Append-only. Each entry: date, decision, brief rationale.
   the user likely does not realise the implication, so an informative error is raised.
   Distinguishing rule: check whether the (transaction, category) pair is covered by
   `locks.transactions` or `locks.categories`; if yes, skip; otherwise raise.
+
+- **2026-03-30**: `SUTClassifications` column naming changed. Classification DataFrames
+  no longer use generic `code`/`name` column names. Instead they use the actual data
+  column name (from `SUTColumns`) as the key column, and `{col}_txt` as the label column.
+  For example, if the product column is `nrnr`, the products classification has `nrnr` and
+  `nrnr_txt` columns. The `transactions` classification adds `table` and `esa_code` as
+  before. The `industries`, `individual_consumption`, and `collective_consumption`
+  classifications all use the category column name and `{col}_txt` (since industry codes
+  and consumption function codes all live in the `category` column, disambiguated by
+  transaction code). `_load_metadata_classifications_from_excel` now requires a `columns`
+  argument; `load_metadata_from_excel` handles this internally (loads columns first, passes
+  them along). Rationale: direct merge-on without renaming; consistent with the principle
+  that column names are never hardcoded.
