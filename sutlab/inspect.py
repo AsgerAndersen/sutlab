@@ -231,45 +231,73 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
     for p_idx, product in enumerate(products):
         is_last_product = (p_idx == len(products) - 1)
         prod_positions = [i for i, v in enumerate(product_vals) if v == product]
-        # Ordered unique transactions for this product
-        prod_trans = list(dict.fromkeys(trans_vals[i] for i in prod_positions))
 
         if not is_last_product:
             prod_css[prod_positions[0]] = "border-bottom: 2px solid #999"
             prod_txt_css[prod_positions[0]] = "border-bottom: 2px solid #999"
 
-        for t_idx, trans in enumerate(prod_trans):
-            is_last_trans = (t_idx == len(prod_trans) - 1)
-            trans_positions = [i for i in prod_positions if trans_vals[i] == trans]
+        # trans_row_counter: rows seen per transaction so far (within this product),
+        # used to alternate category colours within each transaction.
+        trans_row_counter = {}
+        # Track the start of the current contiguous run of the same transaction so
+        # that trans_css can be placed on the first row of the run. Merged cells in
+        # the rendered HTML take CSS from the first row of their rowspan, so the
+        # border must go there rather than on the last row.
+        run_start_i_abs = None
+        prev_trans = None
 
-            if not is_last_trans:
+        for pos_idx, i_abs in enumerate(prod_positions):
+            trans = trans_vals[i_abs]
+            is_last_pos = (pos_idx == len(prod_positions) - 1)
+            next_trans = trans_vals[prod_positions[pos_idx + 1]] if not is_last_pos else None
+
+            # Separator on the bottom of this row:
+            #   thick  → end of product block
+            #   thin   → end of transaction block (next row belongs to a different transaction)
+            #   none   → mid-block (next row has the same transaction)
+            if is_last_pos:
+                sep = "; border-bottom: 2px solid #999" if not is_last_product else ""
+            elif next_trans != trans:
                 sep = "; border-bottom: 1px solid #ccc"
-            elif not is_last_product:
-                sep = "; border-bottom: 2px solid #999"
             else:
                 sep = ""
 
+            # Detect start of a new contiguous run of this transaction.
+            if trans != prev_trans:
+                run_start_i_abs = i_abs
+                prev_trans = trans
+
+            # At the end of a contiguous run, write trans/trans_txt CSS on the run's
+            # first row so that the border appears on the merged cell's bottom edge.
+            if next_trans != trans:  # end of run (also covers is_last_pos)
+                if trans == "":
+                    trans_css[run_start_i_abs] = (
+                        f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                    )
+                    trans_txt_css[run_start_i_abs] = (
+                        f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                    )
+                else:
+                    trans_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
+                    trans_txt_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
+
+            # Data and category cells are styled individually on every row.
             if trans == "":
-                # Product-level summary row ("Total use") — bold, total colour
-                for i, i_abs in enumerate(trans_positions):
-                    row_sep = sep if i == len(trans_positions) - 1 else ""
-                    data_css[i_abs] = f"background-color: {data_total_color}; font-weight: bold{row_sep}"
-                    cat_css[i_abs] = f"background-color: {idx_hdr_color}; font-weight: bold{row_sep}"
-                    cat_txt_css[i_abs] = f"background-color: {idx_hdr_color}; font-weight: bold{row_sep}"
-                trans_css[trans_positions[0]] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
-                trans_txt_css[trans_positions[0]] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
-                continue
-
-            # transaction / transaction_txt: one merged cell per block → CSS on first row
-            trans_css[trans_positions[0]] = f"background-color: {idx_hdr_color}{sep}"
-            trans_txt_css[trans_positions[0]] = f"background-color: {idx_hdr_color}{sep}"
-
-            for i, i_abs in enumerate(trans_positions):
-                is_last_row = (i == len(trans_positions) - 1)
-                row_sep = sep if is_last_row else ""
-                data_css[i_abs] = f"background-color: {data_row_colors[i % 2]}{row_sep}"
-                cat_css[i_abs] = f"background-color: {idx_row_colors[i % 2]}{row_sep}"
-                cat_txt_css[i_abs] = f"background-color: {idx_row_colors[i % 2]}{row_sep}"
+                data_css[i_abs] = (
+                    f"background-color: {data_total_color}; font-weight: bold{sep}"
+                )
+                cat_css[i_abs] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                )
+                cat_txt_css[i_abs] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                )
+            else:
+                row_pos = trans_row_counter.get(trans, 0)
+                trans_row_counter[trans] = row_pos + 1
+                data_css[i_abs] = f"background-color: {data_row_colors[row_pos % 2]}{sep}"
+                cat_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+                cat_txt_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
 
     styler = styler.apply(
         lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
@@ -452,48 +480,60 @@ def _style_price_layers_detailed_table(df: pd.DataFrame, format_func) -> Styler:
                 f"background-color: {palette['index_total']}{layer_sep}"
             )
 
-            for t_idx, trans in enumerate(block_trans):
-                is_last_trans = (t_idx == len(block_trans) - 1)
-                trans_positions = [i for i in block_positions if trans_vals[i] == trans]
+            trans_row_counter = {}
+            run_start_i_abs = None
+            prev_trans = None
 
-                sep = layer_sep if is_last_trans else "; border-bottom: 1px solid #ddd"
+            for pos_idx, i_abs in enumerate(block_positions):
+                trans = trans_vals[i_abs]
+                is_last_pos = (pos_idx == len(block_positions) - 1)
+                next_trans = trans_vals[block_positions[pos_idx + 1]] if not is_last_pos else None
+
+                if is_last_pos:
+                    sep = layer_sep
+                elif next_trans != trans:
+                    sep = "; border-bottom: 1px solid #ddd"
+                else:
+                    sep = ""
+
+                if trans != prev_trans:
+                    run_start_i_abs = i_abs
+                    prev_trans = trans
+
+                if next_trans != trans:
+                    if trans == "":
+                        trans_css[run_start_i_abs] = (
+                            f"background-color: {palette['index_total']}; font-weight: bold{sep}"
+                        )
+                        trans_txt_css[run_start_i_abs] = (
+                            f"background-color: {palette['index_total']}; font-weight: bold{sep}"
+                        )
+                    else:
+                        trans_css[run_start_i_abs] = (
+                            f"background-color: {palette['index_total']}{sep}"
+                        )
+                        trans_txt_css[run_start_i_abs] = (
+                            f"background-color: {palette['index_total']}{sep}"
+                        )
 
                 if trans == "":
-                    # Total row: bold, saturated palette colour
-                    for i_abs in trans_positions:
-                        data_css[i_abs] = (
-                            f"background-color: {palette['data_total']}; font-weight: bold{sep}"
-                        )
-                        cat_css[i_abs] = (
-                            f"background-color: {palette['index_total']}; font-weight: bold{sep}"
-                        )
-                        cat_txt_css[i_abs] = (
-                            f"background-color: {palette['index_total']}; font-weight: bold{sep}"
-                        )
-                    trans_css[trans_positions[0]] = (
+                    data_css[i_abs] = (
+                        f"background-color: {palette['data_total']}; font-weight: bold{sep}"
+                    )
+                    cat_css[i_abs] = (
                         f"background-color: {palette['index_total']}; font-weight: bold{sep}"
                     )
-                    trans_txt_css[trans_positions[0]] = (
+                    cat_txt_css[i_abs] = (
                         f"background-color: {palette['index_total']}; font-weight: bold{sep}"
                     )
-                    continue
-
-                # Regular transaction block: transaction\transaction_txt merged on first row
-                trans_css[trans_positions[0]] = (
-                    f"background-color: {palette['index_total']}{sep}"
-                )
-                trans_txt_css[trans_positions[0]] = (
-                    f"background-color: {palette['index_total']}{sep}"
-                )
-
-                for counter, i_abs in enumerate(trans_positions):
-                    is_last_cat = (counter == len(trans_positions) - 1)
-                    row_sep = sep if is_last_cat else ""
-                    bg_data = palette["data"][counter % 2]
-                    bg_index = palette["index"][counter % 2]
-                    data_css[i_abs] = f"background-color: {bg_data}{row_sep}"
-                    cat_css[i_abs] = f"background-color: {bg_index}{row_sep}"
-                    cat_txt_css[i_abs] = f"background-color: {bg_index}{row_sep}"
+                else:
+                    row_pos = trans_row_counter.get(trans, 0)
+                    trans_row_counter[trans] = row_pos + 1
+                    bg_data = palette["data"][row_pos % 2]
+                    bg_index = palette["index"][row_pos % 2]
+                    data_css[i_abs] = f"background-color: {bg_data}{sep}"
+                    cat_css[i_abs] = f"background-color: {bg_index}{sep}"
+                    cat_txt_css[i_abs] = f"background-color: {bg_index}{sep}"
 
     styler = styler.apply(
         lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
@@ -785,10 +825,66 @@ class ProductInspection:
         return _style_price_layers_detailed_table(self.data.price_layers_detailed_rates, _format_percentage)
 
 
+def _sort_by_id_value(
+    df: pd.DataFrame,
+    group_levels: list[str],
+    sort_id,
+) -> pd.DataFrame:
+    """Sort non-total rows within groups by sort_id column value, descending.
+
+    Within each group (defined by ``group_levels``), rows where
+    ``transaction == ""`` are treated as total/summary rows and kept at the
+    end. All other rows are sorted by the value in the ``sort_id`` column,
+    largest first. Row order between groups is preserved.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Wide-format inspection table with a MultiIndex containing a
+        ``"transaction"`` level and id values as columns.
+    group_levels : list of str
+        Index level names defining the groups within which rows are sorted.
+        Use ``["product"]`` for detail tables and
+        ``["product", "price_layer"]`` for price layer tables.
+    sort_id : hashable
+        Column name (id value, e.g. ``2021``) to sort by.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same DataFrame with rows reordered within each group.
+    """
+    if df.empty:
+        return df
+
+    trans_vals = df.index.get_level_values("transaction")
+    total_mask = trans_vals == ""
+
+    level_arrays = {level: df.index.get_level_values(level) for level in group_levels}
+    group_tuples = list(dict.fromkeys(
+        zip(*[level_arrays[level] for level in group_levels])
+    ))
+
+    blocks = []
+    for group_key in group_tuples:
+        group_mask = level_arrays[group_levels[0]] == group_key[0]
+        for level, key in zip(group_levels[1:], group_key[1:]):
+            group_mask = group_mask & (level_arrays[level] == key)
+
+        data_rows = df[group_mask & ~total_mask]
+        total_rows = df[group_mask & total_mask]
+
+        sorted_data = data_rows.sort_values(by=sort_id, ascending=False)
+        blocks.append(pd.concat([sorted_data, total_rows]))
+
+    return pd.concat(blocks)
+
+
 def inspect_products(
     sut: SUT,
     products: str | list[str],
     ids=None,
+    sort_id=None,
 ) -> ProductInspection:
     """
     Return inspection tables for one or more products.
@@ -807,6 +903,14 @@ def inspect_products(
         single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
         range (``ids=range(2015, 2022)``). The column order follows the
         sorted order of the full collection, not the order of the argument.
+    sort_id : value, optional
+        When set, rows within each product (or product/price-layer) block are
+        sorted by their value in this id's column, largest first. Balance
+        tables are not sorted. Supply/use detail tables are sorted within
+        each product block. Price layer tables are sorted within each
+        ``(product, price_layer)`` block. Total and summary rows always stay
+        fixed at the end of their block. Must be one of the ids present in
+        the collection after applying the ``ids`` filter.
 
     Returns
     -------
@@ -829,6 +933,9 @@ def inspect_products(
         ``name`` column.
     ValueError
         If any value in ``ids`` is not found in the collection.
+    ValueError
+        If ``sort_id`` is not found in the collection ids (after applying the
+        ``ids`` filter).
     """
     if sut.metadata is None:
         raise ValueError(
@@ -882,6 +989,11 @@ def inspect_products(
             )
         all_ids = [i for i in all_ids if i in requested_ids]
 
+    if sort_id is not None and sort_id not in all_ids:
+        raise ValueError(
+            f"sort_id {sort_id!r} not found in collection ids. Available: {all_ids}"
+        )
+
     # Transaction name lookup: code → name
     trans_names = dict(zip(
         trans_df[cols.transaction].astype(str),
@@ -917,6 +1029,8 @@ def inspect_products(
         all_ids,
         total_label="Total supply",
     )
+    if sort_id is not None:
+        supply_detail = _sort_by_id_value(supply_detail, ["product"], sort_id)
     use_detail = _append_detail_total(
         _build_detail_df(
             sut.use, matched_products, product_names,
@@ -926,6 +1040,8 @@ def inspect_products(
         all_ids,
         total_label="Total use",
     )
+    if sort_id is not None:
+        use_detail = _sort_by_id_value(use_detail, ["product"], sort_id)
     balance_distribution = _build_balance_distribution(balance)
     supply_detail_distribution = _build_detail_distribution(supply_detail)
     use_detail_distribution = _build_detail_distribution(use_detail)
@@ -935,6 +1051,8 @@ def inspect_products(
     price_layers = _build_price_layers_table(
         sut, matched_products, trans_names, product_names, all_ids
     )
+    if sort_id is not None:
+        price_layers = _sort_by_id_value(price_layers, ["product", "price_layer"], sort_id)
     price_layers_distribution = _build_price_layers_distribution(price_layers)
     price_layers_growth = _build_growth_table(price_layers)
 
@@ -950,10 +1068,18 @@ def inspect_products(
     price_layers_rates = _build_price_layers_rates(
         price_layers, sut, all_ids, trans_rates
     )
+    if sort_id is not None:
+        price_layers_rates = _sort_by_id_value(
+            price_layers_rates, ["product", "price_layer"], sort_id
+        )
     price_layers_detailed = _build_price_layers_detailed_table(
         sut, matched_products, trans_names, product_names,
         category_names_by_trans, all_ids, price_layers,
     )
+    if sort_id is not None:
+        price_layers_detailed = _sort_by_id_value(
+            price_layers_detailed, ["product", "price_layer"], sort_id
+        )
     price_layers_detailed_distribution = _build_price_layers_distribution(
         price_layers_detailed
     )
@@ -961,6 +1087,10 @@ def inspect_products(
     price_layers_detailed_rates = _build_price_layers_detailed_rates(
         price_layers_detailed, sut, all_ids, cat_rates
     )
+    if sort_id is not None:
+        price_layers_detailed_rates = _sort_by_id_value(
+            price_layers_detailed_rates, ["product", "price_layer"], sort_id
+        )
 
     data = ProductInspectionData(
         balance=balance,
