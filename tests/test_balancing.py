@@ -816,3 +816,134 @@ class TestBalanceProductsUseErrors:
         )
         with pytest.raises(ValueError, match="'A'"):
             balance_products_use(sut, products="A")
+
+
+# ---------------------------------------------------------------------------
+# Tests: price layer locks in balance_columns
+#
+# Lock ava (wholesale_margins). Product C is also product-locked.
+#
+# Use 3110/HH: A(bas=10, ava=1, moms=2, koeb=13), B(bas=20, ava=2, moms=4, koeb=26),
+#              C(bas=30, ava=3, moms=6, koeb=39) [fixed via product lock]
+# Target koeb=90; fixed koeb=39; adjustable koeb sum=39 → scale=51/39
+# With ava locked: scale applied to [bas, moms, koeb] only — ava stays fixed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sut_price_layer_lock(supply_df, use_df, cols, targets):
+    locks = Locks(
+        products=pd.DataFrame({"nrnr": ["C"]}),
+        price_layers=pd.DataFrame({"price_layer": ["ava"]}),
+    )
+    config = BalancingConfig(locks=locks)
+    return SUT(
+        price_basis="current_year",
+        supply=supply_df,
+        use=use_df,
+        balancing_id=2021,
+        balancing_targets=targets,
+        balancing_config=config,
+        metadata=SUTMetadata(columns=cols),
+    )
+
+
+class TestPriceLayerLockBalanceColumns:
+
+    def test_locked_price_layer_unchanged(self, sut_price_layer_lock):
+        # ava must not be scaled on adjustable rows
+        result = balance_columns(sut_price_layer_lock, "3110", "HH", adjust_products=["A", "B"])
+        row_a = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_b = _get_row(result.use, year=2021, nrnr="B", trans="3110", brch="HH")
+        assert row_a["ava"] == pytest.approx(1.0)
+        assert row_b["ava"] == pytest.approx(2.0)
+
+    def test_other_price_cols_still_scaled(self, sut_price_layer_lock):
+        # bas, moms, koeb are scaled despite ava being locked
+        scale = 51 / 39
+        result = balance_columns(sut_price_layer_lock, "3110", "HH", adjust_products=["A", "B"])
+        row_a = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        assert row_a["bas"] == pytest.approx(10.0 * scale)
+        assert row_a["moms"] == pytest.approx(2.0 * scale)
+        assert row_a["koeb"] == pytest.approx(13.0 * scale)
+
+    def test_column_total_still_matches_target(self, sut_price_layer_lock):
+        # koeb column total must still equal the target
+        result = balance_columns(sut_price_layer_lock, "3110", "HH", adjust_products=["A", "B"])
+        total = result.use[
+            (result.use["year"] == 2021) &
+            (result.use["trans"] == "3110") &
+            (result.use["brch"] == "HH")
+        ]["koeb"].sum()
+        assert total == pytest.approx(90.0)
+
+    def test_product_locked_row_fully_unchanged(self, sut_price_layer_lock):
+        # Row for product C (product-locked) must not change at all
+        result = balance_columns(sut_price_layer_lock, "3110", "HH", adjust_products=["A", "B"])
+        row_c = _get_row(result.use, year=2021, nrnr="C", trans="3110", brch="HH")
+        assert row_c["bas"] == pytest.approx(30.0)
+        assert row_c["ava"] == pytest.approx(3.0)
+        assert row_c["koeb"] == pytest.approx(39.0)
+
+    def test_price_layer_lock_does_not_affect_supply(self, sut_price_layer_lock):
+        # Price layer locks are a use-side concept; supply balancing is unaffected
+        result = balance_columns(sut_price_layer_lock, "0100", "X", adjust_products=["A", "B"])
+        total = result.supply[
+            (result.supply["year"] == 2021) &
+            (result.supply["trans"] == "0100") &
+            (result.supply["brch"] == "X")
+        ]["bas"].sum()
+        assert total == pytest.approx(360.0)
+
+
+# ---------------------------------------------------------------------------
+# Tests: price layer locks in balance_products_use
+#
+# Lock ava. Product C is product-locked.
+# Product A: supply bas=110, use bas=25 → scale=4.4
+# With ava locked: [bas, moms, koeb] scaled; ava stays fixed → rate changes.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sut_rows_price_layer_lock(supply_df, use_df, cols):
+    locks = Locks(
+        products=pd.DataFrame({"nrnr": ["C"]}),
+        price_layers=pd.DataFrame({"price_layer": ["ava"]}),
+    )
+    config = BalancingConfig(locks=locks)
+    return SUT(
+        price_basis="current_year",
+        supply=supply_df,
+        use=use_df,
+        balancing_id=2021,
+        balancing_config=config,
+        metadata=SUTMetadata(columns=cols),
+    )
+
+
+class TestPriceLayerLockBalanceProductsUse:
+
+    def test_locked_price_layer_unchanged(self, sut_rows_price_layer_lock):
+        result = balance_products_use(sut_rows_price_layer_lock, products="A")
+        row_3110 = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_2000 = _get_row(result.use, year=2021, nrnr="A", trans="2000", brch="X")
+        assert row_3110["ava"] == pytest.approx(1.0)
+        assert row_2000["ava"] == pytest.approx(1.0)
+
+    def test_other_price_cols_still_scaled(self, sut_rows_price_layer_lock):
+        scale = 4.4
+        result = balance_products_use(sut_rows_price_layer_lock, products="A")
+        row_3110 = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        assert row_3110["bas"] == pytest.approx(10.0 * scale)
+        assert row_3110["moms"] == pytest.approx(2.0 * scale)
+        assert row_3110["koeb"] == pytest.approx(13.0 * scale)
+
+    def test_rate_changes_for_locked_layer(self, sut_rows_price_layer_lock):
+        # ava/bas before: 1/10 = 0.1; after: 1/44 ≠ 0.1 — rate must change
+        result = balance_products_use(sut_rows_price_layer_lock, products="A")
+        row_before = _get_row(sut_rows_price_layer_lock.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        row_after = _get_row(result.use, year=2021, nrnr="A", trans="3110", brch="HH")
+        rate_before = row_before["ava"] / row_before["bas"]
+        rate_after = row_after["ava"] / row_after["bas"]
+        assert rate_after != pytest.approx(rate_before)

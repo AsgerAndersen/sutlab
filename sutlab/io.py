@@ -692,8 +692,8 @@ def _load_balancing_config_locks_from_excel(
 ) -> Locks:
     """Load a Locks specification from a multi-sheet Excel file.
 
-    Known sheets: ``products``, ``trans``, ``trans_cat``, ``cells``. All are
-    optional. Unknown sheets are silently ignored.
+    Known sheets: ``products``, ``transactions``, ``categories``, ``cells``,
+    ``price_layers``. All are optional. Unknown sheets are silently ignored.
 
     Parameters
     ----------
@@ -752,7 +752,31 @@ def _load_balancing_config_locks_from_excel(
         )
         cells = df[[cols.product, cols.transaction, cols.category]].copy()
 
-    return Locks(products=products, transactions=trans, categories=trans_cat, cells=cells)
+    price_layers = None
+    if "price_layers" in all_sheets:
+        df = all_sheets["price_layers"]
+        _validate_required_columns(df, ["price_layer"], source="'price_layers' sheet in locks file")
+        known_layer_cols = [
+            getattr(cols, role) for role in _PRICE_LAYER_ROLES
+            if getattr(cols, role) is not None
+        ]
+        unknown = [v for v in df["price_layer"].tolist() if v not in known_layer_cols]
+        if unknown:
+            unknown_str = ", ".join(f"'{v}'" for v in unknown)
+            known_str = ", ".join(f"'{c}'" for c in known_layer_cols)
+            raise ValueError(
+                f"'price_layers' sheet in locks file contains unknown price layer column "
+                f"names: {unknown_str}. Known price layer columns from metadata: {known_str}"
+            )
+        price_layers = df[["price_layer"]].copy()
+
+    return Locks(
+        products=products,
+        transactions=trans,
+        categories=trans_cat,
+        cells=cells,
+        price_layers=price_layers,
+    )
 
 
 def load_balancing_config_from_excel(

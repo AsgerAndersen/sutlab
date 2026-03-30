@@ -208,12 +208,22 @@ class Locks:
         Lock specific (product, transaction, category) combinations. Three-
         column DataFrame using the actual product, transaction, and category
         column names. Each row corresponds to one locked cell.
+    price_layers : DataFrame or None
+        Lock entire price layer columns across all rows and products. Single-
+        column DataFrame with column name ``"price_layer"``, where each value
+        is the actual column name of a price layer in the use DataFrame (e.g.
+        ``"afg"`` or ``"moms"``). Balancing functions will not apply any scale
+        factor to these columns — their values remain fixed. As a consequence,
+        the implied rate for a locked layer changes when basic prices are
+        scaled. This differs from the other lock levels, which lock rows;
+        ``price_layers`` locks columns.
     """
 
     products: pd.DataFrame | None = None
     transactions: pd.DataFrame | None = None
     categories: pd.DataFrame | None = None
     cells: pd.DataFrame | None = None
+    price_layers: pd.DataFrame | None = None
 
 
 @dataclass
