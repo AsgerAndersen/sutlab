@@ -39,7 +39,7 @@ _ALL_KNOWN_ROLES: set[str] = _REQUIRED_ROLES | _OPTIONAL_ROLES
 
 _VALID_TABLE_VALUES: set[str] = {"supply", "use"}
 
-_VALID_ESA_CODES: set[str] = {"P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
+_VALID_ESA_CODES: set[str] = {"D2121", "P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
 
 # Price layer role names in the order they should appear in the use DataFrame.
 # Matches the field order of SUTColumns.
