@@ -358,6 +358,17 @@ Append-only. Each entry: date, decision, brief rationale.
   Distinguishing rule: check whether the (transaction, category) pair is covered by
   `locks.transactions` or `locks.categories`; if yes, skip; otherwise raise.
 
+- **2026-03-30**: `Locks.price_layers` added — a new optional `DataFrame | None` field with
+  a single `price_layer` column. Values are use-side price layer column names (intermediate
+  layers only — not `price_basic` or `price_purchasers`). When a layer is listed, both
+  `balance_columns` and `balance_products_use` leave it untouched: the scale factor is still
+  computed from the target price column, but the locked layer columns are excluded from the
+  set of columns to which the factor is applied. Consequence: implied rates for locked layers
+  change, which is intended (e.g. Danish `afg` is never adjusted in balancing). Validated on
+  load: each value must be a known price layer column name from metadata. Loaded from an
+  optional `price_layers` sheet in the locks Excel file; silently absent if the sheet does
+  not exist.
+
 - **2026-03-30**: `SUTClassifications` column naming changed. Classification DataFrames
   no longer use generic `code`/`name` column names. Instead they use the actual data
   column name (from `SUTColumns`) as the key column, and `{col}_txt` as the label column.
