@@ -369,6 +369,19 @@ Append-only. Each entry: date, decision, brief rationale.
   optional `price_layers` sheet in the locks Excel file; silently absent if the sheet does
   not exist.
 
+- **2026-03-30**: Performance optimisations to `inspect_products` (`sutlab/inspect.py`):
+  replaced `iterrows` with `dict(zip(...))` for name lookups; moved groupby calls outside
+  product loops (N→1); replaced per-(product, transaction) `pivot_table` calls with a
+  single pivot + dict-of-groups for O(1) lookup; vectorised `_build_detail_distribution`
+  via groupby + numpy division; computed `compute_price_layer_rates` once per call (not
+  once per table); replaced per-group `set_index`+`reindex` in rate lookup building with
+  a single `pivot_table` + single `reindex` + numpy extraction. Total wall time on 12-year
+  example SUT dropped from ~1.12s to ~0.60s (~46% reduction).
+
+- **2026-03-30**: `_match_codes` (`sutlab/sut.py`) pre-computes natural sort keys once
+  when any range pattern is present. Avoids O(N_codes × N_range_patterns) `re.split`
+  calls — relevant at ~2400 product codes.
+
 - **2026-03-30**: `SUTClassifications` column naming changed. Classification DataFrames
   no longer use generic `code`/`name` column names. Instead they use the actual data
   column name (from `SUTColumns`) as the key column, and `{col}_txt` as the label column.
