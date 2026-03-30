@@ -901,3 +901,41 @@ class TestLoadBalancingConfigFromExcel:
         })
         result = load_balancing_config_from_excel(metadata, locks_path=path)
         assert result.locks.products is not None
+
+    def test_locks_price_layers_loaded(self, tmp_path, metadata):
+        price_layers_df = pd.DataFrame({"price_layer": ["ava"]})
+        path = write_locks_file(tmp_path, {"price_layers": price_layers_df})
+        result = load_balancing_config_from_excel(metadata, locks_path=path)
+        assert result.locks.price_layers is not None
+        assert list(result.locks.price_layers["price_layer"]) == ["ava"]
+
+    def test_locks_price_layers_absent_is_none(self, metadata):
+        # Fixture file has no price_layers sheet
+        result = load_balancing_config_from_excel(metadata, locks_path=LOCKS_FILE)
+        assert result.locks.price_layers is None
+
+    def test_locks_price_layers_multiple_values(self, tmp_path, metadata):
+        price_layers_df = pd.DataFrame({"price_layer": ["ava", "moms"]})
+        path = write_locks_file(tmp_path, {"price_layers": price_layers_df})
+        result = load_balancing_config_from_excel(metadata, locks_path=path)
+        assert set(result.locks.price_layers["price_layer"]) == {"ava", "moms"}
+
+    def test_locks_price_layers_error_unknown_column_name(self, tmp_path, metadata):
+        # "bad_col" is not a known price layer column name in the metadata
+        price_layers_df = pd.DataFrame({"price_layer": ["bad_col"]})
+        path = write_locks_file(tmp_path, {"price_layers": price_layers_df})
+        with pytest.raises(ValueError, match="'bad_col'"):
+            load_balancing_config_from_excel(metadata, locks_path=path)
+
+    def test_locks_price_layers_error_mentions_known_columns(self, tmp_path, metadata):
+        price_layers_df = pd.DataFrame({"price_layer": ["bad_col"]})
+        path = write_locks_file(tmp_path, {"price_layers": price_layers_df})
+        with pytest.raises(ValueError, match="ava"):
+            load_balancing_config_from_excel(metadata, locks_path=path)
+
+    def test_locks_price_layers_error_missing_price_layer_column(self, tmp_path, metadata):
+        # Sheet exists but uses wrong column header
+        price_layers_df = pd.DataFrame({"wrong_col": ["ava"]})
+        path = write_locks_file(tmp_path, {"price_layers": price_layers_df})
+        with pytest.raises(ValueError, match="'price_layer'"):
+            load_balancing_config_from_excel(metadata, locks_path=path)

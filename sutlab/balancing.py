@@ -259,6 +259,11 @@ def _balance_table(
         .fillna(1.0)
     )
 
+    # Exclude locked price layer columns from scaling.
+    if locks is not None and locks.price_layers is not None:
+        locked_layer_cols = set(locks.price_layers["price_layer"].tolist())
+        scale_price_cols = [c for c in scale_price_cols if c not in locked_layer_cols]
+
     # Apply the scale factor to all price columns on adjustable rows.
     adj_mask = df["_adjustable"]
     df.loc[adj_mask, scale_price_cols] = (
@@ -392,6 +397,11 @@ def _balance_rows_table(
         .replace([float("inf"), float("-inf")], float("nan"))
         .fillna(1.0)
     )
+
+    # Exclude locked price layer columns from scaling.
+    if locks is not None and locks.price_layers is not None:
+        locked_layer_cols = set(locks.price_layers["price_layer"].tolist())
+        scale_price_cols = [c for c in scale_price_cols if c not in locked_layer_cols]
 
     # Apply the scale factor to all price columns on adjustable rows.
     adj_mask = df["_adjustable"]
