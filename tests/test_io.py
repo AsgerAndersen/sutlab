@@ -237,7 +237,7 @@ class TestLoadMetadataClassificationsFromExcel:
 
     def test_transactions_esa_code_values_are_valid(self):
         result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE, minimal_columns())
-        valid = {"P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
+        valid = {"D2121", "P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
         assert set(result.transactions["esa_code"]).issubset(valid)
 
     def test_transactions_table_values_are_supply_or_use(self):
