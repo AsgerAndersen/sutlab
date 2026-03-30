@@ -505,13 +505,23 @@ def _natural_sort_key(s: str) -> list:
     return [int(p) if p.isdigit() else p for p in parts]
 
 
-def _code_matches_pattern(code: str, pattern: str) -> bool:
-    """Return True if code matches a single positive pattern (exact, wildcard, or range)."""
+def _code_matches_pattern(
+    code: str,
+    pattern: str,
+    precomputed_sort_key: list | None = None,
+) -> bool:
+    """Return True if code matches a single positive pattern (exact, wildcard, or range).
+
+    precomputed_sort_key, if provided, is the cached result of
+    ``_natural_sort_key(code)``. Pass it when matching many codes against the
+    same range pattern to avoid redundant ``re.split`` calls.
+    """
     if "*" in pattern:
         return code.startswith(pattern.rstrip("*"))
     elif ":" in pattern:
         lo, hi = pattern.split(":", 1)
-        return _natural_sort_key(lo) <= _natural_sort_key(code) <= _natural_sort_key(hi)
+        key = precomputed_sort_key if precomputed_sort_key is not None else _natural_sort_key(code)
+        return _natural_sort_key(lo) <= key <= _natural_sort_key(hi)
     else:
         return code == pattern
 
@@ -550,6 +560,15 @@ def _match_codes(codes: list[str], patterns: list[str]) -> list[str]:
     positive_patterns = [p for p in patterns if not p.startswith("~")]
     negative_patterns = [p[1:] for p in patterns if p.startswith("~")]
 
+    # Pre-compute natural sort keys once if any range pattern is present.
+    # Without this, _natural_sort_key (which calls re.split) would be called
+    # once per code per range pattern — O(N_codes × N_range_patterns) splits.
+    all_active_patterns = positive_patterns + negative_patterns
+    if any(":" in p for p in all_active_patterns):
+        code_sort_keys: dict[str, list] = {code: _natural_sort_key(code) for code in codes}
+    else:
+        code_sort_keys = {}
+
     # Positive pass: match any positive pattern.
     # If there are no positive patterns but there are negation patterns,
     # start from all codes (negation-only means "everything except ...").
@@ -557,7 +576,7 @@ def _match_codes(codes: list[str], patterns: list[str]) -> list[str]:
     if positive_patterns:
         candidates = [
             code for code in codes
-            if any(_code_matches_pattern(code, p) for p in positive_patterns)
+            if any(_code_matches_pattern(code, p, code_sort_keys.get(code)) for p in positive_patterns)
         ]
     elif negative_patterns:
         candidates = list(codes)
@@ -568,7 +587,7 @@ def _match_codes(codes: list[str], patterns: list[str]) -> list[str]:
     if negative_patterns:
         excluded = {
             code for code in candidates
-            if any(_code_matches_pattern(code, p) for p in negative_patterns)
+            if any(_code_matches_pattern(code, p, code_sort_keys.get(code)) for p in negative_patterns)
         }
         candidates = [code for code in candidates if code not in excluded]
 
