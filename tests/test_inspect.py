@@ -32,10 +32,10 @@ def columns():
 def transactions():
     """Two supply transactions and two use transactions, with names."""
     return pd.DataFrame({
-        "code":     ["0100",                    "0700",    "2000",                     "6001"],
-        "name":     ["Output at basic prices",  "Imports", "Intermediate consumption", "Exports"],
-        "table":    ["supply",                  "supply",  "use",                      "use"],
-        "esa_code": ["P1",                       "P7",      "P2",                       "P6"],
+        "trans":     ["0100",                    "0700",    "2000",                     "6001"],
+        "trans_txt": ["Output at basic prices",  "Imports", "Intermediate consumption", "Exports"],
+        "table":     ["supply",                  "supply",  "use",                      "use"],
+        "esa_code":  ["P1",                       "P7",      "P2",                       "P6"],
     })
 
 
@@ -79,8 +79,8 @@ def sut(supply, use, columns, transactions):
 @pytest.fixture
 def sut_with_product_labels(supply, use, columns, transactions):
     products = pd.DataFrame({
-        "code": ["A", "T"],
-        "name": ["Agricultural goods", "Trade services"],
+        "nrnr":     ["A", "T"],
+        "nrnr_txt": ["Agricultural goods", "Trade services"],
     })
     classifications = SUTClassifications(transactions=transactions, products=products)
     metadata = SUTMetadata(columns=columns, classifications=classifications)
@@ -129,12 +129,12 @@ def sut_multi_cat(supply_multi_cat, use_multi_cat, columns, transactions):
 def sut_with_industry_labels(supply, use, columns, transactions):
     """SUT with both product and industry classification labels."""
     products = pd.DataFrame({
-        "code": ["A", "T"],
-        "name": ["Agricultural goods", "Trade services"],
+        "nrnr":     ["A", "T"],
+        "nrnr_txt": ["Agricultural goods", "Trade services"],
     })
     industries = pd.DataFrame({
-        "code": ["X", "Y", "Z"],
-        "name": ["Industry X", "Industry Y", "Trade industry"],
+        "brch":     ["X", "Y", "Z"],
+        "brch_txt": ["Industry X", "Industry Y", "Trade industry"],
     })
     classifications = SUTClassifications(
         transactions=transactions, products=products, industries=industries
@@ -514,7 +514,7 @@ class TestProductTxtLevel:
                 assert product_txt == "Trade services"
 
     def test_product_not_in_classification_gets_empty_txt(self, supply, use, columns, transactions):
-        products = pd.DataFrame({"code": ["A"], "name": ["Agricultural goods"]})
+        products = pd.DataFrame({"nrnr": ["A"], "nrnr_txt": ["Agricultural goods"]})
         classifications = SUTClassifications(transactions=transactions, products=products)
         metadata = SUTMetadata(columns=columns, classifications=classifications)
         sut_partial = SUT(price_basis="current_year", supply=supply, use=use, metadata=metadata)
@@ -821,14 +821,15 @@ class TestErrors:
             inspect_products(sut_no_trans, "A")
 
     def test_raises_when_transactions_has_no_name_column(self, supply, use, columns):
+        # transactions DataFrame is missing the required 'trans_txt' label column
         trans_no_name = pd.DataFrame({
-            "code":  ["0100"],
+            "trans": ["0100"],
             "table": ["supply"],
         })
         classifications = SUTClassifications(transactions=trans_no_name)
         meta = SUTMetadata(columns=columns, classifications=classifications)
         sut_no_name = SUT(price_basis="current_year", supply=supply, use=use, metadata=meta)
-        with pytest.raises(ValueError, match="name"):
+        with pytest.raises(ValueError, match="trans_txt"):
             inspect_products(sut_no_name, "A")
 
     def test_raises_when_id_not_in_collection(self, sut):
@@ -1309,10 +1310,10 @@ class TestDetailStyling:
     def test_transaction_separator_between_blocks(self, columns):
         # Build a SUT where two supply transactions both have category breakdowns
         transactions = pd.DataFrame({
-            "code":     ["0100", "0500"],
-            "name":     ["Output", "Another output"],
-            "table":    ["supply", "supply"],
-            "esa_code": ["P1", "P1"],
+            "trans":     ["0100", "0500"],
+            "trans_txt": ["Output", "Another output"],
+            "table":     ["supply", "supply"],
+            "esa_code":  ["P1", "P1"],
         })
         supply = pd.DataFrame({
             "year":  [2020, 2020, 2020, 2020],
@@ -1373,10 +1374,10 @@ def columns_with_layers():
 def transactions_with_layers():
     """Supply and use transactions covering layer-bearing and layer-free use rows."""
     return pd.DataFrame({
-        "code":     ["0100",                   "2000",                     "3110",                  "6001"],
-        "name":     ["Output at basic prices", "Intermediate consumption", "Household consumption", "Exports"],
-        "table":    ["supply",                 "use",                      "use",                   "use"],
-        "esa_code": ["P1",                     "P2",                       "P31",                   "P6"],
+        "trans":     ["0100",                   "2000",                     "3110",                  "6001"],
+        "trans_txt": ["Output at basic prices", "Intermediate consumption", "Household consumption", "Exports"],
+        "table":     ["supply",                 "use",                      "use",                   "use"],
+        "esa_code":  ["P1",                     "P2",                       "P31",                   "P6"],
     })
 
 

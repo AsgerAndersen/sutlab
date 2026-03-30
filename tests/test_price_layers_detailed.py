@@ -51,10 +51,10 @@ def columns_with_layers():
 @pytest.fixture
 def transactions_with_layers():
     return pd.DataFrame({
-        "code":     ["0100",  "2000",  "3110",  "6001"],
-        "name":     ["Output", "IC",   "HHcons","Exports"],
-        "table":    ["supply","use",   "use",   "use"],
-        "esa_code": ["P1",    "P2",    "P31",   "P6"],
+        "trans":     ["0100",   "2000", "3110",   "6001"],
+        "trans_txt": ["Output", "IC",   "HHcons", "Exports"],
+        "table":     ["supply", "use",  "use",    "use"],
+        "esa_code":  ["P1",     "P2",   "P31",    "P6"],
     })
 
 

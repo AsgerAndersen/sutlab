@@ -100,20 +100,32 @@ class SUTClassifications:
         Corresponds to the ``classifications`` sheet in the Excel metadata
         file.
     products : DataFrame or None
-        Classification table for products: ``code`` and ``name`` columns.
+        Classification table for products. Columns are the actual product
+        column name (e.g. ``'nrnr'``) and that name with ``'_txt'`` suffix
+        (e.g. ``'nrnr_txt'`` for the label).
     transactions : DataFrame or None
-        Classification table for transaction codes: ``code``, ``name``, and
-        ``table`` columns. ``table`` must be ``"supply"`` or ``"use"`` for
+        Classification table for transaction codes. Columns are the actual
+        transaction column name (e.g. ``'trans'``), that name with ``'_txt'``
+        suffix (e.g. ``'trans_txt'`` for the label), ``'table'``, and
+        ``'esa_code'``. ``'table'`` must be ``"supply"`` or ``"use"`` for
         every row and is validated when loading from Excel. Used to split
         combined long-format SUT data into separate supply and use tables.
     industries : DataFrame or None
-        Classification table for industries: ``code`` and ``name`` columns.
+        Classification table for industries. Industry codes live in the
+        ``category`` column — they are the category values on rows whose
+        transaction is output (P1) or intermediate consumption (P2). Columns
+        are the actual category column name (e.g. ``'brch'``) and that name
+        with ``'_txt'`` suffix (e.g. ``'brch_txt'``).
     individual_consumption : DataFrame or None
-        Classification table for individual consumption functions
-        (e.g. NCP76): ``code`` and ``name`` columns.
+        Classification table for individual consumption functions (e.g.
+        NCP76). Individual consumption codes live in the ``category`` column
+        on rows whose transaction is P31. Same column naming as
+        ``industries``.
     collective_consumption : DataFrame or None
-        Classification table for collective consumption functions
-        (e.g. NCO10): ``code`` and ``name`` columns.
+        Classification table for collective consumption functions (e.g.
+        NCO10). Collective consumption codes live in the ``category`` column
+        on rows whose transaction is P32. Same column naming as
+        ``industries``.
     """
 
     classification_names: pd.DataFrame | None = None
@@ -767,9 +779,9 @@ def get_transaction_codes(sut: SUT) -> pd.DataFrame:
 def _category_codes_for_esa(sut: SUT, esa_codes: list[str]) -> pd.DataFrame:
     """Return sorted unique category codes from rows whose transaction maps to any of the given ESA codes."""
     trans_df = sut.metadata.classifications.transactions
-    matching_trans = trans_df[trans_df["esa_code"].isin(esa_codes)]["code"].tolist()
-
     trans_col = sut.metadata.columns.transaction
+    matching_trans = trans_df[trans_df["esa_code"].isin(esa_codes)][trans_col].tolist()
+
     cat_col = sut.metadata.columns.category
 
     supply_cats = sut.supply[sut.supply[trans_col].isin(matching_trans)][cat_col].dropna().unique().tolist()

@@ -192,7 +192,10 @@ def _load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
     )
 
 
-def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifications:
+def _load_metadata_classifications_from_excel(
+    path: str | Path,
+    columns: SUTColumns,
+) -> SUTClassifications:
     """
     Load classification tables from a multi-sheet Excel file.
 
@@ -200,6 +203,16 @@ def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifica
     ``industries``, ``individual_consumption``, ``collective_consumption``.
     Unknown sheets are silently ignored. Each known sheet is optional; its
     corresponding field is set to ``None`` if the sheet is absent.
+
+    Classification column names are derived from ``columns`` rather than
+    being hardcoded. Each sheet uses the actual column name from the SUT
+    data and a ``'_txt'`` variant for the label:
+
+    - ``products``: ``{columns.product}``, ``{columns.product}_txt``
+    - ``transactions``: ``{columns.transaction}``,
+      ``{columns.transaction}_txt``, ``table``, ``esa_code``
+    - ``industries``, ``individual_consumption``, ``collective_consumption``:
+      ``{columns.category}``, ``{columns.category}_txt``
 
     If the ``transactions`` sheet is present, it must have a ``table`` column
     with values ``"supply"`` or ``"use"`` for every row, and an ``esa_code``
@@ -214,6 +227,9 @@ def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifica
     ----------
     path : str or Path
         Path to the Excel file.
+    columns : SUTColumns
+        Column role mappings for the SUT. Used to determine the expected
+        column names in each classification sheet.
 
     Returns
     -------
@@ -231,6 +247,13 @@ def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifica
     all_sheets = pd.read_excel(path, sheet_name=None, dtype=str)
     all_sheets = {name: _strip_whitespace(df) for name, df in all_sheets.items()}
 
+    prod_col = columns.product
+    prod_txt_col = f"{columns.product}_txt"
+    trans_col = columns.transaction
+    trans_txt_col = f"{columns.transaction}_txt"
+    cat_col = columns.category
+    cat_txt_col = f"{columns.category}_txt"
+
     classification_names = None
     if "classifications" in all_sheets:
         df = all_sheets["classifications"]
@@ -242,14 +265,18 @@ def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifica
     products = None
     if "products" in all_sheets:
         df = all_sheets["products"]
-        _validate_required_columns(df, ["code", "name"], source="'products' sheet")
-        products = df[["code", "name"]].copy()
+        _validate_required_columns(
+            df, [prod_col, prod_txt_col], source="'products' sheet"
+        )
+        products = df[[prod_col, prod_txt_col]].copy()
 
     transactions = None
     if "transactions" in all_sheets:
         df = all_sheets["transactions"]
         _validate_required_columns(
-            df, ["code", "name", "table", "esa_code"], source="'transactions' sheet"
+            df,
+            [trans_col, trans_txt_col, "table", "esa_code"],
+            source="'transactions' sheet",
         )
         invalid_table_values = set(df["table"]) - _VALID_TABLE_VALUES
         if invalid_table_values:
@@ -266,29 +293,31 @@ def _load_metadata_classifications_from_excel(path: str | Path) -> SUTClassifica
                 f"Invalid values in 'esa_code' column of 'transactions' sheet: {invalid_str}. "
                 f"Valid values are: {valid_str}."
             )
-        transactions = df[["code", "name", "table", "esa_code"]].copy()
+        transactions = df[[trans_col, trans_txt_col, "table", "esa_code"]].copy()
 
     industries = None
     if "industries" in all_sheets:
         df = all_sheets["industries"]
-        _validate_required_columns(df, ["code", "name"], source="'industries' sheet")
-        industries = df[["code", "name"]].copy()
+        _validate_required_columns(
+            df, [cat_col, cat_txt_col], source="'industries' sheet"
+        )
+        industries = df[[cat_col, cat_txt_col]].copy()
 
     individual_consumption = None
     if "individual_consumption" in all_sheets:
         df = all_sheets["individual_consumption"]
         _validate_required_columns(
-            df, ["code", "name"], source="'individual_consumption' sheet"
+            df, [cat_col, cat_txt_col], source="'individual_consumption' sheet"
         )
-        individual_consumption = df[["code", "name"]].copy()
+        individual_consumption = df[[cat_col, cat_txt_col]].copy()
 
     collective_consumption = None
     if "collective_consumption" in all_sheets:
         df = all_sheets["collective_consumption"]
         _validate_required_columns(
-            df, ["code", "name"], source="'collective_consumption' sheet"
+            df, [cat_col, cat_txt_col], source="'collective_consumption' sheet"
         )
-        collective_consumption = df[["code", "name"]].copy()
+        collective_consumption = df[[cat_col, cat_txt_col]].copy()
 
     return SUTClassifications(
         classification_names=classification_names,
@@ -332,7 +361,7 @@ def load_metadata_from_excel(
         Any error raised by the underlying loader functions.
     """
     columns = _load_metadata_columns_from_excel(columns_path)
-    classifications = _load_metadata_classifications_from_excel(classifications_path)
+    classifications = _load_metadata_classifications_from_excel(classifications_path, columns)
 
     if classifications.transactions is None:
         raise ValueError(
@@ -408,7 +437,7 @@ def load_sut_from_parquet(
     cols = metadata.columns
     trans_df = metadata.classifications.transactions
 
-    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", "code"])
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
 
     # Load each file, cast string columns, and label with the id value
     frames = []
@@ -423,7 +452,7 @@ def load_sut_from_parquet(
     combined = pd.concat(frames, ignore_index=True)
 
     # Validate that all transaction codes in the data are known
-    known_codes = set(trans_df["code"])
+    known_codes = set(trans_df[cols.transaction])
     data_codes = set(combined[cols.transaction].unique())
     unknown_codes = data_codes - known_codes
     if unknown_codes:
@@ -569,7 +598,7 @@ def load_balancing_targets_from_excel(
 
     # Validate all transaction codes are known
     trans_df = metadata.classifications.transactions
-    known_codes = set(trans_df["code"])
+    known_codes = set(trans_df[cols.transaction])
     data_codes = set(combined[cols.transaction].unique())
     unknown_codes = data_codes - known_codes
     if unknown_codes:
@@ -581,7 +610,7 @@ def load_balancing_targets_from_excel(
         )
 
     # Split into supply and use
-    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", "code"])
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
     supply_mask = combined[cols.transaction].isin(supply_codes)
 
     # Supply: id, transaction, category, price_basic

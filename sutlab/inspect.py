@@ -846,12 +846,13 @@ def inspect_products(
         )
 
     trans_df = sut.metadata.classifications.transactions
-    if "name" not in trans_df.columns:
-        raise ValueError(
-            "sut.metadata.classifications.transactions must have a 'name' column."
-        )
-
     cols = sut.metadata.columns
+
+    trans_txt_col = f"{cols.transaction}_txt"
+    if trans_txt_col not in trans_df.columns:
+        raise ValueError(
+            f"sut.metadata.classifications.transactions must have a '{trans_txt_col}' column."
+        )
 
     # Resolve product patterns to concrete codes
     if isinstance(products, str):
@@ -883,15 +884,16 @@ def inspect_products(
 
     # Transaction name lookup: code → name
     trans_names = {
-        str(row["code"]): str(row["name"])
+        str(row[cols.transaction]): str(row[trans_txt_col])
         for _, row in trans_df.iterrows()
     }
 
     # Product name lookup: code → name, empty string if not available
+    prod_txt_col = f"{cols.product}_txt"
     products_df = sut.metadata.classifications.products
-    if products_df is not None:
+    if products_df is not None and prod_txt_col in products_df.columns:
         product_names = {
-            str(row["code"]): str(row["name"])
+            str(row[cols.product]): str(row[prod_txt_col])
             for _, row in products_df.iterrows()
         }
     else:
@@ -900,7 +902,7 @@ def inspect_products(
     # Category name lookup per transaction: {trans_code: {cat_code: cat_name}}
     # Uses esa_code on each transaction to find the right classification table.
     category_names_by_trans = _build_category_names_by_trans(
-        trans_df, sut.metadata.classifications
+        trans_df, sut.metadata.classifications, cols
     )
 
     balance = _build_balance_table(
@@ -975,6 +977,7 @@ def inspect_products(
 def _build_category_names_by_trans(
     trans_df: pd.DataFrame,
     classifications,
+    cols,
 ) -> dict[str, dict[str, str]]:
     """Return {trans_code: {cat_code: cat_name}} for category label lookup.
 
@@ -982,15 +985,16 @@ def _build_category_names_by_trans(
     classification table provides category names for each transaction.
     Returns an empty inner dict for transactions whose ESA code is not in
     ``_ESA_TO_CLASSIFICATION_ATTR``, or whose matching classification table
-    is not loaded or has no ``name`` column.
+    is not loaded or has no category label column.
     """
     if classifications is None or "esa_code" not in trans_df.columns:
         return {}
 
+    cat_txt_col = f"{cols.category}_txt"
     result: dict[str, dict[str, str]] = {}
 
     for _, row in trans_df.iterrows():
-        trans_code = str(row["code"])
+        trans_code = str(row[cols.transaction])
         esa_code = str(row["esa_code"])
 
         cls_attr = _ESA_TO_CLASSIFICATION_ATTR.get(esa_code)
@@ -999,12 +1003,12 @@ def _build_category_names_by_trans(
             continue
 
         cls_df = getattr(classifications, cls_attr, None)
-        if cls_df is None or "name" not in cls_df.columns:
+        if cls_df is None or cat_txt_col not in cls_df.columns:
             result[trans_code] = {}
             continue
 
         result[trans_code] = {
-            str(r["code"]): str(r["name"])
+            str(r[cols.category]): str(r[cat_txt_col])
             for _, r in cls_df.iterrows()
         }
 
