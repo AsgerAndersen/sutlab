@@ -452,3 +452,51 @@ Append-only. Each entry: date, decision, brief rationale.
   `_build_*` helpers. New inspection functions should be added as `_<name>.py` alongside
   `_products.py`, with their public names re-exported in `__init__.py`. All existing imports
   continue to work unchanged.
+
+- **2026-04-01**: `inspect_industries(sut, industries, ids=None, sort_id=None)` implemented
+  in `sutlab/inspect/_industries.py`. Returns `IndustryInspection` with 12 tables (data +
+  styled): `balance`, `balance_growth`, `supply_detail`, `supply_detail_distribution`,
+  `supply_detail_growth`, `use_detail`, `use_detail_distribution`,
+  `use_detail_coefficients`, `use_detail_growth`, `price_layers`, `price_layers_rates`,
+  `price_layers_distribution`, `price_layers_growth`.
+
+- **2026-04-01**: `inspect_industries` balance table structure: MultiIndex
+  `(industry, industry_txt, transaction, transaction_txt)`. Within each industry: P1 rows
+  at basic prices, "Total output" (only when ≥ 2 P1 in metadata), P2 rows at purchasers'
+  prices, "Total input" (only when ≥ 2 P2 in metadata), GVA `(B1g, "Gross value added")`,
+  input coefficient `("", "Input coefficient")`. Total rows determined from
+  `classifications.transactions` metadata, not from data.
+
+- **2026-04-01**: `inspect_industries` supply_detail / use_detail: MultiIndex
+  `(industry, industry_txt, transaction, transaction_txt, product, product_txt)`. One
+  "Total supply" / "Total use" row per industry block (summed across all transactions).
+  P1 (supply) from `sut.supply` at basic prices; P2 (use) from `sut.use` at purchasers'
+  prices. Zero-supply or zero-use products excluded. `sort_id` sorts non-total rows
+  descending within `["industry"]` groups.
+
+- **2026-04-01**: `use_detail_coefficients`: same structure as `use_detail`. Each value
+  divided by the industry's total P1 output at basic prices (recomputed from `sut.supply`).
+  Expresses each product's contribution to the input coefficient. Total use row equals the
+  overall input coefficient.
+
+- **2026-04-01**: `inspect_industries` price layer tables: MultiIndex
+  `(industry, industry_txt, price_layer, transaction, transaction_txt)`. One block per
+  `(industry, price_layer)`. Total row only when ≥ 2 P2 transactions in metadata.
+  `price_layers_distribution` is empty (not computed) when only 1 P2 transaction — would
+  be 1.0 everywhere. `price_layers_rates` has no Total rows. Rates computed via
+  `compute_price_layer_rates(filtered_sut, ["transaction", "category"])` on a SUT whose
+  use is pre-filtered to P2 transactions and matched industries.
+
+- **2026-04-01**: `compute_price_layer_rates` generalised: `aggregation_level` now accepts
+  `str | list[str]` of column role names. A string is normalised to a single-element list
+  internally. Existing calls with `"product"`, `"transaction"`, or `"category"` are unchanged.
+  New `["transaction", "category"]` grouping enables industry-level rate computation.
+
+- **2026-04-01**: `_style_price_layers_table` generalised with `outer_level="product"` /
+  `outer_txt_level="product_txt"` keyword params. Industry variant passes `"industry"` /
+  `"industry_txt"`. All existing call sites unchanged.
+
+- **2026-04-01**: `_sort_by_id_value` moved from `_products.py` to new `_shared.py`
+  (shared helpers for the inspect package). Used by both `_products.py` and
+  `_industries.py`. The `group_levels` argument is a list of MultiIndex level names
+  (e.g. `["product"]`, `["industry"]`, `["product", "price_layer"]`).
