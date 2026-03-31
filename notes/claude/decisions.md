@@ -394,3 +394,33 @@ Append-only. Each entry: date, decision, brief rationale.
   argument; `load_metadata_from_excel` handles this internally (loads columns first, passes
   them along). Rationale: direct merge-on without renaming; consistent with the principle
   that column names are never hardcoded.
+
+- **2026-03-30**: `sort_id` optional argument added to `inspect_products`. When set to
+  an id value (e.g. a year), all non-total rows are sorted descending by that column's
+  value within their group. Groups: `["product"]` for detail tables,
+  `["product", "price_layer"]` for price layer tables. Total rows (transaction == "")
+  remain fixed at the end. Sorting is a flat sort: all rows within a group are sorted
+  independently by value (transactions and categories intermixed). `balance`,
+  `balance_distribution`, and `balance_growth` are not sorted. `price_layers_rates` and
+  `price_layers_detailed_rates` are sorted independently by their own rate values (not
+  inherited from their parent tables). Distribution/growth variants inherit the sorted
+  order of their parent tables.
+
+- **2026-03-30**: `_style_detail_table` and `_style_price_layers_detailed_table`
+  rewritten to handle non-contiguous transaction blocks (which arise when `sort_id`
+  scatters rows of the same transaction). Key changes: (1) iterate rows in order rather
+  than grouping by transaction; (2) separators placed between adjacent rows where the
+  transaction changes; (3) `trans_css` placed on the first row of each *contiguous run*
+  of the same transaction (not the first global occurrence), because merged cells in
+  pandas HTML rendering take CSS from the first row of their rowspan. A
+  `trans_row_counter` dict tracks within-transaction row position for alternating
+  category colours.
+
+- **2026-03-31**: `sutlab/inspect.py` refactored into a package `sutlab/inspect/` in
+  preparation for multiple inspection functions. Structure: `__init__.py` re-exports the
+  public API (`inspect_products`, `ProductInspection`, `ProductInspectionData`) and private
+  names used in tests; `_style.py` holds all formatting helpers, colour constants, and Styler
+  factories; `_products.py` holds `inspect_products`, its result dataclasses, and all
+  `_build_*` helpers. New inspection functions should be added as `_<name>.py` alongside
+  `_products.py`, with their public names re-exported in `__init__.py`. All existing imports
+  continue to work unchanged.

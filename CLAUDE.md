@@ -11,7 +11,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + tests (`tests/test_inspect.py`, `tests/test_compute.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/compute.py`) + `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks` dataclasses + `set_balancing_targets`, `set_balancing_config` + `load_balancing_targets_from_excel`, `load_balancing_config_from_excel` + fixture data (`data/fixtures/`) + user documentation (`docs/`) + `balance_columns`, `balance_products_use` (`sutlab/balancing.py`) + tests (`tests/test_balancing.py`)
+- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect.py`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + optional `sort_id` argument (sorts non-total rows descending by a chosen id value, within product or product+price_layer groups) + tests (`tests/test_inspect.py`, `tests/test_compute.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/compute.py`) + `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks` dataclasses + `set_balancing_targets`, `set_balancing_config` + `load_balancing_targets_from_excel`, `load_balancing_config_from_excel` + fixture data (`data/fixtures/`) + user documentation (`docs/`) + `balance_columns`, `balance_products_use` (`sutlab/balancing.py`) + tests (`tests/test_balancing.py`)
 - **What's next**: Further balancing/inspection functions
 
 ## Architecture
@@ -20,7 +20,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 - `sutlab/sut.py` — Core dataclasses: `SUT`, `SUTMetadata`, `SUTColumns`, `SUTClassifications`, `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks`; and `set_balancing_id`, `set_balancing_targets`, `set_balancing_config`, `get_rows`, `get_product_codes`, `get_transaction_codes`, `get_ids`, `get_industry_codes`, `get_individual_consumption_codes`, `get_collective_consumption_codes`
 - `sutlab/io.py` — I/O functions (public): `load_metadata_from_excel`, `load_sut_from_parquet(id_values, paths, metadata, price_basis)`, `load_balancing_targets_from_excel(id_values, paths, metadata)`, `load_balancing_config_from_excel(metadata, *, tolerances_path, locks_path)`. Sub-loaders are private helpers.
 - `sutlab/compute.py` — General-purpose computation functions: `compute_price_layer_rates(sut, aggregation_level)` — computes step-wise price layer rates at product/transaction/category level; uses hardcoded Danish default denominators; raises on unsupported layers
-- `sutlab/inspect.py` — `inspect_products(sut, products, ids=None)` → `ProductInspection` (17 tables: balance, supply_detail, use_detail, price_layers, price_layers_rates, price_layers_detailed, price_layers_detailed_rates, and distribution/growth variants for all groups). Balance and use_detail at purchasers' prices; detail tables include uncategorized transactions and per-product Total rows.
+- `sutlab/inspect/` — inspection package. `__init__.py` re-exports the public API. `_style.py` holds all formatting helpers, colour constants, and Styler factories. `_products.py` holds `inspect_products(sut, products, ids=None, sort_id=None)` → `ProductInspection` (17 tables: balance, supply_detail, use_detail, price_layers, price_layers_rates, price_layers_detailed, price_layers_detailed_rates, and distribution/growth variants for all groups). Balance and use_detail at purchasers' prices; detail tables include uncategorized transactions and per-product Total rows. `sort_id` sorts non-total rows descending by the given id value (balance tables unaffected; rates tables sorted independently). New inspection functions should be added as `_<name>.py` with public names re-exported in `__init__.py`.
 - `sutlab/balancing.py` — `balance_columns(sut, transactions=None, categories=None, adjust_products=None)` → `SUT`. Scales adjustable rows to hit column targets. Transaction/category locks skip silently; product/cell locks covering all adjustable rows raise an informative error. `balance_products_use(sut, products=None, adjust_transactions=None, adjust_categories=None)` → `SUT`. Scales use rows so each product's total use in basic prices matches its supply total. Target derived from supply; all price columns scaled to preserve price layer rate ratios.
 
 ### Core data representation
@@ -64,8 +64,12 @@ price column means no target for that combination.
 - `target_tolerances`: optional `TargetTolerances` — `transactions` and `categories` DataFrames
   (columns: transaction/category col names, `rel`, `abs`). Loaded from Excel with sheets
   `transactions` and `categories`.
-- `locks`: optional `Locks` — `products`, `transactions`, `categories`, `cells` DataFrames.
-  A cell is locked if it matches any level (OR logic). Loaded from Excel with same sheet names.
+- `locks`: optional `Locks` — `products`, `transactions`, `categories`, `cells`, `price_layers`
+  DataFrames. A cell is locked if it matches any of the first four levels (OR logic).
+  `price_layers` has a single `price_layer` column; listed layers are excluded from scaling
+  in all balancing functions (values held fixed; implied rates allowed to change). Validated
+  on load against known price layer column names from metadata. Loaded from Excel; all sheets
+  optional — silently absent if the sheet does not exist.
 
 **`set_balancing_id / set_balancing_targets / set_balancing_config`** — each returns a new
 SUT with one field updated. Does not mutate the original.
