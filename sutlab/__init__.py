@@ -21,3 +21,11 @@ from sutlab.sut import (
 from sutlab.inspect import inspect_products
 from sutlab.derive import compute_price_layer_rates
 from sutlab.balancing import balance_columns, balance_products_use
+from sutlab.sut import SUT
+
+# Attach free-function docstrings to SUT methods so that
+# `?sut.method` in Jupyter shows the full documentation.
+SUT.compute_price_layer_rates.__doc__ = compute_price_layer_rates.__doc__
+SUT.inspect_products.__doc__ = inspect_products.__doc__
+SUT.balance_columns.__doc__ = balance_columns.__doc__
+SUT.balance_products_use.__doc__ = balance_products_use.__doc__

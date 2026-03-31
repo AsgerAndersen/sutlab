@@ -11,7 +11,7 @@ Python library for compiling, balancing, and analysing supply and use tables (SU
 
 ## Current status
 - **Phase**: Implementation
-- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect/`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + optional `sort_id` argument (sorts non-total rows descending by a chosen id value, within product or product+price_layer groups) + tests (`tests/test_inspect.py`, `tests/test_derive.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/derive.py`) + `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks` dataclasses + `set_balancing_targets`, `set_balancing_config` + `load_balancing_targets_from_excel`, `load_balancing_config_from_excel` + fixture data (`data/fixtures/`) + user documentation (`docs/`) + `balance_columns`, `balance_products_use` (`sutlab/balancing.py`) + tests (`tests/test_balancing.py`)
+- **What exists**: Core SUT dataclasses, `set_balancing_id`, and `get_rows` (`sutlab/sut.py`) + tests (`tests/test_sut.py`) + metadata I/O functions and `load_sut_from_parquet` (`sutlab/io.py`) + tests (`tests/test_io.py`) + `inspect_products` (`sutlab/inspect/`) returning 17 tables (balance, supply/use detail, price layers, price layer rates and detailed-by-category variants, and distribution/growth variants for all groups) + optional `sort_id` argument (sorts non-total rows descending by a chosen id value, within product or product+price_layer groups) + tests (`tests/test_inspect.py`, `tests/test_derive.py`, `tests/test_price_layers_detailed.py`) + `compute_price_layer_rates` (`sutlab/derive.py`) + `BalancingTargets`, `BalancingConfig`, `TargetTolerances`, `Locks` dataclasses + `set_balancing_targets`, `set_balancing_config` + `load_balancing_targets_from_excel`, `load_balancing_config_from_excel` + fixture data (`data/fixtures/`) + user documentation (`docs/`) + `balance_columns`, `balance_products_use` (`sutlab/balancing.py`) + tests (`tests/test_balancing.py`) + pandas-style methods on `SUT` delegating to all public non-loader free functions
 - **What's next**: Further balancing/inspection functions
 
 ## Architecture
@@ -122,7 +122,6 @@ SUT with one field updated. Does not mutate the original.
 ## Open design questions
 - What other inspection functions are needed beyond `inspect_products`?
 - What is the exact interface for the GDP decomposition argument to inspection functions?
-- Should `SUT` expose methods that delegate to free functions (pandas-style interface)? Deferred — implementation would be trivial when decided.
 - `balance_columns` tolerance logic: `rel OR abs` vs `AND`? (Tolerances are loaded but not yet actively used in balancing.)
 - What further balancing functions are needed beyond `balance_columns` and `balance_products_use`?
 - `derive.py` scope settled (see decisions.md 2026-03-31). Convert to a package if/when the file grows crowded.

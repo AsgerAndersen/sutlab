@@ -430,6 +430,20 @@ Append-only. Each entry: date, decision, brief rationale.
   `trans_row_counter` dict tracks within-transaction row position for alternating
   category colours.
 
+- **2026-03-31**: `SUT` dataclass gains methods that delegate to all public non-loader
+  free functions (`set_balancing_id`, `set_balancing_targets`, `set_balancing_config`,
+  `get_rows`, `get_ids`, `get_product_codes`, `get_transaction_codes`,
+  `get_industry_codes`, `get_individual_consumption_codes`,
+  `get_collective_consumption_codes`, `compute_price_layer_rates`, `inspect_products`,
+  `balance_columns`, `balance_products_use`). Loader functions remain module-level only
+  (they produce a SUT; they don't operate on one). `@dataclass` retained — methods work
+  identically in a dataclass. Circular imports avoided with lazy imports inside method
+  bodies for external modules (`derive`, `inspect`, `balancing`); same-module functions
+  called directly by name (global lookup at call time, not recursive). Free-function
+  docstrings assigned to methods after definition (`SUT.method.__doc__ = fn.__doc__`)
+  so `?sut.method` in Jupyter shows the full documentation: same-module assignments at
+  the bottom of `sut.py`, external-module assignments in `sutlab/__init__.py`.
+
 - **2026-03-31**: `sutlab/inspect.py` refactored into a package `sutlab/inspect/` in
   preparation for multiple inspection functions. Structure: `__init__.py` re-exports the
   public API (`inspect_products`, `ProductInspection`, `ProductInspectionData`) and private

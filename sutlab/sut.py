@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import Iterable, Literal
+from typing import TYPE_CHECKING, Iterable, Literal
+
+if TYPE_CHECKING:
+    from sutlab.inspect import ProductInspection
 
 import pandas as pd
 
@@ -345,6 +348,95 @@ class SUT:
     balancing_targets: BalancingTargets | None = None
     balancing_config: BalancingConfig | None = None
     metadata: SUTMetadata | None = None
+
+    # ------------------------------------------------------------------
+    # Methods delegating to module-level functions
+    # ------------------------------------------------------------------
+
+    def set_balancing_id(self, balancing_id: str | int) -> SUT:
+        """Delegates to :func:`set_balancing_id`."""
+        return set_balancing_id(self, balancing_id)
+
+    def set_balancing_targets(self, targets: BalancingTargets) -> SUT:
+        """Delegates to :func:`set_balancing_targets`."""
+        return set_balancing_targets(self, targets)
+
+    def set_balancing_config(self, config: BalancingConfig) -> SUT:
+        """Delegates to :func:`set_balancing_config`."""
+        return set_balancing_config(self, config)
+
+    def get_rows(
+        self,
+        *,
+        ids: str | int | Iterable[str | int] | None = None,
+        products: str | list[str] | None = None,
+        transactions: str | list[str] | None = None,
+        categories: str | list[str] | None = None,
+    ) -> SUT:
+        """Delegates to :func:`get_rows`."""
+        return get_rows(self, ids=ids, products=products, transactions=transactions, categories=categories)
+
+    def get_ids(self) -> pd.DataFrame:
+        """Delegates to :func:`get_ids`."""
+        return get_ids(self)
+
+    def get_product_codes(self) -> pd.DataFrame:
+        """Delegates to :func:`get_product_codes`."""
+        return get_product_codes(self)
+
+    def get_transaction_codes(self) -> pd.DataFrame:
+        """Delegates to :func:`get_transaction_codes`."""
+        return get_transaction_codes(self)
+
+    def get_industry_codes(self) -> pd.DataFrame:
+        """Delegates to :func:`get_industry_codes`."""
+        return get_industry_codes(self)
+
+    def get_individual_consumption_codes(self) -> pd.DataFrame:
+        """Delegates to :func:`get_individual_consumption_codes`."""
+        return get_individual_consumption_codes(self)
+
+    def get_collective_consumption_codes(self) -> pd.DataFrame:
+        """Delegates to :func:`get_collective_consumption_codes`."""
+        return get_collective_consumption_codes(self)
+
+    def compute_price_layer_rates(
+        self,
+        aggregation_level: Literal["product", "transaction", "category"],
+    ) -> pd.DataFrame:
+        """Delegates to :func:`~sutlab.derive.compute_price_layer_rates`."""
+        from sutlab.derive import compute_price_layer_rates
+        return compute_price_layer_rates(self, aggregation_level)
+
+    def inspect_products(
+        self,
+        products: str | list[str],
+        ids=None,
+        sort_id=None,
+    ) -> ProductInspection:
+        """Delegates to :func:`~sutlab.inspect.inspect_products`."""
+        from sutlab.inspect import inspect_products
+        return inspect_products(self, products, ids=ids, sort_id=sort_id)
+
+    def balance_columns(
+        self,
+        transactions: str | list[str] | None = None,
+        categories: str | list[str] | None = None,
+        adjust_products: str | list[str] | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.balancing.balance_columns`."""
+        from sutlab.balancing import balance_columns
+        return balance_columns(self, transactions=transactions, categories=categories, adjust_products=adjust_products)
+
+    def balance_products_use(
+        self,
+        products: str | list[str] | None = None,
+        adjust_transactions: str | list[str] | None = None,
+        adjust_categories: str | list[str] | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.balancing.balance_products_use`."""
+        from sutlab.balancing import balance_products_use
+        return balance_products_use(self, products=products, adjust_transactions=adjust_transactions, adjust_categories=adjust_categories)
 
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
@@ -947,3 +1039,20 @@ def get_ids(sut: SUT) -> pd.DataFrame:
             "Provide a SUTMetadata with column name mappings."
         )
     return _unique_column_values(sut, sut.metadata.columns.id)
+
+
+# ---------------------------------------------------------------------------
+# Attach free-function docstrings to SUT methods so that
+# `?sut.method` in Jupyter shows the full documentation.
+# ---------------------------------------------------------------------------
+
+SUT.set_balancing_id.__doc__ = set_balancing_id.__doc__
+SUT.set_balancing_targets.__doc__ = set_balancing_targets.__doc__
+SUT.set_balancing_config.__doc__ = set_balancing_config.__doc__
+SUT.get_rows.__doc__ = get_rows.__doc__
+SUT.get_ids.__doc__ = get_ids.__doc__
+SUT.get_product_codes.__doc__ = get_product_codes.__doc__
+SUT.get_transaction_codes.__doc__ = get_transaction_codes.__doc__
+SUT.get_industry_codes.__doc__ = get_industry_codes.__doc__
+SUT.get_individual_consumption_codes.__doc__ = get_individual_consumption_codes.__doc__
+SUT.get_collective_consumption_codes.__doc__ = get_collective_consumption_codes.__doc__
