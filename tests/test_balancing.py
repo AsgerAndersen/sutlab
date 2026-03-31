@@ -7,7 +7,8 @@ from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.balancing import balance_columns, balance_products_use, _evaluate_locks, _get_use_price_columns
+from sutlab.balancing import balance_columns, balance_products_use
+from sutlab.balancing._shared import _evaluate_locks, _get_use_price_columns
 from sutlab.sut import _match_codes
 from sutlab.sut import (
     SUT,
