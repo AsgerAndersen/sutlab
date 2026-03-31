@@ -10,7 +10,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key, get_rows
-from sutlab.compute import compute_price_layer_rates
+from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -1104,7 +1104,7 @@ def _build_price_layers_rates(
     layer is divided by the product-wide cumulative.
 
     ``trans_rates`` must be the output of
-    :func:`~sutlab.compute.compute_price_layer_rates` at
+    :func:`~sutlab.derive.compute_price_layer_rates` at
     ``aggregation_level="transaction"``, pre-filtered to the relevant products.
     """
     if price_layers.empty:
@@ -1335,7 +1335,7 @@ def _build_price_layers_detailed_rates(
     price_layers_detailed, minus the Total rows.
 
     ``cat_rates`` must be the output of
-    :func:`~sutlab.compute.compute_price_layer_rates` at
+    :func:`~sutlab.derive.compute_price_layer_rates` at
     ``aggregation_level="category"``, pre-filtered to the relevant products.
     """
     if price_layers_detailed.empty:

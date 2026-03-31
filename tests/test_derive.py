@@ -1,12 +1,12 @@
 """
-Tests for sutlab.compute.
+Tests for sutlab.derive.
 """
 import pytest
 from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.compute import compute_price_layer_rates
+from sutlab.derive import compute_price_layer_rates
 from sutlab.sut import SUT, SUTColumns, SUTMetadata
 
 
