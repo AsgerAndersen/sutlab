@@ -72,6 +72,8 @@ _DATA_COLORS = {
     "use":           ("#e3f2fd", "#ecf6fe"),
     "use_total":     "#bbdefb",
     "balance":       "#f5f5f5",
+    # GVA and Input coefficient rows in the industry balance table.
+    "derived":       ("#fce8d0", "#fef3e8"),
 }
 _INDEX_COLORS = {
     "supply":        ("#d8eedb", "#e3f3e5"),
@@ -79,6 +81,8 @@ _INDEX_COLORS = {
     "use":           ("#d0e8f8", "#dbedfa"),
     "use_total":     "#a5cff4",
     "balance":       "#e5e5e5",
+    # GVA and Input coefficient rows in the industry balance table.
+    "derived":       ("#f5d5b2", "#fbe9cc"),
 }
 
 
@@ -200,18 +204,46 @@ def _style_balance_table(df: pd.DataFrame, format_func) -> Styler:
     return styler
 
 
-def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler:
-    """Apply row colours and separators to a detail table (supply_detail or use_detail).
+def _style_detail_table(
+    df: pd.DataFrame,
+    format_func,
+    color_key: str,
+    *,
+    outer_level: str = "product",
+    outer_txt_level: str = "product_txt",
+    inner_level: str = "category",
+    inner_txt_level: str = "category_txt",
+) -> Styler:
+    """Apply row colours and separators to a detail table.
+
+    Handles any detail table whose MultiIndex has the shape:
+    ``(outer, outer_txt, transaction, transaction_txt, inner, inner_txt)``.
+    For ``inspect_products`` detail tables the outer group is ``product`` and
+    the inner dimension is ``category``. For ``inspect_industries`` detail
+    tables the outer group is ``industry`` and the inner dimension is
+    ``product``.
 
     Parameters
     ----------
     df : pd.DataFrame
-        A supply_detail or use_detail DataFrame.
+        A detail DataFrame (supply_detail or use_detail).
     format_func : callable
         Applied to all data cells (e.g. ``_format_number``).
     color_key : str
         ``"supply"`` or ``"use"`` — selects the colour set from
         ``_DATA_COLORS`` / ``_INDEX_COLORS``.
+    outer_level : str
+        Index level name for the outermost grouping dimension. Default
+        ``"product"`` (for ``inspect_products``).
+    outer_txt_level : str
+        Index level name for the outer label column. Default
+        ``"product_txt"``.
+    inner_level : str
+        Index level name for the innermost dimension (rows within a
+        transaction). Default ``"category"``.
+    inner_txt_level : str
+        Index level name for the inner label column. Default
+        ``"category_txt"``.
     """
     styler = df.style.format(format_func, na_rep="")
     if df.empty:
@@ -222,29 +254,29 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
     idx_row_colors = _INDEX_COLORS[color_key]
     idx_hdr_color = _INDEX_COLORS[f"{color_key}_total"]
 
-    product_vals = df.index.get_level_values("product")
+    outer_vals = df.index.get_level_values(outer_level)
     trans_vals = df.index.get_level_values("transaction")
-    products = list(product_vals.unique())
+    outers = list(outer_vals.unique())
     n = len(df)
 
     data_css = [""] * n
-    cat_css = [""] * n
-    cat_txt_css = [""] * n
+    inner_css = [""] * n
+    inner_txt_css = [""] * n
     trans_css = [""] * n
     trans_txt_css = [""] * n
-    prod_css = [""] * n
-    prod_txt_css = [""] * n
+    outer_css = [""] * n
+    outer_txt_css = [""] * n
 
-    for p_idx, product in enumerate(products):
-        is_last_product = (p_idx == len(products) - 1)
-        prod_positions = [i for i, v in enumerate(product_vals) if v == product]
+    for p_idx, outer in enumerate(outers):
+        is_last_outer = (p_idx == len(outers) - 1)
+        outer_positions = [i for i, v in enumerate(outer_vals) if v == outer]
 
-        if not is_last_product:
-            prod_css[prod_positions[0]] = "border-bottom: 2px solid #999"
-            prod_txt_css[prod_positions[0]] = "border-bottom: 2px solid #999"
+        if not is_last_outer:
+            outer_css[outer_positions[0]] = "border-bottom: 2px solid #999"
+            outer_txt_css[outer_positions[0]] = "border-bottom: 2px solid #999"
 
-        # trans_row_counter: rows seen per transaction so far (within this product),
-        # used to alternate category colours within each transaction.
+        # trans_row_counter: rows seen per transaction so far (within this outer),
+        # used to alternate inner-dimension colours within each transaction.
         trans_row_counter = {}
         # Track the start of the current contiguous run of the same transaction so
         # that trans_css can be placed on the first row of the run. Merged cells in
@@ -253,17 +285,17 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
         run_start_i_abs = None
         prev_trans = None
 
-        for pos_idx, i_abs in enumerate(prod_positions):
+        for pos_idx, i_abs in enumerate(outer_positions):
             trans = trans_vals[i_abs]
-            is_last_pos = (pos_idx == len(prod_positions) - 1)
-            next_trans = trans_vals[prod_positions[pos_idx + 1]] if not is_last_pos else None
+            is_last_pos = (pos_idx == len(outer_positions) - 1)
+            next_trans = trans_vals[outer_positions[pos_idx + 1]] if not is_last_pos else None
 
             # Separator on the bottom of this row:
-            #   thick  → end of product block
+            #   thick  → end of outer block
             #   thin   → end of transaction block (next row belongs to a different transaction)
             #   none   → mid-block (next row has the same transaction)
             if is_last_pos:
-                sep = "; border-bottom: 2px solid #999" if not is_last_product else ""
+                sep = "; border-bottom: 2px solid #999" if not is_last_outer else ""
             elif next_trans != trans:
                 sep = "; border-bottom: 1px solid #ccc"
             else:
@@ -288,43 +320,49 @@ def _style_detail_table(df: pd.DataFrame, format_func, color_key: str) -> Styler
                     trans_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
                     trans_txt_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
 
-            # Data and category cells are styled individually on every row.
+            # Data and inner cells are styled individually on every row.
             if trans == "":
                 data_css[i_abs] = (
                     f"background-color: {data_total_color}; font-weight: bold{sep}"
                 )
-                cat_css[i_abs] = (
+                inner_css[i_abs] = (
                     f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
                 )
-                cat_txt_css[i_abs] = (
+                inner_txt_css[i_abs] = (
                     f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
                 )
             else:
                 row_pos = trans_row_counter.get(trans, 0)
                 trans_row_counter[trans] = row_pos + 1
                 data_css[i_abs] = f"background-color: {data_row_colors[row_pos % 2]}{sep}"
-                cat_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
-                cat_txt_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+                inner_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+                inner_txt_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
 
     styler = styler.apply(
         lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
         axis=None,
     )
-    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
-    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=inner_css: css, level=inner_level, axis=0)
+    styler = styler.apply_index(lambda s, css=inner_txt_css: css, level=inner_txt_level, axis=0)
     styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
     styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
-    styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
-    styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=outer_css: css, level=outer_level, axis=0)
+    styler = styler.apply_index(lambda s, css=outer_txt_css: css, level=outer_txt_level, axis=0)
     return styler
 
 
-def _style_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
+def _style_price_layers_table(
+    df: pd.DataFrame,
+    format_func,
+    *,
+    outer_level: str = "product",
+    outer_txt_level: str = "product_txt",
+) -> Styler:
     """Apply colours, bold, and separators to a price_layers-shaped table.
 
     Each distinct ``price_layer`` value gets a colour from ``_LAYER_PALETTES``
     (cycling if there are more layers than palette entries). Within each
-    ``(product, price_layer)`` block:
+    ``(outer_level, price_layer)`` block:
 
     - Transaction rows alternate between the two light shades of that layer's
       palette; their ``transaction`` and ``transaction_txt`` index cells use
@@ -335,14 +373,27 @@ def _style_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
       more saturated shade; the separator border is placed on it so the
       border-bottom aligns with the block boundary.
 
-    Separators: ``1px solid #ccc`` between layer blocks within a product,
-    ``2px solid #999`` between product blocks.
+    Separators: ``1px solid #ccc`` between layer blocks within an outer group,
+    ``2px solid #999`` between outer group blocks.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Price layers table with a MultiIndex whose levels include
+        ``outer_level``, ``outer_txt_level``, ``price_layer``,
+        ``transaction``, and ``transaction_txt``.
+    format_func : callable
+        Number formatter passed to ``Styler.format``.
+    outer_level : str, optional
+        Name of the outermost MultiIndex level. Default ``"product"``.
+    outer_txt_level : str, optional
+        Name of the label level for the outer dimension. Default ``"product_txt"``.
     """
     styler = df.style.format(format_func, na_rep="")
     if df.empty:
         return styler
 
-    product_vals = df.index.get_level_values("product")
+    outer_vals = df.index.get_level_values(outer_level)
     layer_vals = df.index.get_level_values("price_layer")
     trans_txt_vals = df.index.get_level_values("transaction_txt")
     n = len(df)
@@ -351,31 +402,31 @@ def _style_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
     trans_css = [""] * n
     trans_txt_css = [""] * n
     layer_css = [""] * n
-    prod_css = [""] * n
-    prod_txt_css = [""] * n
+    outer_css = [""] * n
+    outer_txt_css = [""] * n
 
-    products = list(dict.fromkeys(product_vals))
+    outers = list(dict.fromkeys(outer_vals))
 
-    for p_idx, product in enumerate(products):
-        is_last_product = (p_idx == len(products) - 1)
-        prod_positions = [i for i, v in enumerate(product_vals) if v == product]
-        prod_layers = list(dict.fromkeys(layer_vals[i] for i in prod_positions))
+    for p_idx, outer in enumerate(outers):
+        is_last_outer = (p_idx == len(outers) - 1)
+        outer_positions = [i for i, v in enumerate(outer_vals) if v == outer]
+        outer_layers = list(dict.fromkeys(layer_vals[i] for i in outer_positions))
 
-        # product/product_txt: one merged cell per product — separator on first row
-        if not is_last_product:
-            prod_css[prod_positions[0]] = "border-bottom: 2px solid #999"
-            prod_txt_css[prod_positions[0]] = "border-bottom: 2px solid #999"
+        # outer/outer_txt: one merged cell per outer group — separator on first row
+        if not is_last_outer:
+            outer_css[outer_positions[0]] = "border-bottom: 2px solid #999"
+            outer_txt_css[outer_positions[0]] = "border-bottom: 2px solid #999"
 
-        for l_idx, layer in enumerate(prod_layers):
-            is_last_layer = (l_idx == len(prod_layers) - 1)
+        for l_idx, layer in enumerate(outer_layers):
+            is_last_layer = (l_idx == len(outer_layers) - 1)
             palette = _LAYER_PALETTES[l_idx % len(_LAYER_PALETTES)]
 
-            block_positions = [i for i in prod_positions if layer_vals[i] == layer]
+            block_positions = [i for i in outer_positions if layer_vals[i] == layer]
             block_txts = [trans_txt_vals[i] for i in block_positions]
 
             if not is_last_layer:
                 sep = "; border-bottom: 1px solid #ccc"
-            elif not is_last_product:
+            elif not is_last_outer:
                 sep = "; border-bottom: 2px solid #999"
             else:
                 sep = ""
@@ -415,8 +466,8 @@ def _style_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
     styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
     styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
     styler = styler.apply_index(lambda s, css=layer_css: css, level="price_layer", axis=0)
-    styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
-    styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=outer_css: css, level=outer_level, axis=0)
+    styler = styler.apply_index(lambda s, css=outer_txt_css: css, level=outer_txt_level, axis=0)
     return styler
 
 
@@ -553,4 +604,142 @@ def _style_price_layers_detailed_table(df: pd.DataFrame, format_func) -> Styler:
     styler = styler.apply_index(lambda s, css=layer_css: css, level="price_layer", axis=0)
     styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
     styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
+    return styler
+
+
+def _style_industry_balance_table(
+    df: pd.DataFrame,
+    p1_trans: frozenset,
+    format_func=None,
+) -> Styler:
+    """Apply colours, bold, and industry separators to the industry balance table.
+
+    Colour scheme:
+
+    - P1 (output) transaction rows: alternating green (``supply`` palette).
+    - ``Total output`` row (bold): saturated green (``supply_total``).
+    - P2 (input) transaction rows: alternating blue (``use`` palette).
+    - ``Total input`` row (bold): saturated blue (``use_total``).
+    - ``Gross value added`` and ``Input coefficient`` rows: alternating
+      brown-orange (``derived`` palette).
+
+    Industry blocks are separated by a thick border (``2px solid #999``).
+    The ``transaction`` index level is coloured for non-``""`` codes only,
+    following the same convention as :func:`_style_balance_table`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Industry balance table from :func:`inspect_industries`, with a
+        four-level MultiIndex ``(industry, industry_txt, transaction,
+        transaction_txt)``.
+    p1_trans : frozenset
+        Set of P1 transaction codes. Used to distinguish output rows from
+        input rows when no ``Total output`` / ``Total input`` anchor is
+        present (single-transaction case).
+    format_func : callable or None
+        When provided, applied uniformly to all cells (e.g.
+        ``_format_percentage`` for growth tables). When ``None`` (default),
+        mixed formatting is used: ``_format_number`` for most rows and
+        ``_format_percentage`` for the Input coefficient row.
+    """
+    # Format: uniform when format_func is given; mixed otherwise.
+    styler = df.style
+    if format_func is not None:
+        styler = styler.format(format_func, na_rep="")
+    else:
+        # Mixed: Input coefficient → percentage, everything else → number.
+        coeff_mask = df.index.get_level_values("transaction_txt") == "Input coefficient"
+        non_coeff_idx = df.index[~coeff_mask]
+        coeff_idx = df.index[coeff_mask]
+        if len(non_coeff_idx) > 0:
+            styler = styler.format(
+                _format_number, na_rep="", subset=pd.IndexSlice[non_coeff_idx, :]
+            )
+        if len(coeff_idx) > 0:
+            styler = styler.format(
+                _format_percentage, na_rep="", subset=pd.IndexSlice[coeff_idx, :]
+            )
+
+    if df.empty:
+        return styler
+
+    industry_vals = df.index.get_level_values("industry")
+    trans_vals = df.index.get_level_values("transaction")
+    trans_txt_vals = df.index.get_level_values("transaction_txt")
+    industries_list = list(dict.fromkeys(industry_vals))
+    n = len(df)
+
+    data_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+    industry_css = [""] * n
+    industry_txt_css = [""] * n
+
+    for ind_idx, industry in enumerate(industries_list):
+        is_last_industry = (ind_idx == len(industries_list) - 1)
+        ind_positions = [i for i, v in enumerate(industry_vals) if v == industry]
+
+        # industry / industry_txt: one merged cell per block. Separator goes on
+        # the first row so the border-bottom aligns with the full block height.
+        if not is_last_industry:
+            industry_css[ind_positions[0]] = "border-bottom: 2px solid #999"
+            industry_txt_css[ind_positions[0]] = "border-bottom: 2px solid #999"
+
+        output_counter = 0
+        input_counter = 0
+        derived_counter = 0
+
+        for j, i_abs in enumerate(ind_positions):
+            trans = trans_vals[i_abs]
+            txt = trans_txt_vals[i_abs]
+            is_last_row = (j == len(ind_positions) - 1)
+
+            # Thick separator on the last row of each non-last industry block.
+            sep = "; border-bottom: 2px solid #999" if (is_last_row and not is_last_industry) else ""
+
+            if txt == "Total output":
+                bg_data = _DATA_COLORS["supply_total"]
+                bg_idx = _INDEX_COLORS["supply_total"]
+                bold = True
+            elif txt == "Total input":
+                bg_data = _DATA_COLORS["use_total"]
+                bg_idx = _INDEX_COLORS["use_total"]
+                bold = True
+            elif txt in ("Gross value added", "Input coefficient"):
+                bg_data = _DATA_COLORS["derived"][derived_counter % 2]
+                bg_idx = _INDEX_COLORS["derived"][derived_counter % 2]
+                bold = False
+                derived_counter += 1
+            elif trans in p1_trans:
+                bg_data = _DATA_COLORS["supply"][output_counter % 2]
+                bg_idx = _INDEX_COLORS["supply"][output_counter % 2]
+                bold = False
+                output_counter += 1
+            else:
+                # P2 (input) transaction row.
+                bg_data = _DATA_COLORS["use"][input_counter % 2]
+                bg_idx = _INDEX_COLORS["use"][input_counter % 2]
+                bold = False
+                input_counter += 1
+
+            weight = "bold" if bold else "normal"
+            data_css[i_abs] = f"background-color: {bg_data}; font-weight: {weight}{sep}"
+            trans_txt_css[i_abs] = f"background-color: {bg_idx}; font-weight: {weight}{sep}"
+
+            # transaction level: colour non-"" cells only.
+            # "" cells get no background; if the separator is needed, put just the border.
+            if trans != "":
+                trans_css[i_abs] = f"background-color: {bg_idx}; font-weight: {weight}{sep}"
+            elif sep:
+                trans_css[i_abs] = "border-bottom: 2px solid #999"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=industry_css: css, level="industry", axis=0)
+    styler = styler.apply_index(lambda s, css=industry_txt_css: css, level="industry_txt", axis=0)
     return styler

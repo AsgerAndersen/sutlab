@@ -95,39 +95,55 @@ class TestOutputStructure:
         result = compute_price_layer_rates(sut, "product")
         assert list(result.columns) == ["year", "nrnr", "ava", "moms"]
 
-    def test_transaction_level_columns(self, sut, columns):
-        result = compute_price_layer_rates(sut, "transaction")
+    def test_product_transaction_level_columns(self, sut, columns):
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         assert list(result.columns) == ["year", "nrnr", "trans", "ava", "moms"]
 
-    def test_category_level_columns(self, sut, columns):
-        result = compute_price_layer_rates(sut, "category")
+    def test_product_transaction_category_level_columns(self, sut, columns):
+        result = compute_price_layer_rates(sut, ["product", "transaction", "category"])
         assert list(result.columns) == ["year", "nrnr", "trans", "brch", "ava", "moms"]
+
+    def test_transaction_category_level_columns(self, sut, columns):
+        """Industry-style aggregation: no product dimension."""
+        result = compute_price_layer_rates(sut, ["transaction", "category"])
+        assert list(result.columns) == ["year", "trans", "brch", "ava", "moms"]
 
     def test_product_level_row_count(self, sut):
         result = compute_price_layer_rates(sut, "product")
-        # One row per (product, year): 1 product × 2 years = 2 rows
+        # One row per (id, product): 1 product × 2 years = 2 rows
         assert len(result) == 2
 
-    def test_transaction_level_row_count(self, sut):
-        result = compute_price_layer_rates(sut, "transaction")
-        # One row per (product, transaction, year): 3 transactions × 2 years = 6 rows
+    def test_product_transaction_level_row_count(self, sut):
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
+        # One row per (id, product, transaction): 3 transactions × 2 years = 6 rows
         assert len(result) == 6
 
-    def test_category_level_row_count(self, sut):
-        result = compute_price_layer_rates(sut, "category")
-        # One row per (product, transaction, category, year): 3 × 2 = 6 rows
+    def test_product_transaction_category_level_row_count(self, sut):
+        result = compute_price_layer_rates(sut, ["product", "transaction", "category"])
+        # One row per (id, product, transaction, category): 3 × 2 = 6 rows
+        assert len(result) == 6
+
+    def test_transaction_category_level_row_count(self, sut):
+        result = compute_price_layer_rates(sut, ["transaction", "category"])
+        # One row per (id, transaction, category): 3 × 2 = 6 rows
         assert len(result) == 6
 
     def test_id_is_first_column(self, sut):
-        for level in ("product", "transaction", "category"):
+        for level in ("product", ["product", "transaction"], ["product", "transaction", "category"]):
             result = compute_price_layer_rates(sut, level)
             assert result.columns[0] == "year"
 
     def test_sorted_by_key_columns(self, sut):
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         years = result["year"].tolist()
         # Sorted by year first: all 2020 rows before all 2021 rows
         assert years == sorted(years)
+
+    def test_string_shorthand_equals_single_element_list(self, sut):
+        """'product' and ['product'] must produce identical results."""
+        result_str = compute_price_layer_rates(sut, "product")
+        result_list = compute_price_layer_rates(sut, ["product"])
+        pd.testing.assert_frame_equal(result_str, result_list)
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +195,7 @@ class TestProductLevelRates:
 
 
 # ---------------------------------------------------------------------------
-# Tests: transaction-level rates
+# Tests: product × transaction level rates
 # ---------------------------------------------------------------------------
 
 # Year 2020:
@@ -197,61 +213,86 @@ class TestProductLevelRates:
 #     moms rate = 0/(20+0) = 0
 
 
-class TestTransactionLevelRates:
+class TestProductTransactionLevelRates:
 
     def test_ic_ava_rate_2020(self, sut):
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         row = _get_row(result, nrnr="A", trans="2000", year=2020)
         assert row["ava"] == pytest.approx(2 / 20)
 
     def test_ic_moms_rate_2020(self, sut):
         """IC has no moms — rate should be 0."""
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         row = _get_row(result, nrnr="A", trans="2000", year=2020)
         assert row["moms"] == pytest.approx(0.0)
 
     def test_hhcons_ava_rate_2020(self, sut):
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         row = _get_row(result, nrnr="A", trans="3110", year=2020)
         assert row["ava"] == pytest.approx(4 / 40)
 
     def test_hhcons_moms_rate_2020(self, sut):
         """HHcons moms denominator = basic + ava = 40 + 4 = 44."""
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         row = _get_row(result, nrnr="A", trans="3110", year=2020)
         assert row["moms"] == pytest.approx(8 / 44)
 
     def test_exports_ava_rate_2020(self, sut):
         """Exports have no ava — grouped sum is 0, rate is 0."""
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         row = _get_row(result, nrnr="A", trans="6001", year=2020)
         assert row["ava"] == pytest.approx(0.0)
 
     def test_hhcons_moms_rate_2021(self, sut):
         """Year 2021: basic=44, ava=5 → moms denom = 49."""
-        result = compute_price_layer_rates(sut, "transaction")
+        result = compute_price_layer_rates(sut, ["product", "transaction"])
         row = _get_row(result, nrnr="A", trans="3110", year=2021)
         assert row["moms"] == pytest.approx(9 / 49)
 
 
 # ---------------------------------------------------------------------------
-# Tests: category-level rates
+# Tests: product × transaction × category level rates
 # ---------------------------------------------------------------------------
 
 # Each (product, transaction) has exactly one category in this fixture, so
-# category-level results equal transaction-level results.
+# results equal product × transaction level results.
 
 
-class TestCategoryLevelRates:
+class TestProductTransactionCategoryLevelRates:
 
     def test_hhcons_ava_rate_category_2020(self, sut):
-        result = compute_price_layer_rates(sut, "category")
+        result = compute_price_layer_rates(sut, ["product", "transaction", "category"])
         row = _get_row(result, nrnr="A", trans="3110", brch="HH", year=2020)
         assert row["ava"] == pytest.approx(4 / 40)
 
     def test_hhcons_moms_rate_category_2020(self, sut):
-        result = compute_price_layer_rates(sut, "category")
+        result = compute_price_layer_rates(sut, ["product", "transaction", "category"])
         row = _get_row(result, nrnr="A", trans="3110", brch="HH", year=2020)
+        assert row["moms"] == pytest.approx(8 / 44)
+
+
+# ---------------------------------------------------------------------------
+# Tests: transaction × category level rates (industry-style, no product dim)
+# ---------------------------------------------------------------------------
+
+# Aggregating without product: sums across all products first.
+# With only product A in the fixture, values equal product × transaction × category.
+
+
+class TestTransactionCategoryLevelRates:
+
+    def test_columns_exclude_product(self, sut):
+        result = compute_price_layer_rates(sut, ["transaction", "category"])
+        assert "nrnr" not in result.columns
+
+    def test_hhcons_ava_rate_2020(self, sut):
+        result = compute_price_layer_rates(sut, ["transaction", "category"])
+        row = _get_row(result, trans="3110", brch="HH", year=2020)
+        assert row["ava"] == pytest.approx(4 / 40)
+
+    def test_hhcons_moms_rate_2020(self, sut):
+        result = compute_price_layer_rates(sut, ["transaction", "category"])
+        row = _get_row(result, trans="3110", brch="HH", year=2020)
         assert row["moms"] == pytest.approx(8 / 44)
 
 
@@ -422,9 +463,20 @@ class TestErrors:
         with pytest.raises(ValueError, match="sut.metadata is required"):
             compute_price_layer_rates(sut_no_meta, "product")
 
-    def test_bad_aggregation_level_raises(self, sut):
-        with pytest.raises(ValueError, match="aggregation_level must be"):
+    def test_unknown_role_raises(self, sut):
+        with pytest.raises(ValueError, match="unknown role"):
             compute_price_layer_rates(sut, "industry")
+
+    def test_unknown_role_in_list_raises(self, sut):
+        with pytest.raises(ValueError, match="unknown role"):
+            compute_price_layer_rates(sut, ["product", "industry"])
+
+    def test_none_mapped_role_raises(self, sut):
+        """A role that is a valid SUTColumns field but maps to None raises."""
+        # wholesale_margins is mapped in the fixture, but vat is also mapped.
+        # Use a fresh sut where retail_margins is None (default).
+        with pytest.raises(ValueError, match="not mapped"):
+            compute_price_layer_rates(sut, "retail_margins")
 
     def test_unmapped_layer_role_raises(self, supply_df, use_df):
         """trade_margins is mapped and present — no default denominator → error."""
