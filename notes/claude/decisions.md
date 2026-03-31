@@ -382,6 +382,13 @@ Append-only. Each entry: date, decision, brief rationale.
   when any range pattern is present. Avoids O(N_codes × N_range_patterns) `re.split`
   calls — relevant at ~2400 product codes.
 
+- **2026-03-31**: `balancing.py` refactored into a package. Structure:
+  `__init__.py` (re-exports public API), `_shared.py` (`_evaluate_locks`,
+  `_get_use_price_columns`), `_columns.py` (`_balance_table` + `balance_columns`),
+  `_products_use.py` (`_balance_rows_table` + `balance_products_use`). Future
+  balancing functions (`_ras.py`, `_price_layers.py`) follow the same pattern.
+  Private helpers imported directly from submodules in tests.
+
 - **2026-03-31**: `compute.py` renamed to `derive.py`. Settled scope: analytical functions
   that compute derived quantities from a SUT or SUT collection — e.g. price layer rates,
   chain-linked volume indices, GDP components, input-output multipliers. Distinct from
