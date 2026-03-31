@@ -7,6 +7,11 @@ from sutlab.inspect._products import (
     ProductInspection,
     ProductInspectionData,
 )
+from sutlab.inspect._industries import (
+    inspect_industries,
+    IndustryInspection,
+    IndustryInspectionData,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -22,4 +27,7 @@ __all__ = [
     "inspect_products",
     "ProductInspection",
     "ProductInspectionData",
+    "inspect_industries",
+    "IndustryInspection",
+    "IndustryInspectionData",
 ]

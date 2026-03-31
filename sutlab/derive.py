@@ -4,8 +4,6 @@ Computation functions for supply and use tables.
 
 from __future__ import annotations
 
-from typing import Literal
-
 import pandas as pd
 
 from sutlab.sut import SUT
@@ -65,7 +63,7 @@ _ALL_LAYER_ROLES: list[str] = [
 
 def compute_price_layer_rates(
     sut: SUT,
-    aggregation_level: Literal["product", "transaction", "category"],
+    aggregation_level: str | list[str],
 ) -> pd.DataFrame:
     """Compute price layer rates at the given aggregation level.
 
@@ -81,29 +79,40 @@ def compute_price_layer_rates(
     ----------
     sut : SUT
         The SUT collection to compute rates for. Only ``sut.use`` is read.
-    aggregation_level : {"product", "transaction", "category"}
-        Level at which to aggregate before computing rates.
+    aggregation_level : str or list of str
+        One or more column role names (as defined on ``SUTColumns``) that
+        together specify the grouping dimensions. The ``id`` column is always
+        included automatically.
 
-        - ``"product"``: one row per ``(product, id)``.
-        - ``"transaction"``: one row per ``(product, transaction, id)``.
-        - ``"category"``: one row per ``(product, transaction, category, id)``.
+        Examples:
+
+        - ``"product"`` — one row per ``(id, product)``.
+        - ``["product", "transaction"]`` — one row per
+          ``(id, product, transaction)``.
+        - ``["transaction", "category"]`` — one row per
+          ``(id, transaction, category)``, useful for industry-level rates
+          when the data has been pre-filtered to P2 transactions and the
+          selected industries.
+
+        A plain string is treated as a single-element list.
 
     Returns
     -------
     pd.DataFrame
-        Long-format DataFrame. Groupby key columns come first, followed by
-        one column per price layer present in the data. Column names match
-        the actual column names from ``sut.use`` (i.e. from
-        ``sut.metadata.columns``). Values are dimensionless rates; division
-        by zero yields ``NaN``. Returns an empty DataFrame if no price layer
-        columns are present in the data.
+        Long-format DataFrame. The ``id`` column comes first, followed by the
+        resolved groupby columns in the order given, then one column per price
+        layer present in the data. Column names match the actual column names
+        from ``sut.use`` (i.e. from ``sut.metadata.columns``). Values are
+        dimensionless rates; division by zero yields ``NaN``. Returns an empty
+        DataFrame if no price layer columns are present in the data.
 
     Raises
     ------
     ValueError
         If ``sut.metadata`` is ``None``.
     ValueError
-        If ``aggregation_level`` is not one of the accepted values.
+        If any role in ``aggregation_level`` is not a valid ``SUTColumns``
+        attribute or maps to ``None``.
     ValueError
         If any mapped price layer column has no default denominator
         specification. This indicates a non-Danish price layer structure
@@ -111,9 +120,9 @@ def compute_price_layer_rates(
 
     Examples
     --------
-    Compute transaction-level VAT rates and flag any exceeding 25 %:
+    Compute product-by-transaction VAT rates and flag any exceeding 25 %:
 
-    >>> rates = compute_price_layer_rates(sut, "transaction")
+    >>> rates = compute_price_layer_rates(sut, ["product", "transaction"])
     >>> vat_col = sut.metadata.columns.vat
     >>> high_vat = rates[rates[vat_col] > 0.25]
     """
@@ -123,13 +132,33 @@ def compute_price_layer_rates(
             "Provide a SUTMetadata with column name mappings."
         )
 
-    if aggregation_level not in ("product", "transaction", "category"):
-        raise ValueError(
-            f"aggregation_level must be 'product', 'transaction', or 'category'. "
-            f"Got: {aggregation_level!r}"
-        )
-
     cols = sut.metadata.columns
+
+    # Normalise string shorthand to list.
+    if isinstance(aggregation_level, str):
+        roles = [aggregation_level]
+    else:
+        roles = list(aggregation_level)
+
+    # Validate each role: must be a known SUTColumns attribute with a non-None value.
+    valid_roles = [
+        attr for attr in vars(cols.__class__).keys()
+        if not attr.startswith("_")
+    ]
+    # Use the instance attributes (dataclass fields) instead.
+    import dataclasses
+    valid_role_names = [f.name for f in dataclasses.fields(cols)]
+    for role in roles:
+        if role not in valid_role_names:
+            raise ValueError(
+                f"aggregation_level contains unknown role {role!r}. "
+                f"Valid roles: {valid_role_names}."
+            )
+        if getattr(cols, role) is None:
+            raise ValueError(
+                f"aggregation_level role {role!r} is not mapped in SUTColumns "
+                f"(its value is None)."
+            )
 
     # Guard against mapped layer columns with no default denominator.
     # These indicate a non-Danish price layer structure not yet supported.
@@ -164,18 +193,9 @@ def compute_price_layer_rates(
     if not present_layers:
         return pd.DataFrame()
 
-    # Determine groupby keys based on aggregation level.
+    # Build groupby keys: id first, then the resolved role columns in order.
     id_col = cols.id
-    prod_col = cols.product
-    trans_col = cols.transaction
-    cat_col = cols.category
-
-    if aggregation_level == "product":
-        group_keys = [id_col, prod_col]
-    elif aggregation_level == "transaction":
-        group_keys = [id_col, prod_col, trans_col]
-    else:  # "category"
-        group_keys = [id_col, prod_col, trans_col, cat_col]
+    group_keys = [id_col] + [getattr(cols, role) for role in roles]
 
     # Single groupby: sum basic price and all layer columns at once.
     layer_col_names = [col_name for _, col_name in present_layers]
