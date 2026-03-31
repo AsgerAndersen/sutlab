@@ -19,5 +19,5 @@ from sutlab.sut import (
     get_ids,
 )
 from sutlab.inspect import inspect_products
-from sutlab.compute import compute_price_layer_rates
+from sutlab.derive import compute_price_layer_rates
 from sutlab.balancing import balance_columns, balance_products_use

@@ -382,6 +382,13 @@ Append-only. Each entry: date, decision, brief rationale.
   when any range pattern is present. Avoids O(N_codes × N_range_patterns) `re.split`
   calls — relevant at ~2400 product codes.
 
+- **2026-03-31**: `compute.py` renamed to `derive.py`. Settled scope: analytical functions
+  that compute derived quantities from a SUT or SUT collection — e.g. price layer rates,
+  chain-linked volume indices, GDP components, input-output multipliers. Distinct from
+  `balancing.py` (modifies the SUT) and `inspect/` (produces display tables). Kept flat
+  for now; will be converted to a package if it grows crowded, following the same
+  threshold as `io.py` (i.e. not until the file becomes difficult to navigate).
+
 - **2026-03-30**: `SUTClassifications` column naming changed. Classification DataFrames
   no longer use generic `code`/`name` column names. Instead they use the actual data
   column name (from `SUTColumns`) as the key column, and `{col}_txt` as the label column.
