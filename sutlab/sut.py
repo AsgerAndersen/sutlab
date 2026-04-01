@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Iterable, Literal
 
 if TYPE_CHECKING:
-    from sutlab.inspect import ProductInspection, IndustryInspection
+    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection
 
 import pandas as pd
 
@@ -427,6 +427,18 @@ class SUT:
         """Delegates to :func:`~sutlab.inspect.inspect_industries`."""
         from sutlab.inspect import inspect_industries
         return inspect_industries(self, industries, ids=ids, sort_id=sort_id)
+
+    def inspect_final_uses(
+        self,
+        transactions: str | list[str],
+        *,
+        categories: str | list[str] | None = None,
+        ids=None,
+        sort_id=None,
+    ) -> FinalUseInspection:
+        """Delegates to :func:`~sutlab.inspect.inspect_final_uses`."""
+        from sutlab.inspect import inspect_final_uses
+        return inspect_final_uses(self, transactions, categories=categories, ids=ids, sort_id=sort_id)
 
     def balance_columns(
         self,

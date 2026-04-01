@@ -18,7 +18,7 @@ from sutlab.sut import (
     get_collective_consumption_codes,
     get_ids,
 )
-from sutlab.inspect import inspect_products
+from sutlab.inspect import inspect_products, inspect_industries, inspect_final_uses
 from sutlab.derive import compute_price_layer_rates
 from sutlab.balancing import balance_columns, balance_products_use
 from sutlab.sut import SUT
@@ -29,3 +29,5 @@ SUT.compute_price_layer_rates.__doc__ = compute_price_layer_rates.__doc__
 SUT.inspect_products.__doc__ = inspect_products.__doc__
 SUT.balance_columns.__doc__ = balance_columns.__doc__
 SUT.balance_products_use.__doc__ = balance_products_use.__doc__
+SUT.inspect_industries.__doc__ = inspect_industries.__doc__
+SUT.inspect_final_uses.__doc__ = inspect_final_uses.__doc__

@@ -743,3 +743,436 @@ def _style_industry_balance_table(
     styler = styler.apply_index(lambda s, css=industry_css: css, level="industry", axis=0)
     styler = styler.apply_index(lambda s, css=industry_txt_css: css, level="industry_txt", axis=0)
     return styler
+
+
+def _style_final_use_use_table(df: pd.DataFrame, format_func) -> Styler:
+    """Apply row colours to a final-use transaction-level use table.
+
+    The table has a two-level MultiIndex ``(transaction, transaction_txt)``.
+    Each non-total row alternates between the two light use-blue shades for
+    both index and data cells.  The ``"Total use"`` row (``transaction == ""``)
+    is bold with the total use-blue shade throughout.  A thin
+    ``1px solid #ccc`` separator is placed at the bottom of the last
+    non-total row.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Use table from :func:`inspect_final_uses`.
+    format_func : callable
+        Applied to all data cells (e.g. ``_format_number``).
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS["use"]
+    data_total_color = _DATA_COLORS["use_total"]
+    idx_row_colors = _INDEX_COLORS["use"]
+    idx_total_color = _INDEX_COLORS["use_total"]
+
+    trans_vals = df.index.get_level_values("transaction")
+    n = len(df)
+
+    data_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+
+    row_pos = 0
+
+    for i in range(n):
+        trans = trans_vals[i]
+        is_last_row = (i == n - 1)
+        next_trans = trans_vals[i + 1] if not is_last_row else None
+
+        # Thin separator before the "Total use" row.
+        if not is_last_row and next_trans == "" and trans != "":
+            sep = "; border-bottom: 1px solid #ccc"
+        else:
+            sep = ""
+
+        if trans == "":
+            data_css[i] = f"background-color: {data_total_color}; font-weight: bold"
+            trans_css[i] = f"background-color: {idx_total_color}; font-weight: bold"
+            trans_txt_css[i] = f"background-color: {idx_total_color}; font-weight: bold"
+        else:
+            shade = data_row_colors[row_pos % 2]
+            idx_shade = idx_row_colors[row_pos % 2]
+            data_css[i] = f"background-color: {shade}{sep}"
+            trans_css[i] = f"background-color: {idx_shade}{sep}"
+            trans_txt_css[i] = f"background-color: {idx_shade}{sep}"
+            row_pos += 1
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(
+        lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0
+    )
+    return styler
+
+
+def _style_final_use_use_categories_table(df: pd.DataFrame, format_func) -> Styler:
+    """Apply row colours and separators to a final-use use table.
+
+    The table has a four-level MultiIndex
+    ``(transaction, transaction_txt, category, category_txt)``.
+    ``transaction`` acts as the block grouping dimension (equivalent to
+    ``transaction`` within a product block in ``_style_detail_table``).
+    ``category`` is the row-level detail dimension.
+
+    - Within each transaction block, category rows alternate between the two
+      light use-blue shades. The ``transaction`` and ``transaction_txt``
+      index cells have no background colour (only a separator border).
+    - The ``"Total use"`` row (``transaction == ""``) is bold with the total
+      use-blue shade throughout.
+    - A thin ``1px solid #ccc`` separator is placed between transaction
+      blocks. No separator at the very bottom.
+    - Handles non-contiguous transaction blocks (produced when ``sort_id`` is
+      applied), identical to the behaviour of ``_style_detail_table``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Use table from :func:`inspect_final_uses`.
+    format_func : callable
+        Applied to all data cells (e.g. ``_format_number``).
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS["use"]
+    data_total_color = _DATA_COLORS["use_total"]
+    idx_row_colors = _INDEX_COLORS["use"]
+    idx_hdr_color = _INDEX_COLORS["use_total"]
+
+    trans_vals = df.index.get_level_values("transaction")
+    n = len(df)
+
+    data_css = [""] * n
+    cat_css = [""] * n
+    cat_txt_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+
+    # trans_row_counter: rows seen per transaction so far, used to alternate
+    # category colours within each transaction across all its occurrences.
+    trans_row_counter: dict = {}
+    # Track the start of the current contiguous run so that trans_css is
+    # placed on the first row of the run (merged cells take CSS from there).
+    run_start_i = None
+    prev_trans = None
+
+    for i in range(n):
+        trans = trans_vals[i]
+        is_last_row = (i == n - 1)
+        next_trans = trans_vals[i + 1] if not is_last_row else None
+
+        # Separator: thin border between transaction blocks; none at the end.
+        if is_last_row or next_trans == trans:
+            sep = ""
+        else:
+            sep = "; border-bottom: 1px solid #ccc"
+
+        # Detect start of a new contiguous run of the same transaction.
+        if trans != prev_trans:
+            run_start_i = i
+            prev_trans = trans
+
+        # At the end of a contiguous run, write trans CSS on the run's first
+        # row so the border aligns with the merged cell's bottom edge.
+        if next_trans != trans:
+            if trans == "":
+                trans_css[run_start_i] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                )
+                trans_txt_css[run_start_i] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                )
+            else:
+                border_css = "border-bottom: 1px solid #ccc" if sep else ""
+                trans_css[run_start_i] = border_css
+                trans_txt_css[run_start_i] = border_css
+
+        # Data and category cells are styled individually on every row.
+        if trans == "":
+            data_css[i] = f"background-color: {data_total_color}; font-weight: bold{sep}"
+            cat_css[i] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+            cat_txt_css[i] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+        else:
+            row_pos = trans_row_counter.get(trans, 0)
+            trans_row_counter[trans] = row_pos + 1
+            data_css[i] = f"background-color: {data_row_colors[row_pos % 2]}{sep}"
+            cat_css[i] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+            cat_txt_css[i] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    return styler
+
+
+def _style_final_use_use_products_table(df: pd.DataFrame, format_func) -> Styler:
+    """Apply row colours and separators to a final-use use-detail table.
+
+    The table has a six-level MultiIndex
+    ``(transaction, transaction_txt, category, category_txt, product, product_txt)``.
+
+    - ``transaction`` is the outer block grouping dimension: thick
+      ``2px solid #999`` separator between transaction blocks, no background
+      colour. Handles non-contiguous transaction blocks from ``sort_id``.
+    - ``category`` is the middle grouping dimension: header use-blue colour with
+      thin ``1px solid #ccc`` separator between category blocks within the same
+      transaction. Handles non-contiguous category blocks from ``sort_id``.
+    - ``product`` rows alternate between the two light use-blue shades.
+    - The ``"Total use"`` row (``transaction == ""``) is bold with the total
+      use-blue shade throughout.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Use-detail table from :func:`inspect_final_uses`.
+    format_func : callable
+        Applied to all data cells (e.g. ``_format_number``).
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS["use"]
+    data_total_color = _DATA_COLORS["use_total"]
+    idx_row_colors = _INDEX_COLORS["use"]
+    idx_hdr_color = _INDEX_COLORS["use_total"]
+
+    trans_vals = df.index.get_level_values("transaction")
+    cat_vals = df.index.get_level_values("category")
+    n = len(df)
+
+    data_css = [""] * n
+    prod_css = [""] * n
+    prod_txt_css = [""] * n
+    cat_css = [""] * n
+    cat_txt_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+
+    # cat_row_counter: rows seen per (transaction, category) pair, used to
+    # alternate product colours within each group across non-contiguous runs.
+    cat_row_counter: dict = {}
+    # Track starts of contiguous runs for merged-cell CSS placement.
+    trans_run_start_i = None
+    cat_run_start_i = None
+    prev_trans = None
+    prev_cat_pair = None
+
+    for i in range(n):
+        trans = trans_vals[i]
+        cat = cat_vals[i]
+        cat_pair = (trans, cat)
+        is_last_row = (i == n - 1)
+        next_trans = trans_vals[i + 1] if not is_last_row else None
+        next_cat = cat_vals[i + 1] if not is_last_row else None
+        next_cat_pair = (next_trans, next_cat) if not is_last_row else None
+
+        # Separator at the bottom of the current row:
+        #   thick  → transaction block changes
+        #   thin   → same transaction, category block changes
+        #   none   → same (transaction, category), or last row
+        if is_last_row:
+            sep = ""
+        elif next_trans != trans:
+            sep = "; border-bottom: 2px solid #999"
+        elif next_cat_pair != cat_pair:
+            sep = "; border-bottom: 1px solid #ccc"
+        else:
+            sep = ""
+
+        # Detect start of new contiguous runs.
+        if trans != prev_trans:
+            trans_run_start_i = i
+            prev_trans = trans
+        if cat_pair != prev_cat_pair:
+            cat_run_start_i = i
+            prev_cat_pair = cat_pair
+
+        # At the end of a transaction run, write trans/trans_txt CSS on the
+        # run's first row (merged cells take CSS from the first row of their span).
+        if next_trans != trans:
+            if trans == "":
+                trans_css[trans_run_start_i] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold"
+                )
+                trans_txt_css[trans_run_start_i] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold"
+                )
+            else:
+                # Non-total transaction outer: no background, just the border.
+                trans_css[trans_run_start_i] = "border-bottom: 2px solid #999"
+                trans_txt_css[trans_run_start_i] = "border-bottom: 2px solid #999"
+
+        # At the end of a (transaction, category) run, write cat/cat_txt CSS
+        # on the run's first row.
+        if next_cat_pair != cat_pair:
+            if trans == "":
+                cat_css[cat_run_start_i] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                )
+                cat_txt_css[cat_run_start_i] = (
+                    f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+                )
+            else:
+                cat_css[cat_run_start_i] = f"background-color: {idx_hdr_color}{sep}"
+                cat_txt_css[cat_run_start_i] = f"background-color: {idx_hdr_color}{sep}"
+
+        # Data and product cells are styled individually on every row.
+        if trans == "":
+            data_css[i] = f"background-color: {data_total_color}; font-weight: bold{sep}"
+            prod_css[i] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+            prod_txt_css[i] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+        else:
+            row_pos = cat_row_counter.get(cat_pair, 0)
+            cat_row_counter[cat_pair] = row_pos + 1
+            data_css[i] = f"background-color: {data_row_colors[row_pos % 2]}{sep}"
+            prod_css[i] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+            prod_txt_css[i] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=prod_css: css, level="product", axis=0)
+    styler = styler.apply_index(lambda s, css=prod_txt_css: css, level="product_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    return styler
+
+
+def _style_final_use_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
+    """Apply colours and separators to a final-use price layers table.
+
+    The table has a five-level MultiIndex
+    ``(transaction, transaction_txt, category, category_txt, price_layer)``.
+
+    - ``transaction`` is the outer block grouping dimension: thick
+      ``2px solid #999`` separator between transaction blocks, no
+      background colour. Handles non-contiguous transaction blocks.
+    - ``category`` is the middle grouping dimension: header use-blue
+      colour with ``1px solid #ccc`` separator between
+      ``(transaction, category)`` blocks within the same transaction,
+      and ``2px solid #999`` when the transaction changes.
+    - ``price_layer`` rows each get a cycling palette colour based on
+      their ordinal position among distinct layer values. The Total row
+      (``price_layer == ""``) is bold with the use-total colour.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Price layers table from :func:`inspect_final_uses`.
+    format_func : callable
+        Applied to all data cells (e.g. ``_format_number``).
+    """
+    styler = df.style.format(format_func, na_rep="")
+    if df.empty:
+        return styler
+
+    trans_vals = df.index.get_level_values("transaction")
+    cat_vals = df.index.get_level_values("category")
+    layer_vals = df.index.get_level_values("price_layer")
+    n = len(df)
+
+    # Assign each distinct non-total price_layer value a cycling palette.
+    distinct_layers = list(dict.fromkeys(l for l in layer_vals if l != ""))
+    layer_palette = {
+        l: _LAYER_PALETTES[i % len(_LAYER_PALETTES)]
+        for i, l in enumerate(distinct_layers)
+    }
+
+    data_total_color = _DATA_COLORS["use_total"]
+    idx_hdr_color = _INDEX_COLORS["use_total"]
+
+    data_css = [""] * n
+    layer_css = [""] * n
+    cat_css = [""] * n
+    cat_txt_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+
+    trans_run_start_i = None
+    cat_run_start_i = None
+    prev_trans = None
+    prev_tc_pair = None
+
+    for i in range(n):
+        trans = trans_vals[i]
+        cat = cat_vals[i]
+        layer = layer_vals[i]
+        tc_pair = (trans, cat)
+        is_last_row = (i == n - 1)
+        next_trans = trans_vals[i + 1] if not is_last_row else None
+        next_cat = cat_vals[i + 1] if not is_last_row else None
+        next_tc_pair = (next_trans, next_cat) if not is_last_row else None
+
+        # Separator at the bottom of the current row:
+        #   thick  → transaction block changes
+        #   thin   → same transaction, (trans, cat) block changes
+        #   none   → same (trans, cat) block, or last row
+        if is_last_row:
+            sep = ""
+        elif next_trans != trans:
+            sep = "; border-bottom: 2px solid #999"
+        elif next_tc_pair != tc_pair:
+            sep = "; border-bottom: 1px solid #ccc"
+        else:
+            sep = ""
+
+        # Track starts of contiguous runs for merged-cell CSS placement.
+        if trans != prev_trans:
+            trans_run_start_i = i
+            prev_trans = trans
+        if tc_pair != prev_tc_pair:
+            cat_run_start_i = i
+            prev_tc_pair = tc_pair
+
+        # At the end of a transaction run, write trans/trans_txt CSS
+        # (border only, no background colour).
+        if next_trans != trans:
+            if not is_last_row:
+                trans_css[trans_run_start_i] = "border-bottom: 2px solid #999"
+                trans_txt_css[trans_run_start_i] = "border-bottom: 2px solid #999"
+
+        # At the end of a (trans, cat) run, write cat/cat_txt CSS
+        # (header colour + separator).
+        if next_tc_pair != tc_pair:
+            cat_css[cat_run_start_i] = f"background-color: {idx_hdr_color}{sep}"
+            cat_txt_css[cat_run_start_i] = f"background-color: {idx_hdr_color}{sep}"
+
+        # price_layer and data cells: per-row styling.
+        if layer == "":
+            # Total row: bold use-total colour.
+            data_css[i] = f"background-color: {data_total_color}; font-weight: bold{sep}"
+            layer_css[i] = f"background-color: {idx_hdr_color}; font-weight: bold{sep}"
+        else:
+            palette = layer_palette.get(layer, _LAYER_PALETTES[0])
+            data_css[i] = f"background-color: {palette['data'][0]}{sep}"
+            layer_css[i] = f"background-color: {palette['index_total']}{sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=layer_css: css, level="price_layer", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    return styler
