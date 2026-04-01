@@ -500,3 +500,22 @@ Append-only. Each entry: date, decision, brief rationale.
   (shared helpers for the inspect package). Used by both `_products.py` and
   `_industries.py`. The `group_levels` argument is a list of MultiIndex level names
   (e.g. `["product"]`, `["industry"]`, `["product", "price_layer"]`).
+
+- **2026-04-02**: `inspect_final_uses` added. Final use transaction codes are
+  use-side transactions with ESA codes other than P2. Three levels of detail:
+  `use` (transaction-level, 2-level MultiIndex), `use_categories`
+  (transaction+category, 4-level), `use_products` (transaction+category+product,
+  6-level). Each has `_distribution` and `_growth` variants. `sort_id` applies a
+  flat global sort to `use`, `use_categories`, and `use_products` but NOT to
+  price layer tables.
+
+- **2026-04-02**: `inspect_final_uses` price layer tables: intermediate layers
+  only (no `price_basic`), no Total rows. Distribution denominator is the sum of
+  all layer rows in the (transaction, category) block. `sort_id` does not affect
+  price layer block ordering.
+
+- **2026-04-02**: `_style_final_use_use_categories_table` — `transaction`/
+  `transaction_txt` index cells have no background colour (only a separator
+  border), consistent with the outermost-level convention in other inspection
+  tables. `_style_final_use_use_table` (transaction-level) uses alternating row
+  colours on all cells including index, since each transaction IS a leaf row.
