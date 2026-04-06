@@ -129,6 +129,16 @@ class SUTClassifications:
         NCO10). Collective consumption codes live in the ``category`` column
         on rows whose transaction is P32. Same column naming as
         ``industries``.
+    margin_products : DataFrame or None
+        Table of products whose supply represents a trade margin (e.g.
+        wholesale or retail margin supply). Columns are the actual product
+        column name (e.g. ``'nrnr'``), optionally that name with ``'_txt'``
+        suffix (e.g. ``'nrnr_txt'`` for the label), and ``'price_layer'``
+        mapping each product to the actual price layer column name it
+        corresponds to (e.g. ``'handelsm'``, ``'transportm'``). These
+        products are excluded from :func:`~sutlab.inspect.inspect_unbalanced_products`
+        since their supply-use balance is governed by a different mechanism.
+        ``None`` if the table is not supplied.
     """
 
     classification_names: pd.DataFrame | None = None
@@ -137,6 +147,7 @@ class SUTClassifications:
     industries: pd.DataFrame | None = None
     individual_consumption: pd.DataFrame | None = None
     collective_consumption: pd.DataFrame | None = None
+    margin_products: pd.DataFrame | None = None
 
 
 @dataclass

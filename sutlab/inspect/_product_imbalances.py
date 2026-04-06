@@ -162,6 +162,12 @@ def inspect_unbalanced_products(
             patterns = list(products)
         matched_products = _match_codes(all_codes, patterns)
 
+    # Exclude margin products (their supply-use balance is governed differently)
+    classifications = sut.metadata.classifications
+    if classifications is not None and classifications.margin_products is not None:
+        margin_codes = set(classifications.margin_products[prod_col].tolist())
+        matched_products = [p for p in matched_products if p not in margin_codes]
+
     # Restrict both tables to matched products
     matched_supply = member_supply[member_supply[prod_col].isin(matched_products)]
     matched_use = member_use[member_use[prod_col].isin(matched_products)]
@@ -240,7 +246,6 @@ def inspect_unbalanced_products(
 
     # Attach product labels as a second index level if available
     prod_txt_col = f"{prod_col}_txt"
-    classifications = sut.metadata.classifications
     has_product_labels = (
         classifications is not None
         and classifications.products is not None
