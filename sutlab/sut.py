@@ -863,6 +863,25 @@ def _unique_column_values(sut: SUT, column_name: str) -> pd.DataFrame:
     return pd.DataFrame({column_name: all_vals}).sort_values(column_name).reset_index(drop=True)
 
 
+def _add_txt_column(
+    codes_df: pd.DataFrame,
+    classification_df: pd.DataFrame | None,
+    key_col: str,
+) -> pd.DataFrame:
+    """Left-join the ``_txt`` label column from ``classification_df`` if available.
+
+    If ``classification_df`` is ``None`` or does not contain a ``{key_col}_txt``
+    column, ``codes_df`` is returned unchanged.
+    """
+    if classification_df is None:
+        return codes_df
+    txt_col = f"{key_col}_txt"
+    if txt_col not in classification_df.columns:
+        return codes_df
+    labels = classification_df[[key_col, txt_col]].drop_duplicates(subset=key_col)
+    return codes_df.merge(labels, on=key_col, how="left")
+
+
 def get_product_codes(sut: SUT) -> pd.DataFrame:
     """Return the unique product codes present in the data.
 
@@ -874,9 +893,11 @@ def get_product_codes(sut: SUT) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the product column in ``sut``,
-        containing the unique product codes from supply and use combined,
-        sorted in ascending order with a clean integer index.
+        DataFrame named after the product column in ``sut``, containing the
+        unique product codes from supply and use combined, sorted in ascending
+        order with a clean integer index. If
+        ``sut.metadata.classifications.products`` is present, a second column
+        ``{product_col}_txt`` with the product label is included.
 
     Raises
     ------
@@ -888,7 +909,11 @@ def get_product_codes(sut: SUT) -> pd.DataFrame:
             "sut.metadata is required to call get_product_codes. "
             "Provide a SUTMetadata with column name mappings."
         )
-    return _unique_column_values(sut, sut.metadata.columns.product)
+    prod_col = sut.metadata.columns.product
+    result = _unique_column_values(sut, prod_col)
+    if sut.metadata.classifications is not None:
+        result = _add_txt_column(result, sut.metadata.classifications.products, prod_col)
+    return result
 
 
 def get_transaction_codes(sut: SUT) -> pd.DataFrame:
@@ -902,9 +927,11 @@ def get_transaction_codes(sut: SUT) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the transaction column in ``sut``,
-        containing the unique transaction codes from supply and use combined,
-        sorted in ascending order with a clean integer index.
+        DataFrame named after the transaction column in ``sut``, containing
+        the unique transaction codes from supply and use combined, sorted in
+        ascending order with a clean integer index. If
+        ``sut.metadata.classifications.transactions`` is present, a second
+        column ``{transaction_col}_txt`` with the transaction label is included.
 
     Raises
     ------
@@ -916,7 +943,11 @@ def get_transaction_codes(sut: SUT) -> pd.DataFrame:
             "sut.metadata is required to call get_transaction_codes. "
             "Provide a SUTMetadata with column name mappings."
         )
-    return _unique_column_values(sut, sut.metadata.columns.transaction)
+    trans_col = sut.metadata.columns.transaction
+    result = _unique_column_values(sut, trans_col)
+    if sut.metadata.classifications is not None:
+        result = _add_txt_column(result, sut.metadata.classifications.transactions, trans_col)
+    return result
 
 
 def _category_codes_for_esa(sut: SUT, esa_codes: list[str]) -> pd.DataFrame:
@@ -965,9 +996,10 @@ def get_industry_codes(sut: SUT) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the category column in ``sut``,
-        containing the unique industry codes, sorted in ascending order with
-        a clean integer index.
+        DataFrame named after the category column in ``sut``, containing the
+        unique industry codes, sorted in ascending order with a clean integer
+        index. If ``sut.metadata.classifications.industries`` is present, a
+        second column ``{category_col}_txt`` with the industry label is included.
 
     Raises
     ------
@@ -976,7 +1008,10 @@ def get_industry_codes(sut: SUT) -> pd.DataFrame:
         is ``None``.
     """
     _require_transaction_classifications(sut, "get_industry_codes")
-    return _category_codes_for_esa(sut, ["P1", "P2"])
+    cat_col = sut.metadata.columns.category
+    result = _category_codes_for_esa(sut, ["P1", "P2"])
+    result = _add_txt_column(result, sut.metadata.classifications.industries, cat_col)
+    return result
 
 
 def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
@@ -993,9 +1028,11 @@ def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the category column in ``sut``,
-        containing the unique individual consumption codes, sorted in
-        ascending order with a clean integer index.
+        DataFrame named after the category column in ``sut``, containing the
+        unique individual consumption codes, sorted in ascending order with a
+        clean integer index. If
+        ``sut.metadata.classifications.individual_consumption`` is present, a
+        second column ``{category_col}_txt`` with the label is included.
 
     Raises
     ------
@@ -1004,7 +1041,10 @@ def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
         is ``None``.
     """
     _require_transaction_classifications(sut, "get_individual_consumption_codes")
-    return _category_codes_for_esa(sut, ["P31"])
+    cat_col = sut.metadata.columns.category
+    result = _category_codes_for_esa(sut, ["P31"])
+    result = _add_txt_column(result, sut.metadata.classifications.individual_consumption, cat_col)
+    return result
 
 
 def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
@@ -1021,9 +1061,11 @@ def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the category column in ``sut``,
-        containing the unique collective consumption codes, sorted in
-        ascending order with a clean integer index.
+        DataFrame named after the category column in ``sut``, containing the
+        unique collective consumption codes, sorted in ascending order with a
+        clean integer index. If
+        ``sut.metadata.classifications.collective_consumption`` is present, a
+        second column ``{category_col}_txt`` with the label is included.
 
     Raises
     ------
@@ -1032,7 +1074,10 @@ def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
         is ``None``.
     """
     _require_transaction_classifications(sut, "get_collective_consumption_codes")
-    return _category_codes_for_esa(sut, ["P32"])
+    cat_col = sut.metadata.columns.category
+    result = _category_codes_for_esa(sut, ["P32"])
+    result = _add_txt_column(result, sut.metadata.classifications.collective_consumption, cat_col)
+    return result
 
 
 def get_ids(sut: SUT) -> pd.DataFrame:
