@@ -677,6 +677,22 @@ class TestGetProductCodes:
         result = get_product_codes(sut_classified)
         assert list(result.columns) == ["nrnr"]
 
+    def test_filter_exact(self, sut):
+        result = get_product_codes(sut, products="P1")
+        assert list(result["nrnr"]) == ["P1"]
+
+    def test_filter_wildcard(self, sut):
+        result = get_product_codes(sut, products="P*")
+        assert set(result["nrnr"]) == {"P1", "P2"}
+
+    def test_filter_negation(self, sut):
+        result = get_product_codes(sut, products="~P1")
+        assert list(result["nrnr"]) == ["P2"]
+
+    def test_filter_returns_empty_when_no_match(self, sut):
+        result = get_product_codes(sut, products="ZZZZ")
+        assert len(result) == 0
+
 
 class TestGetTransactionCodes:
 
@@ -715,6 +731,18 @@ class TestGetTransactionCodes:
         # sut has no classifications at all
         result = get_transaction_codes(sut)
         assert list(result.columns) == ["trans"]
+
+    def test_filter_exact(self, sut):
+        result = get_transaction_codes(sut, transactions="0100")
+        assert list(result["trans"]) == ["0100"]
+
+    def test_filter_wildcard(self, sut):
+        result = get_transaction_codes(sut, transactions="0*")
+        assert list(result["trans"]) == ["0100"]
+
+    def test_filter_negation(self, sut):
+        result = get_transaction_codes(sut, transactions="~0100")
+        assert list(result["trans"]) == ["2000"]
 
 
 class TestGetIndustryCodes:
@@ -760,6 +788,14 @@ class TestGetIndustryCodes:
         result = get_industry_codes(sut_classified)
         assert list(result.columns) == ["brch"]
 
+    def test_filter_exact(self, sut_classified):
+        result = get_industry_codes(sut_classified, industries="X")
+        assert list(result["brch"]) == ["X"]
+
+    def test_filter_negation(self, sut_classified):
+        result = get_industry_codes(sut_classified, industries="~X")
+        assert list(result["brch"]) == ["Y"]
+
 
 class TestGetIndividualConsumptionCodes:
 
@@ -798,6 +834,14 @@ class TestGetIndividualConsumptionCodes:
         result = get_individual_consumption_codes(sut_classified)
         assert list(result.columns) == ["brch"]
 
+    def test_filter_exact(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, categories="HH")
+        assert list(result["brch"]) == ["HH"]
+
+    def test_filter_no_match(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, categories="GOV")
+        assert len(result) == 0
+
 
 class TestGetCollectiveConsumptionCodes:
 
@@ -835,6 +879,14 @@ class TestGetCollectiveConsumptionCodes:
     def test_no_txt_column_when_collective_consumption_classification_absent(self, sut_classified):
         result = get_collective_consumption_codes(sut_classified)
         assert list(result.columns) == ["brch"]
+
+    def test_filter_exact(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, categories="GOV")
+        assert list(result["brch"]) == ["GOV"]
+
+    def test_filter_no_match(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, categories="HH")
+        assert len(result) == 0
 
 
 class TestGetIds:
