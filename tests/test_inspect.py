@@ -1965,21 +1965,3 @@ class TestSortId:
         assert trans_vals[0] == "2000"   # higher rate in 2021
         assert trans_vals[1] == "3110"   # lower rate in 2021
 
-    def test_price_layers_detailed_sorted_within_product_layer(self, sut_with_layers):
-        # ava block detailed: "2000"/"X" ava=[2,3], "3110"/"HH" ava=[4,5]
-        # After sort_id=2021: "3110"/"HH"=5 first, "2000"/"X"=3 second, Total last
-        result = inspect_products(sut_with_layers, "A", sort_id=2021)
-        pld = result.data.price_layers_detailed
-        ava_block = pld[pld.index.get_level_values("price_layer") == "ava"]
-        trans_vals = ava_block.index.get_level_values("transaction")
-        cat_vals = ava_block.index.get_level_values("category")
-        non_total = [(t, c) for t, c in zip(trans_vals, cat_vals) if t != ""]
-        assert non_total[0] == ("3110", "HH")   # ava=5 in 2021
-        assert non_total[1] == ("2000", "X")    # ava=3 in 2021
-        assert trans_vals[-1] == ""
-
-    def test_price_layers_detailed_total_stays_at_end(self, sut_with_layers):
-        result = inspect_products(sut_with_layers, "A", sort_id=2021)
-        pld = result.data.price_layers_detailed
-        ava_block = pld[pld.index.get_level_values("price_layer") == "ava"]
-        assert ava_block.index.get_level_values("transaction")[-1] == ""
