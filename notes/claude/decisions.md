@@ -536,3 +536,28 @@ Append-only. Each entry: date, decision, brief rationale.
   accept an optional filter argument (`products`, `transactions`, `industries`,
   or `categories`) using the same pattern syntax as `get_rows` (exact,
   wildcard `*`, range `:`, negation `~`). Default `None` returns all codes.
+
+- **2026-04-07**: Added `inspect_unbalanced_products(sut, products=None, sort=False,
+  tolerance=1)` in `sutlab/inspect/_product_imbalances.py`. Returns
+  `UnbalancedProductsInspection` with `.data.imbalances` (DataFrame) and a styled
+  `.imbalances` property. Only includes products where `abs(diff) > tolerance`.
+  Raises if `balancing_id` is None. Column order: `diff_*`, `rel_*`, `supply_*`,
+  `use_*`, price layers, `use_{purchasers}`. All column names prefixed with
+  `supply_`/`use_`/`diff_`/`rel_` + actual data column name. Index is product code
+  (MultiIndex with label when classifications present). Excluded from the public
+  products argument: margin products (see below).
+
+- **2026-04-07**: `_DATA_COLORS["balance"]` and `_INDEX_COLORS["balance"]` changed
+  from single strings to 2-tuples to support alternating row shading in the
+  imbalances table. `_build_balance_row_css` updated to use `[0]` for the Balance
+  row (no behaviour change). Styling: supply columns green, use columns blue,
+  diff/rel columns neutral grey — all alternating per row. Index alternates in
+  neutral grey.
+
+- **2026-04-07**: Added `SUTClassifications.margin_products` — optional DataFrame
+  with columns `{product_col}`, optionally `{product_col}_txt`, and `price_layer`
+  (actual data column name mapping the product to the price layer it supplies into).
+  Loaded from optional `margin_products` sheet in the classifications Excel file;
+  `price_layer` values validated against known price layer columns from `SUTColumns`.
+  `inspect_unbalanced_products` always excludes margin products when the table is
+  present.
