@@ -17,6 +17,11 @@ from sutlab.inspect._final_uses import (
     FinalUseInspection,
     FinalUseInspectionData,
 )
+from sutlab.inspect._product_imbalances import (
+    inspect_unbalanced_products,
+    UnbalancedProductsInspection,
+    UnbalancedProductsData,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -42,4 +47,7 @@ __all__ = [
     "inspect_final_uses",
     "FinalUseInspection",
     "FinalUseInspectionData",
+    "inspect_unbalanced_products",
+    "UnbalancedProductsInspection",
+    "UnbalancedProductsData",
 ]
