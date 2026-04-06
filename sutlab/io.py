@@ -200,7 +200,8 @@ def _load_metadata_classifications_from_excel(
     Load classification tables from a multi-sheet Excel file.
 
     Known sheets: ``classifications``, ``products``, ``transactions``,
-    ``industries``, ``individual_consumption``, ``collective_consumption``.
+    ``industries``, ``individual_consumption``, ``collective_consumption``,
+    ``margin_products``.
     Unknown sheets are silently ignored. Each known sheet is optional; its
     corresponding field is set to ``None`` if the sheet is absent.
 
@@ -213,6 +214,9 @@ def _load_metadata_classifications_from_excel(
       ``{columns.transaction}_txt``, ``table``, ``esa_code``
     - ``industries``, ``individual_consumption``, ``collective_consumption``:
       ``{columns.category}``, ``{columns.category}_txt``
+    - ``margin_products``: ``{columns.product}``, optionally
+      ``{columns.product}_txt``, and ``price_layer`` (actual price layer
+      column name, validated against the price layer columns in ``columns``)
 
     If the ``transactions`` sheet is present, it must have a ``table`` column
     with values ``"supply"`` or ``"use"`` for every row, and an ``esa_code``
@@ -319,6 +323,29 @@ def _load_metadata_classifications_from_excel(
         )
         collective_consumption = df[[cat_col, cat_txt_col]].copy()
 
+    margin_products = None
+    if "margin_products" in all_sheets:
+        df = all_sheets["margin_products"]
+        _validate_required_columns(
+            df, [prod_col, "price_layer"], source="'margin_products' sheet"
+        )
+        known_layer_cols = [
+            getattr(columns, role) for role in _PRICE_LAYER_ROLES
+            if getattr(columns, role) is not None
+        ]
+        unknown = [v for v in df["price_layer"].tolist() if v not in known_layer_cols]
+        if unknown:
+            unknown_str = ", ".join(f"'{v}'" for v in unknown)
+            known_str = ", ".join(f"'{c}'" for c in known_layer_cols)
+            raise ValueError(
+                f"'margin_products' sheet contains unknown price layer column "
+                f"names: {unknown_str}. Known price layer columns from metadata: {known_str}"
+            )
+        keep_cols = [prod_col, "price_layer"]
+        if prod_txt_col in df.columns:
+            keep_cols = [prod_col, prod_txt_col, "price_layer"]
+        margin_products = df[keep_cols].copy()
+
     return SUTClassifications(
         classification_names=classification_names,
         products=products,
@@ -326,6 +353,7 @@ def _load_metadata_classifications_from_excel(
         industries=industries,
         individual_consumption=individual_consumption,
         collective_consumption=collective_consumption,
+        margin_products=margin_products,
     )
 
 
