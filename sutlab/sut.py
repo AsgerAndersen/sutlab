@@ -380,25 +380,25 @@ class SUT:
         """Delegates to :func:`get_ids`."""
         return get_ids(self)
 
-    def get_product_codes(self) -> pd.DataFrame:
+    def get_product_codes(self, products: str | list[str] | None = None) -> pd.DataFrame:
         """Delegates to :func:`get_product_codes`."""
-        return get_product_codes(self)
+        return get_product_codes(self, products=products)
 
-    def get_transaction_codes(self) -> pd.DataFrame:
+    def get_transaction_codes(self, transactions: str | list[str] | None = None) -> pd.DataFrame:
         """Delegates to :func:`get_transaction_codes`."""
-        return get_transaction_codes(self)
+        return get_transaction_codes(self, transactions=transactions)
 
-    def get_industry_codes(self) -> pd.DataFrame:
+    def get_industry_codes(self, industries: str | list[str] | None = None) -> pd.DataFrame:
         """Delegates to :func:`get_industry_codes`."""
-        return get_industry_codes(self)
+        return get_industry_codes(self, industries=industries)
 
-    def get_individual_consumption_codes(self) -> pd.DataFrame:
+    def get_individual_consumption_codes(self, categories: str | list[str] | None = None) -> pd.DataFrame:
         """Delegates to :func:`get_individual_consumption_codes`."""
-        return get_individual_consumption_codes(self)
+        return get_individual_consumption_codes(self, categories=categories)
 
-    def get_collective_consumption_codes(self) -> pd.DataFrame:
+    def get_collective_consumption_codes(self, categories: str | list[str] | None = None) -> pd.DataFrame:
         """Delegates to :func:`get_collective_consumption_codes`."""
-        return get_collective_consumption_codes(self)
+        return get_collective_consumption_codes(self, categories=categories)
 
     def compute_price_layer_rates(
         self,
@@ -863,20 +863,55 @@ def _unique_column_values(sut: SUT, column_name: str) -> pd.DataFrame:
     return pd.DataFrame({column_name: all_vals}).sort_values(column_name).reset_index(drop=True)
 
 
-def get_product_codes(sut: SUT) -> pd.DataFrame:
+def _add_txt_column(
+    codes_df: pd.DataFrame,
+    classification_df: pd.DataFrame | None,
+    key_col: str,
+) -> pd.DataFrame:
+    """Left-join the ``_txt`` label column from ``classification_df`` if available.
+
+    If ``classification_df`` is ``None`` or does not contain a ``{key_col}_txt``
+    column, ``codes_df`` is returned unchanged.
+    """
+    if classification_df is None:
+        return codes_df
+    txt_col = f"{key_col}_txt"
+    if txt_col not in classification_df.columns:
+        return codes_df
+    labels = classification_df[[key_col, txt_col]].drop_duplicates(subset=key_col)
+    return codes_df.merge(labels, on=key_col, how="left")
+
+
+def get_product_codes(
+    sut: SUT,
+    products: str | list[str] | None = None,
+) -> pd.DataFrame:
     """Return the unique product codes present in the data.
 
     Parameters
     ----------
     sut : SUT
         The SUT collection to inspect.
+    products : str, list of str, or None
+        Optional filter. Each entry is one of:
+
+        - **Exact code**: e.g. ``"V10100"``.
+        - **Wildcard**: contains ``*``, e.g. ``"V10*"``.
+        - **Range**: contains ``:``, e.g. ``"V10100:V20300"``
+          (inclusive, natural sort order).
+        - **Negation**: starts with ``~``, e.g. ``"~V10*"`` excludes all
+          V10 codes. If only negation patterns are given, the starting set
+          is all codes in the data.
+
+        When ``None`` (default), all codes are returned.
 
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the product column in ``sut``,
-        containing the unique product codes from supply and use combined,
-        sorted in ascending order with a clean integer index.
+        DataFrame named after the product column in ``sut``, containing the
+        matching product codes sorted in ascending order with a clean integer
+        index. If ``sut.metadata.classifications.products`` is present, a
+        second column ``{product_col}_txt`` with the product label is included.
 
     Raises
     ------
@@ -888,23 +923,40 @@ def get_product_codes(sut: SUT) -> pd.DataFrame:
             "sut.metadata is required to call get_product_codes. "
             "Provide a SUTMetadata with column name mappings."
         )
-    return _unique_column_values(sut, sut.metadata.columns.product)
+    prod_col = sut.metadata.columns.product
+    result = _unique_column_values(sut, prod_col)
+    if products is not None:
+        patterns = [products] if isinstance(products, str) else products
+        matched = _match_codes(result[prod_col].tolist(), patterns)
+        result = result[result[prod_col].isin(matched)].reset_index(drop=True)
+    if sut.metadata.classifications is not None:
+        result = _add_txt_column(result, sut.metadata.classifications.products, prod_col)
+    return result
 
 
-def get_transaction_codes(sut: SUT) -> pd.DataFrame:
+def get_transaction_codes(
+    sut: SUT,
+    transactions: str | list[str] | None = None,
+) -> pd.DataFrame:
     """Return the unique transaction codes present in the data.
 
     Parameters
     ----------
     sut : SUT
         The SUT collection to inspect.
+    transactions : str, list of str, or None
+        Optional filter. Same pattern syntax as ``products`` in
+        :func:`get_product_codes`. When ``None`` (default), all codes are
+        returned.
 
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the transaction column in ``sut``,
-        containing the unique transaction codes from supply and use combined,
-        sorted in ascending order with a clean integer index.
+        DataFrame named after the transaction column in ``sut``, containing
+        the matching transaction codes sorted in ascending order with a clean
+        integer index. If ``sut.metadata.classifications.transactions`` is
+        present, a second column ``{transaction_col}_txt`` with the transaction
+        label is included.
 
     Raises
     ------
@@ -916,7 +968,15 @@ def get_transaction_codes(sut: SUT) -> pd.DataFrame:
             "sut.metadata is required to call get_transaction_codes. "
             "Provide a SUTMetadata with column name mappings."
         )
-    return _unique_column_values(sut, sut.metadata.columns.transaction)
+    trans_col = sut.metadata.columns.transaction
+    result = _unique_column_values(sut, trans_col)
+    if transactions is not None:
+        patterns = [transactions] if isinstance(transactions, str) else transactions
+        matched = _match_codes(result[trans_col].tolist(), patterns)
+        result = result[result[trans_col].isin(matched)].reset_index(drop=True)
+    if sut.metadata.classifications is not None:
+        result = _add_txt_column(result, sut.metadata.classifications.transactions, trans_col)
+    return result
 
 
 def _category_codes_for_esa(sut: SUT, esa_codes: list[str]) -> pd.DataFrame:
@@ -951,7 +1011,10 @@ def _require_transaction_classifications(sut: SUT, function_name: str) -> None:
         )
 
 
-def get_industry_codes(sut: SUT) -> pd.DataFrame:
+def get_industry_codes(
+    sut: SUT,
+    industries: str | list[str] | None = None,
+) -> pd.DataFrame:
     """Return the unique industry codes present in the data.
 
     Industry codes are the category codes from output (P1) and intermediate
@@ -961,13 +1024,18 @@ def get_industry_codes(sut: SUT) -> pd.DataFrame:
     ----------
     sut : SUT
         The SUT collection to inspect.
+    industries : str, list of str, or None
+        Optional filter. Same pattern syntax as ``products`` in
+        :func:`get_product_codes`. When ``None`` (default), all codes are
+        returned.
 
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the category column in ``sut``,
-        containing the unique industry codes, sorted in ascending order with
-        a clean integer index.
+        DataFrame named after the category column in ``sut``, containing the
+        matching industry codes, sorted in ascending order with a clean integer
+        index. If ``sut.metadata.classifications.industries`` is present, a
+        second column ``{category_col}_txt`` with the industry label is included.
 
     Raises
     ------
@@ -976,10 +1044,20 @@ def get_industry_codes(sut: SUT) -> pd.DataFrame:
         is ``None``.
     """
     _require_transaction_classifications(sut, "get_industry_codes")
-    return _category_codes_for_esa(sut, ["P1", "P2"])
+    cat_col = sut.metadata.columns.category
+    result = _category_codes_for_esa(sut, ["P1", "P2"])
+    if industries is not None:
+        patterns = [industries] if isinstance(industries, str) else industries
+        matched = _match_codes(result[cat_col].tolist(), patterns)
+        result = result[result[cat_col].isin(matched)].reset_index(drop=True)
+    result = _add_txt_column(result, sut.metadata.classifications.industries, cat_col)
+    return result
 
 
-def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
+def get_individual_consumption_codes(
+    sut: SUT,
+    categories: str | list[str] | None = None,
+) -> pd.DataFrame:
     """Return the unique individual consumption function codes present in the data.
 
     Individual consumption codes are the category codes from rows with ESA
@@ -989,13 +1067,19 @@ def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
     ----------
     sut : SUT
         The SUT collection to inspect.
+    categories : str, list of str, or None
+        Optional filter. Same pattern syntax as ``products`` in
+        :func:`get_product_codes`. When ``None`` (default), all codes are
+        returned.
 
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the category column in ``sut``,
-        containing the unique individual consumption codes, sorted in
-        ascending order with a clean integer index.
+        DataFrame named after the category column in ``sut``, containing the
+        matching individual consumption codes, sorted in ascending order with a
+        clean integer index. If
+        ``sut.metadata.classifications.individual_consumption`` is present, a
+        second column ``{category_col}_txt`` with the label is included.
 
     Raises
     ------
@@ -1004,10 +1088,20 @@ def get_individual_consumption_codes(sut: SUT) -> pd.DataFrame:
         is ``None``.
     """
     _require_transaction_classifications(sut, "get_individual_consumption_codes")
-    return _category_codes_for_esa(sut, ["P31"])
+    cat_col = sut.metadata.columns.category
+    result = _category_codes_for_esa(sut, ["P31"])
+    if categories is not None:
+        patterns = [categories] if isinstance(categories, str) else categories
+        matched = _match_codes(result[cat_col].tolist(), patterns)
+        result = result[result[cat_col].isin(matched)].reset_index(drop=True)
+    result = _add_txt_column(result, sut.metadata.classifications.individual_consumption, cat_col)
+    return result
 
 
-def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
+def get_collective_consumption_codes(
+    sut: SUT,
+    categories: str | list[str] | None = None,
+) -> pd.DataFrame:
     """Return the unique collective consumption function codes present in the data.
 
     Collective consumption codes are the category codes from rows with ESA
@@ -1017,13 +1111,19 @@ def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
     ----------
     sut : SUT
         The SUT collection to inspect.
+    categories : str, list of str, or None
+        Optional filter. Same pattern syntax as ``products`` in
+        :func:`get_product_codes`. When ``None`` (default), all codes are
+        returned.
 
     Returns
     -------
     pd.DataFrame
-        Single-column DataFrame named after the category column in ``sut``,
-        containing the unique collective consumption codes, sorted in
-        ascending order with a clean integer index.
+        DataFrame named after the category column in ``sut``, containing the
+        matching collective consumption codes, sorted in ascending order with a
+        clean integer index. If
+        ``sut.metadata.classifications.collective_consumption`` is present, a
+        second column ``{category_col}_txt`` with the label is included.
 
     Raises
     ------
@@ -1032,7 +1132,14 @@ def get_collective_consumption_codes(sut: SUT) -> pd.DataFrame:
         is ``None``.
     """
     _require_transaction_classifications(sut, "get_collective_consumption_codes")
-    return _category_codes_for_esa(sut, ["P32"])
+    cat_col = sut.metadata.columns.category
+    result = _category_codes_for_esa(sut, ["P32"])
+    if categories is not None:
+        patterns = [categories] if isinstance(categories, str) else categories
+        matched = _match_codes(result[cat_col].tolist(), patterns)
+        result = result[result[cat_col].isin(matched)].reset_index(drop=True)
+    result = _add_txt_column(result, sut.metadata.classifications.collective_consumption, cat_col)
+    return result
 
 
 def get_ids(sut: SUT) -> pd.DataFrame:

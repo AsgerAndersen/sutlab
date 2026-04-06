@@ -580,6 +580,66 @@ def sut_classified(supply_classified, use_classified, columns, classified_transa
     return SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
 
 
+@pytest.fixture
+def classified_products():
+    return pd.DataFrame({
+        "nrnr":     ["P1", "P2"],
+        "nrnr_txt": ["Product 1", "Product 2"],
+    })
+
+
+@pytest.fixture
+def classified_industries():
+    return pd.DataFrame({
+        "brch":     ["X", "Y"],
+        "brch_txt": ["Industry X", "Industry Y"],
+    })
+
+
+@pytest.fixture
+def classified_individual_consumption():
+    return pd.DataFrame({
+        "brch":     ["HH"],
+        "brch_txt": ["Households"],
+    })
+
+
+@pytest.fixture
+def classified_collective_consumption():
+    return pd.DataFrame({
+        "brch":     ["GOV"],
+        "brch_txt": ["Government"],
+    })
+
+
+@pytest.fixture
+def sut_with_product_labels(supply_classified, use_classified, columns, classified_transactions, classified_products):
+    classifications = SUTClassifications(transactions=classified_transactions, products=classified_products)
+    meta = SUTMetadata(columns=columns, classifications=classifications)
+    return SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+
+
+@pytest.fixture
+def sut_with_industry_labels(supply_classified, use_classified, columns, classified_transactions, classified_industries):
+    classifications = SUTClassifications(transactions=classified_transactions, industries=classified_industries)
+    meta = SUTMetadata(columns=columns, classifications=classifications)
+    return SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+
+
+@pytest.fixture
+def sut_with_individual_labels(supply_classified, use_classified, columns, classified_transactions, classified_individual_consumption):
+    classifications = SUTClassifications(transactions=classified_transactions, individual_consumption=classified_individual_consumption)
+    meta = SUTMetadata(columns=columns, classifications=classifications)
+    return SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+
+
+@pytest.fixture
+def sut_with_collective_labels(supply_classified, use_classified, columns, classified_transactions, classified_collective_consumption):
+    classifications = SUTClassifications(transactions=classified_transactions, collective_consumption=classified_collective_consumption)
+    meta = SUTMetadata(columns=columns, classifications=classifications)
+    return SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
+
+
 class TestGetProductCodes:
 
     def test_returns_dataframe_with_product_column(self, sut):
@@ -602,6 +662,36 @@ class TestGetProductCodes:
         sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
         with pytest.raises(ValueError, match="metadata"):
             get_product_codes(sut_no_meta)
+
+    def test_includes_txt_column_when_products_classification_present(self, sut_with_product_labels):
+        result = get_product_codes(sut_with_product_labels)
+        assert list(result.columns) == ["nrnr", "nrnr_txt"]
+
+    def test_txt_values_match_classification(self, sut_with_product_labels):
+        result = get_product_codes(sut_with_product_labels)
+        row_p1 = result[result["nrnr"] == "P1"].iloc[0]
+        assert row_p1["nrnr_txt"] == "Product 1"
+
+    def test_no_txt_column_when_products_classification_absent(self, sut_classified):
+        # sut_classified has transactions classification but no products
+        result = get_product_codes(sut_classified)
+        assert list(result.columns) == ["nrnr"]
+
+    def test_filter_exact(self, sut):
+        result = get_product_codes(sut, products="P1")
+        assert list(result["nrnr"]) == ["P1"]
+
+    def test_filter_wildcard(self, sut):
+        result = get_product_codes(sut, products="P*")
+        assert set(result["nrnr"]) == {"P1", "P2"}
+
+    def test_filter_negation(self, sut):
+        result = get_product_codes(sut, products="~P1")
+        assert list(result["nrnr"]) == ["P2"]
+
+    def test_filter_returns_empty_when_no_match(self, sut):
+        result = get_product_codes(sut, products="ZZZZ")
+        assert len(result) == 0
 
 
 class TestGetTransactionCodes:
@@ -627,6 +717,32 @@ class TestGetTransactionCodes:
         sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
         with pytest.raises(ValueError, match="metadata"):
             get_transaction_codes(sut_no_meta)
+
+    def test_includes_txt_column_when_transactions_classification_present(self, sut_classified):
+        result = get_transaction_codes(sut_classified)
+        assert list(result.columns) == ["trans", "trans_txt"]
+
+    def test_txt_values_match_classification(self, sut_classified):
+        result = get_transaction_codes(sut_classified)
+        row = result[result["trans"] == "0100"].iloc[0]
+        assert row["trans_txt"] == "Output"
+
+    def test_no_txt_column_when_classifications_absent(self, sut):
+        # sut has no classifications at all
+        result = get_transaction_codes(sut)
+        assert list(result.columns) == ["trans"]
+
+    def test_filter_exact(self, sut):
+        result = get_transaction_codes(sut, transactions="0100")
+        assert list(result["trans"]) == ["0100"]
+
+    def test_filter_wildcard(self, sut):
+        result = get_transaction_codes(sut, transactions="0*")
+        assert list(result["trans"]) == ["0100"]
+
+    def test_filter_negation(self, sut):
+        result = get_transaction_codes(sut, transactions="~0100")
+        assert list(result["trans"]) == ["2000"]
 
 
 class TestGetIndustryCodes:
@@ -659,6 +775,27 @@ class TestGetIndustryCodes:
         with pytest.raises(ValueError, match="classifications"):
             get_industry_codes(sut_no_class)
 
+    def test_includes_txt_column_when_industries_classification_present(self, sut_with_industry_labels):
+        result = get_industry_codes(sut_with_industry_labels)
+        assert list(result.columns) == ["brch", "brch_txt"]
+
+    def test_txt_values_match_classification(self, sut_with_industry_labels):
+        result = get_industry_codes(sut_with_industry_labels)
+        row = result[result["brch"] == "X"].iloc[0]
+        assert row["brch_txt"] == "Industry X"
+
+    def test_no_txt_column_when_industries_classification_absent(self, sut_classified):
+        result = get_industry_codes(sut_classified)
+        assert list(result.columns) == ["brch"]
+
+    def test_filter_exact(self, sut_classified):
+        result = get_industry_codes(sut_classified, industries="X")
+        assert list(result["brch"]) == ["X"]
+
+    def test_filter_negation(self, sut_classified):
+        result = get_industry_codes(sut_classified, industries="~X")
+        assert list(result["brch"]) == ["Y"]
+
 
 class TestGetIndividualConsumptionCodes:
 
@@ -684,6 +821,27 @@ class TestGetIndividualConsumptionCodes:
         with pytest.raises(ValueError, match="classifications"):
             get_individual_consumption_codes(sut_no_class)
 
+    def test_includes_txt_column_when_individual_consumption_classification_present(self, sut_with_individual_labels):
+        result = get_individual_consumption_codes(sut_with_individual_labels)
+        assert list(result.columns) == ["brch", "brch_txt"]
+
+    def test_txt_values_match_classification(self, sut_with_individual_labels):
+        result = get_individual_consumption_codes(sut_with_individual_labels)
+        row = result[result["brch"] == "HH"].iloc[0]
+        assert row["brch_txt"] == "Households"
+
+    def test_no_txt_column_when_individual_consumption_classification_absent(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified)
+        assert list(result.columns) == ["brch"]
+
+    def test_filter_exact(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, categories="HH")
+        assert list(result["brch"]) == ["HH"]
+
+    def test_filter_no_match(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, categories="GOV")
+        assert len(result) == 0
+
 
 class TestGetCollectiveConsumptionCodes:
 
@@ -708,6 +866,27 @@ class TestGetCollectiveConsumptionCodes:
         sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
         with pytest.raises(ValueError, match="classifications"):
             get_collective_consumption_codes(sut_no_class)
+
+    def test_includes_txt_column_when_collective_consumption_classification_present(self, sut_with_collective_labels):
+        result = get_collective_consumption_codes(sut_with_collective_labels)
+        assert list(result.columns) == ["brch", "brch_txt"]
+
+    def test_txt_values_match_classification(self, sut_with_collective_labels):
+        result = get_collective_consumption_codes(sut_with_collective_labels)
+        row = result[result["brch"] == "GOV"].iloc[0]
+        assert row["brch_txt"] == "Government"
+
+    def test_no_txt_column_when_collective_consumption_classification_absent(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified)
+        assert list(result.columns) == ["brch"]
+
+    def test_filter_exact(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, categories="GOV")
+        assert list(result["brch"]) == ["GOV"]
+
+    def test_filter_no_match(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, categories="HH")
+        assert len(result) == 0
 
 
 class TestGetIds:
