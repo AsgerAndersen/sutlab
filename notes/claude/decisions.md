@@ -519,3 +519,9 @@ Append-only. Each entry: date, decision, brief rationale.
   border), consistent with the outermost-level convention in other inspection
   tables. `_style_final_use_use_table` (transaction-level) uses alternating row
   colours on all cells including index, since each transaction IS a leaf row.
+
+- **2026-04-06**: Removed the four `price_layers_detailed` tables
+  (`price_layers_detailed`, `price_layers_detailed_distribution`,
+  `price_layers_detailed_growth`, `price_layers_detailed_rates`) from
+  `inspect_products`. `ProductInspection` now returns 13 tables. Rationale:
+  user decision — the category-level price layer breakdown is not needed.
