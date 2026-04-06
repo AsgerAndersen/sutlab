@@ -525,3 +525,14 @@ Append-only. Each entry: date, decision, brief rationale.
   `price_layers_detailed_growth`, `price_layers_detailed_rates`) from
   `inspect_products`. `ProductInspection` now returns 13 tables. Rationale:
   user decision — the category-level price layer breakdown is not needed.
+
+- **2026-04-06**: `get_product_codes`, `get_transaction_codes`,
+  `get_industry_codes`, `get_individual_consumption_codes`, and
+  `get_collective_consumption_codes` now include a `_txt` label column when
+  the corresponding classification table is present in
+  `sut.metadata.classifications`. Silently omitted when absent.
+
+- **2026-04-06**: The five `get_*_codes` functions (excluding `get_ids`) now
+  accept an optional filter argument (`products`, `transactions`, `industries`,
+  or `categories`) using the same pattern syntax as `get_rows` (exact,
+  wildcard `*`, range `:`, negation `~`). Default `None` returns all codes.
