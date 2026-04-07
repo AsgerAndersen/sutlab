@@ -561,3 +561,34 @@ Append-only. Each entry: date, decision, brief rationale.
   `price_layer` values validated against known price layer columns from `SUTColumns`.
   `inspect_unbalanced_products` always excludes margin products when the table is
   present.
+
+- **2026-04-07**: Added `resolve_target_tolerances(sut) -> SUT` in
+  `sutlab/balancing/_tolerances.py`. Attaches `tol_{price_basic}` to
+  `balancing_targets.supply` and `tol_{price_purchasers}` to
+  `balancing_targets.use`. Tolerance per row = `min(abs(rel*target), abs_tol)`.
+  Supports partial tolerances (rel-only or abs-only; raises only when both are
+  absent for a non-NaN target). NaN target → NaN tolerance. Categories override
+  transactions. Also callable as `sut.resolve_target_tolerances()`.
+
+- **2026-04-07**: Added `inspect_balancing_targets(sut, transactions=None,
+  categories=None, sort=False) -> BalancingTargetsInspection` in
+  `sutlab/inspect/_balancing_targets.py`. Returns `.data.supply` and `.data.use`
+  DataFrames with columns `{price}`, `target_{price}`, `diff_{price}`,
+  `rel_{price}`, `tol_{price}`, `violation_{price}`. Violation = signed distance
+  outside tolerance band (positive if above, negative if below, 0 if within).
+  Supply uses basic prices; use uses purchasers' prices. Also returns
+  `.data.supply_violations` and `.data.use_violations`: DataFrames of violating
+  rows (empty if none), or None if no target_tolerances configured.
+  `resolve_target_tolerances` is called silently if tol columns are absent.
+  Styled properties (`.supply`, `.use`, `.supply_violations`, `.use_violations`)
+  return Styler objects: actual+target columns in supply green / use blue,
+  analytical columns in neutral grey, rel as percentage. Transaction blocks
+  separated by `2px solid #999` borders; transaction index levels get border on
+  first row of merged span, category levels on last row. Also callable as
+  `sut.inspect_balancing_targets()`.
+
+- **2026-04-07**: Column naming convention settled for balancing-related columns:
+  `tol_{price}` and `violation_{price}` (not `{price}_tol` or `tol_violation`).
+  `compute_*` naming reserved for functions in `derive.py` that compute analytical
+  quantities from SUT data. `resolve_*` used in `balancing/` for functions that
+  resolve configuration into usable form.
