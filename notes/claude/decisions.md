@@ -592,3 +592,12 @@ Append-only. Each entry: date, decision, brief rationale.
   `compute_*` naming reserved for functions in `derive.py` that compute analytical
   quantities from SUT data. `resolve_*` used in `balancing/` for functions that
   resolve configuration into usable form.
+
+- **2026-04-07**: `add_sut(sut, adjustments)` added to `sut.py`. Semantics: numerical
+  addition on matching keys (id, product, transaction, category); new keys appended;
+  NaN treated as 0 (NaN + value = value, NaN + NaN = NaN). Both supply and use processed.
+  Balancing targets combined with same semantics when `adjustments` carries them; otherwise
+  base SUT's targets preserved. Metadata, balancing_id, balancing_config always from base.
+  `price_basis` must match (raise otherwise); `SUTColumns` must match if both have metadata.
+  Primary use case: benchmark revision adjustments. Parameter named `adjustments` (not
+  `sut_values` or `other`) to reflect domain intent.
