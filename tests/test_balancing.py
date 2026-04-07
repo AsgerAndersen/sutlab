@@ -1005,37 +1005,37 @@ class TestResolveTargetTolerances:
 
     def test_supply_tolerance_column_added(self, sut_with_tolerances):
         result = resolve_target_tolerances(sut_with_tolerances)
-        assert "bas_tol" in result.balancing_targets.supply.columns
+        assert "tol_bas" in result.balancing_targets.supply.columns
 
     def test_use_tolerance_column_added(self, sut_with_tolerances):
         result = resolve_target_tolerances(sut_with_tolerances)
-        assert "koeb_tol" in result.balancing_targets.use.columns
+        assert "tol_koeb" in result.balancing_targets.use.columns
 
     def test_supply_abs_wins(self, sut_with_tolerances):
         # 0100/X: min(abs(0.05 * 360), 10) = min(18, 10) = 10.0
         result = resolve_target_tolerances(sut_with_tolerances)
         row = _get_row(result.balancing_targets.supply, trans="0100", brch="X")
-        assert row["bas_tol"] == pytest.approx(10.0)
+        assert row["tol_bas"] == pytest.approx(10.0)
 
     def test_supply_nan_target_gives_nan_tolerance(self, sut_with_tolerances):
         # 0700/"": bas=NaN → tol=NaN
         result = resolve_target_tolerances(sut_with_tolerances)
         row = _get_row(result.balancing_targets.supply, trans="0700", brch="")
-        assert pd.isna(row["bas_tol"])
+        assert pd.isna(row["tol_bas"])
 
     def test_use_categories_override_rel_wins(self, sut_with_tolerances):
         # 3110/HH: categories override rel=0.01, abs=3
         # min(abs(0.01 * 90), 3) = min(0.9, 3) = 0.9
         result = resolve_target_tolerances(sut_with_tolerances)
         row = _get_row(result.balancing_targets.use, trans="3110", brch="HH")
-        assert row["koeb_tol"] == pytest.approx(0.9)
+        assert row["tol_koeb"] == pytest.approx(0.9)
 
     def test_use_transaction_fallback_rel_wins(self, sut_with_tolerances):
         # 2000/X: no categories override; transaction-level rel=0.04, abs=6
         # min(abs(0.04 * 40), 6) = min(1.6, 6) = 1.6
         result = resolve_target_tolerances(sut_with_tolerances)
         row = _get_row(result.balancing_targets.use, trans="2000", brch="X")
-        assert row["koeb_tol"] == pytest.approx(1.6)
+        assert row["tol_koeb"] == pytest.approx(1.6)
 
     def test_original_columns_unchanged(self, sut_with_tolerances):
         result = resolve_target_tolerances(sut_with_tolerances)
@@ -1044,7 +1044,7 @@ class TestResolveTargetTolerances:
 
     def test_original_sut_not_mutated(self, sut_with_tolerances):
         resolve_target_tolerances(sut_with_tolerances)
-        assert "bas_tol" not in sut_with_tolerances.balancing_targets.supply.columns
+        assert "tol_bas" not in sut_with_tolerances.balancing_targets.supply.columns
 
     def test_only_rel_set_uses_rel_component(self, sut_with_tolerances, cols):
         # abs=NaN for 0100 → tolerance = abs(rel * target) = abs(0.05 * 360) = 18.0
@@ -1061,7 +1061,7 @@ class TestResolveTargetTolerances:
         sut_rel_only = replace(sut_with_tolerances, balancing_config=new_config)
         result = resolve_target_tolerances(sut_rel_only)
         row = _get_row(result.balancing_targets.supply, trans="0100", brch="X")
-        assert row["bas_tol"] == pytest.approx(18.0)
+        assert row["tol_bas"] == pytest.approx(18.0)
 
     def test_only_abs_set_uses_abs(self, sut_with_tolerances, cols):
         # rel=NaN for 0100 → tolerance = abs_tol = 10.0
@@ -1078,7 +1078,7 @@ class TestResolveTargetTolerances:
         sut_abs_only = replace(sut_with_tolerances, balancing_config=new_config)
         result = resolve_target_tolerances(sut_abs_only)
         row = _get_row(result.balancing_targets.supply, trans="0100", brch="X")
-        assert row["bas_tol"] == pytest.approx(10.0)
+        assert row["tol_bas"] == pytest.approx(10.0)
 
     def test_raises_missing_tolerance(self, sut_with_tolerances, cols):
         # Remove tolerance entry for 0100 entirely (both rel and abs absent) — should raise

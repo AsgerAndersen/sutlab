@@ -17,8 +17,8 @@ def resolve_target_tolerances(sut: SUT) -> SUT:
     For each (transaction, category) combination in the balancing targets,
     looks up the effective tolerance from
     ``sut.balancing_config.target_tolerances`` and appends a
-    ``{price_basic}_tol`` column to the supply targets and a
-    ``{price_purchasers}_tol`` column to the use targets.
+    ``tol_{price_basic}`` column to the supply targets and a
+    ``tol_{price_purchasers}`` column to the use targets.
 
     Tolerance lookup uses two levels:
 
@@ -45,8 +45,8 @@ def resolve_target_tolerances(sut: SUT) -> SUT:
     -------
     SUT
         New SUT with updated ``balancing_targets``. The supply targets gain a
-        ``{price_basic}_tol`` column; the use targets gain a
-        ``{price_purchasers}_tol`` column. All other fields are unchanged.
+        ``tol_{price_basic}`` column; the use targets gain a
+        ``tol_{price_purchasers}`` column. All other fields are unchanged.
 
     Raises
     ------
@@ -84,7 +84,7 @@ def resolve_target_tolerances(sut: SUT) -> SUT:
         trans_col=cols.transaction,
         cat_col=cols.category,
         target_price_col=cols.price_basic,
-        tol_col_name=f"{cols.price_basic}_tol",
+        tol_col_name=f"tol_{cols.price_basic}",
     )
 
     new_use = _add_tolerance_column(
@@ -93,7 +93,7 @@ def resolve_target_tolerances(sut: SUT) -> SUT:
         trans_col=cols.transaction,
         cat_col=cols.category,
         target_price_col=cols.price_purchasers,
-        tol_col_name=f"{cols.price_purchasers}_tol",
+        tol_col_name=f"tol_{cols.price_purchasers}",
     )
 
     new_targets = replace(sut.balancing_targets, supply=new_supply, use=new_use)

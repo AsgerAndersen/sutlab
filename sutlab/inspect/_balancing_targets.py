@@ -48,10 +48,10 @@ class BalancingTargetsInspection:
         - ``tol_{price_basic}`` — resolved tolerance from
           ``balancing_config.target_tolerances``. ``NaN`` when no
           ``target_tolerances`` are configured or when the target is ``NaN``.
-        - ``tol_violation`` — how far the actual value falls outside the
-          tolerance band. Positive when actual > target + tolerance; negative
-          when actual < target - tolerance; zero when within tolerance.
-          ``NaN`` when no ``target_tolerances`` are configured.
+        - ``violation_{price_basic}`` — how far the actual value falls outside
+          the tolerance band. Positive when actual > target + tolerance;
+          negative when actual < target - tolerance; zero when within
+          tolerance. ``NaN`` when no ``target_tolerances`` are configured.
 
         The row index is a two-level MultiIndex
         ``({transaction}, {category})`` when no classifications are loaded,
@@ -64,14 +64,14 @@ class BalancingTargetsInspection:
         ``{price_purchasers}`` instead of ``{price_basic}``.
 
     supply_violations : pd.DataFrame or None
-        Subset of ``supply`` where ``tol_violation != 0``. Empty DataFrame
-        when no supply violations exist. ``None`` when no
+        Subset of ``supply`` where ``violation_{price_basic} != 0``. Empty
+        DataFrame when no supply violations exist. ``None`` when no
         ``target_tolerances`` are configured.
 
     use_violations : pd.DataFrame or None
-        Subset of ``use`` where ``tol_violation != 0``. Empty DataFrame when
-        no use violations exist. ``None`` when no ``target_tolerances`` are
-        configured.
+        Subset of ``use`` where ``violation_{price_purchasers} != 0``. Empty
+        DataFrame when no use violations exist. ``None`` when no
+        ``target_tolerances`` are configured.
     """
 
     data: BalancingTargetsData
@@ -170,8 +170,8 @@ def inspect_balancing_targets(
     # resolve them silently before building the tables.
     working_sut = sut
     if has_tolerances:
-        tol_col_supply = f"{cols.price_basic}_tol"
-        tol_col_use = f"{cols.price_purchasers}_tol"
+        tol_col_supply = f"tol_{cols.price_basic}"
+        tol_col_use = f"tol_{cols.price_purchasers}"
         supply_needs_resolve = tol_col_supply not in sut.balancing_targets.supply.columns
         use_needs_resolve = tol_col_use not in sut.balancing_targets.use.columns
         if supply_needs_resolve or use_needs_resolve:
@@ -220,9 +220,11 @@ def inspect_balancing_targets(
     )
 
     if has_tolerances:
-        supply_viol_mask = supply_table["tol_violation"].notna() & (supply_table["tol_violation"] != 0)
+        supply_viol_col = f"violation_{cols.price_basic}"
+        supply_viol_mask = supply_table[supply_viol_col].notna() & (supply_table[supply_viol_col] != 0)
         supply_violations = supply_table[supply_viol_mask].copy()
-        use_viol_mask = use_table["tol_violation"].notna() & (use_table["tol_violation"] != 0)
+        use_viol_col = f"violation_{cols.price_purchasers}"
+        use_viol_mask = use_table[use_viol_col].notna() & (use_table[use_viol_col] != 0)
         use_violations = use_table[use_viol_mask].copy()
     else:
         supply_violations = None
@@ -260,7 +262,8 @@ def _build_side_table(
     has_labels: bool,
 ) -> pd.DataFrame:
     """Build supply or use comparison table for the active balancing member."""
-    tol_col = f"{price_col}_tol"
+    tol_col = f"tol_{price_col}"
+    violation_col = f"violation_{price_col}"
     target_col = f"target_{price_col}"
     diff_col = f"diff_{price_col}"
     rel_col = f"rel_{price_col}"
@@ -328,10 +331,10 @@ def _build_side_table(
         result[tol_col] = float("nan")
 
     # Tolerance violation.
-    result["tol_violation"] = _compute_tol_violation(result[diff_col], result[tol_col])
+    result[violation_col] = _compute_tol_violation(result[diff_col], result[tol_col])
 
     # Column order.
-    result = result[[trans_col, cat_col, price_col, target_col, diff_col, rel_col, tol_col, "tol_violation"]]
+    result = result[[trans_col, cat_col, price_col, target_col, diff_col, rel_col, tol_col, violation_col]]
 
     # Sort by absolute diff if requested.
     if sort:

@@ -195,11 +195,11 @@ class TestReturnType:
 
     def test_supply_has_expected_columns(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert list(result.supply.columns) == ["bas", "target_bas", "diff_bas", "rel_bas", "bas_tol", "tol_violation"]
+        assert list(result.supply.columns) == ["bas", "target_bas", "diff_bas", "rel_bas", "tol_bas", "violation_bas"]
 
     def test_use_has_expected_columns(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert list(result.use.columns) == ["koeb", "target_koeb", "diff_koeb", "rel_koeb", "koeb_tol", "tol_violation"]
+        assert list(result.use.columns) == ["koeb", "target_koeb", "diff_koeb", "rel_koeb", "tol_koeb", "violation_koeb"]
 
     def test_supply_row_count(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
@@ -262,15 +262,15 @@ class TestValues:
 class TestNoTolerances:
     def test_supply_tol_col_nan(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.supply["bas_tol"].isna().all()
+        assert result.supply["tol_bas"].isna().all()
 
     def test_use_tol_col_nan(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.use["koeb_tol"].isna().all()
+        assert result.use["tol_koeb"].isna().all()
 
     def test_supply_tol_violation_nan(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.supply["tol_violation"].isna().all()
+        assert result.supply["violation_bas"].isna().all()
 
     def test_supply_violations_none(self, sut_no_tol):
         assert inspect_balancing_targets(sut_no_tol).supply_violations is None
@@ -288,40 +288,40 @@ class TestWithTolerances:
     def test_supply_tol_resolved_0100(self, sut_with_tol):
         # min(abs(0.05 * 360), 10) = 10
         row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0100", brch="X")
-        assert row["bas_tol"] == pytest.approx(10.0)
+        assert row["tol_bas"] == pytest.approx(10.0)
 
     def test_supply_tol_nan_for_nan_target(self, sut_with_tol):
         row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0700", brch="")
-        assert pd.isna(row["bas_tol"])
+        assert pd.isna(row["tol_bas"])
 
     def test_use_tol_categories_override_3110(self, sut_with_tol):
         # min(abs(0.01 * 90), 3) = 0.9
         row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="3110", brch="HH")
-        assert row["koeb_tol"] == pytest.approx(0.9)
+        assert row["tol_koeb"] == pytest.approx(0.9)
 
     def test_use_tol_transaction_fallback_2000(self, sut_with_tol):
         # min(abs(0.04 * 40), 6) = 1.6
         row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="2000", brch="X")
-        assert row["koeb_tol"] == pytest.approx(1.6)
+        assert row["tol_koeb"] == pytest.approx(1.6)
 
     def test_supply_violation_0100(self, sut_with_tol):
         # diff=-60, tol=10 → violation = -60 + 10 = -50
         row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0100", brch="X")
-        assert row["tol_violation"] == pytest.approx(-50.0)
+        assert row["violation_bas"] == pytest.approx(-50.0)
 
     def test_supply_violation_nan_for_nan_target(self, sut_with_tol):
         row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0700", brch="")
-        assert pd.isna(row["tol_violation"])
+        assert pd.isna(row["violation_bas"])
 
     def test_use_violation_3110(self, sut_with_tol):
         # diff=-12, tol=0.9 → violation = -12 + 0.9 = -11.1
         row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="3110", brch="HH")
-        assert row["tol_violation"] == pytest.approx(-11.1)
+        assert row["violation_koeb"] == pytest.approx(-11.1)
 
     def test_use_violation_2000(self, sut_with_tol):
         # diff=-8, tol=1.6 → violation = -8 + 1.6 = -6.4
         row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="2000", brch="X")
-        assert row["tol_violation"] == pytest.approx(-6.4)
+        assert row["violation_koeb"] == pytest.approx(-6.4)
 
     def test_supply_violations_is_dataframe(self, sut_with_tol):
         assert isinstance(inspect_balancing_targets(sut_with_tol).supply_violations, pd.DataFrame)
