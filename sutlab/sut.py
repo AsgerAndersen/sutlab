@@ -481,6 +481,11 @@ class SUT:
         from sutlab.balancing import balance_products_use
         return balance_products_use(self, products=products, adjust_transactions=adjust_transactions, adjust_categories=adjust_categories)
 
+    def resolve_target_tolerances(self) -> SUT:
+        """Delegates to :func:`~sutlab.balancing.resolve_target_tolerances`."""
+        from sutlab.balancing import resolve_target_tolerances
+        return resolve_target_tolerances(self)
+
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
     """
