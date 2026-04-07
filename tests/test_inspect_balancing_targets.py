@@ -195,19 +195,19 @@ class TestReturnType:
 
     def test_supply_has_expected_columns(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert list(result.supply.columns) == ["bas", "target_bas", "diff_bas", "rel_bas", "tol_bas", "violation_bas"]
+        assert list(result.data.supply.columns) == ["bas", "target_bas", "diff_bas", "rel_bas", "tol_bas", "violation_bas"]
 
     def test_use_has_expected_columns(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert list(result.use.columns) == ["koeb", "target_koeb", "diff_koeb", "rel_koeb", "tol_koeb", "violation_koeb"]
+        assert list(result.data.use.columns) == ["koeb", "target_koeb", "diff_koeb", "rel_koeb", "tol_koeb", "violation_koeb"]
 
     def test_supply_row_count(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert len(result.supply) == 2
+        assert len(result.data.supply) == 2
 
     def test_use_row_count(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert len(result.use) == 2
+        assert len(result.data.use) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -217,40 +217,40 @@ class TestReturnType:
 
 class TestValues:
     def test_supply_actual_0100(self, sut_no_tol):
-        row = _get_row(result := inspect_balancing_targets(sut_no_tol).supply, trans="0100", brch="X")
+        row = _get_row(result := inspect_balancing_targets(sut_no_tol).data.supply, trans="0100", brch="X")
         assert row["bas"] == pytest.approx(300.0)
 
     def test_supply_target_0100(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).supply, trans="0100", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.supply, trans="0100", brch="X")
         assert row["target_bas"] == pytest.approx(360.0)
 
     def test_supply_diff_0100(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).supply, trans="0100", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.supply, trans="0100", brch="X")
         assert row["diff_bas"] == pytest.approx(-60.0)
 
     def test_supply_rel_0100(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).supply, trans="0100", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.supply, trans="0100", brch="X")
         assert row["rel_bas"] == pytest.approx(300.0 / 360.0 - 1)
 
     def test_supply_nan_target_gives_nan_diff(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).supply, trans="0700", brch="")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.supply, trans="0700", brch="")
         assert pd.isna(row["diff_bas"])
 
     def test_use_actual_3110(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).use, trans="3110", brch="HH")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.use, trans="3110", brch="HH")
         assert row["koeb"] == pytest.approx(78.0)
 
     def test_use_diff_3110(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).use, trans="3110", brch="HH")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.use, trans="3110", brch="HH")
         assert row["diff_koeb"] == pytest.approx(-12.0)
 
     def test_use_diff_2000(self, sut_no_tol):
-        row = _get_row(inspect_balancing_targets(sut_no_tol).use, trans="2000", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.use, trans="2000", brch="X")
         assert row["diff_koeb"] == pytest.approx(-8.0)
 
     def test_only_active_id_used(self, sut_no_tol):
         # 2020 rows must not contribute to 2021 totals.
-        row = _get_row(inspect_balancing_targets(sut_no_tol).supply, trans="0100", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_no_tol).data.supply, trans="0100", brch="X")
         assert row["bas"] == pytest.approx(300.0)
 
 
@@ -262,21 +262,21 @@ class TestValues:
 class TestNoTolerances:
     def test_supply_tol_col_nan(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.supply["tol_bas"].isna().all()
+        assert result.data.supply["tol_bas"].isna().all()
 
     def test_use_tol_col_nan(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.use["tol_koeb"].isna().all()
+        assert result.data.use["tol_koeb"].isna().all()
 
     def test_supply_tol_violation_nan(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.supply["violation_bas"].isna().all()
+        assert result.data.supply["violation_bas"].isna().all()
 
     def test_supply_violations_none(self, sut_no_tol):
-        assert inspect_balancing_targets(sut_no_tol).supply_violations is None
+        assert inspect_balancing_targets(sut_no_tol).data.supply_violations is None
 
     def test_use_violations_none(self, sut_no_tol):
-        assert inspect_balancing_targets(sut_no_tol).use_violations is None
+        assert inspect_balancing_targets(sut_no_tol).data.use_violations is None
 
 
 # ---------------------------------------------------------------------------
@@ -287,56 +287,56 @@ class TestNoTolerances:
 class TestWithTolerances:
     def test_supply_tol_resolved_0100(self, sut_with_tol):
         # min(abs(0.05 * 360), 10) = 10
-        row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0100", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.supply, trans="0100", brch="X")
         assert row["tol_bas"] == pytest.approx(10.0)
 
     def test_supply_tol_nan_for_nan_target(self, sut_with_tol):
-        row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0700", brch="")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.supply, trans="0700", brch="")
         assert pd.isna(row["tol_bas"])
 
     def test_use_tol_categories_override_3110(self, sut_with_tol):
         # min(abs(0.01 * 90), 3) = 0.9
-        row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="3110", brch="HH")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.use, trans="3110", brch="HH")
         assert row["tol_koeb"] == pytest.approx(0.9)
 
     def test_use_tol_transaction_fallback_2000(self, sut_with_tol):
         # min(abs(0.04 * 40), 6) = 1.6
-        row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="2000", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.use, trans="2000", brch="X")
         assert row["tol_koeb"] == pytest.approx(1.6)
 
     def test_supply_violation_0100(self, sut_with_tol):
         # diff=-60, tol=10 → violation = -60 + 10 = -50
-        row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0100", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.supply, trans="0100", brch="X")
         assert row["violation_bas"] == pytest.approx(-50.0)
 
     def test_supply_violation_nan_for_nan_target(self, sut_with_tol):
-        row = _get_row(inspect_balancing_targets(sut_with_tol).supply, trans="0700", brch="")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.supply, trans="0700", brch="")
         assert pd.isna(row["violation_bas"])
 
     def test_use_violation_3110(self, sut_with_tol):
         # diff=-12, tol=0.9 → violation = -12 + 0.9 = -11.1
-        row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="3110", brch="HH")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.use, trans="3110", brch="HH")
         assert row["violation_koeb"] == pytest.approx(-11.1)
 
     def test_use_violation_2000(self, sut_with_tol):
         # diff=-8, tol=1.6 → violation = -8 + 1.6 = -6.4
-        row = _get_row(inspect_balancing_targets(sut_with_tol).use, trans="2000", brch="X")
+        row = _get_row(inspect_balancing_targets(sut_with_tol).data.use, trans="2000", brch="X")
         assert row["violation_koeb"] == pytest.approx(-6.4)
 
     def test_supply_violations_is_dataframe(self, sut_with_tol):
-        assert isinstance(inspect_balancing_targets(sut_with_tol).supply_violations, pd.DataFrame)
+        assert isinstance(inspect_balancing_targets(sut_with_tol).data.supply_violations, pd.DataFrame)
 
     def test_use_violations_is_dataframe(self, sut_with_tol):
-        assert isinstance(inspect_balancing_targets(sut_with_tol).use_violations, pd.DataFrame)
+        assert isinstance(inspect_balancing_targets(sut_with_tol).data.use_violations, pd.DataFrame)
 
     def test_supply_violations_contains_0100(self, sut_with_tol):
-        violations = inspect_balancing_targets(sut_with_tol).supply_violations
+        violations = inspect_balancing_targets(sut_with_tol).data.supply_violations
         trans_vals = violations.index.get_level_values(0)
         assert "0100" in trans_vals
 
     def test_supply_violations_excludes_nan_target_row(self, sut_with_tol):
         # 0700/"" has NaN tol_violation → should not appear in violations table.
-        violations = inspect_balancing_targets(sut_with_tol).supply_violations
+        violations = inspect_balancing_targets(sut_with_tol).data.supply_violations
         trans_vals = violations.index.get_level_values(0)
         assert "0700" not in trans_vals
 
@@ -346,8 +346,8 @@ class TestWithTolerances:
         pre_resolved = resolve_target_tolerances(sut_with_tol)
         result_pre = inspect_balancing_targets(pre_resolved)
         result_auto = inspect_balancing_targets(sut_with_tol)
-        pd.testing.assert_frame_equal(result_pre.supply, result_auto.supply)
-        pd.testing.assert_frame_equal(result_pre.use, result_auto.use)
+        pd.testing.assert_frame_equal(result_pre.data.supply, result_auto.data.supply)
+        pd.testing.assert_frame_equal(result_pre.data.use, result_auto.data.use)
 
 
 # ---------------------------------------------------------------------------
@@ -391,10 +391,10 @@ class TestViolationsEmpty:
             metadata=metadata,
         )
         result = inspect_balancing_targets(sut)
-        assert isinstance(result.supply_violations, pd.DataFrame)
-        assert len(result.supply_violations) == 0
-        assert isinstance(result.use_violations, pd.DataFrame)
-        assert len(result.use_violations) == 0
+        assert isinstance(result.data.supply_violations, pd.DataFrame)
+        assert len(result.data.supply_violations) == 0
+        assert isinstance(result.data.use_violations, pd.DataFrame)
+        assert len(result.data.use_violations) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -405,14 +405,14 @@ class TestViolationsEmpty:
 class TestFilters:
     def test_transactions_filter(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol, transactions="0100")
-        assert len(result.supply) == 1
-        assert result.supply.index.get_level_values(0)[0] == "0100"
+        assert len(result.data.supply) == 1
+        assert result.data.supply.index.get_level_values(0)[0] == "0100"
 
     def test_categories_filter(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol, categories="HH")
-        assert len(result.use) == 1
+        assert len(result.data.use) == 1
         # Category is level 1 in the 2-level (no-classifications) MultiIndex.
-        assert result.use.index.get_level_values(1)[0] == "HH"
+        assert result.data.use.index.get_level_values(1)[0] == "HH"
 
 
 # ---------------------------------------------------------------------------
@@ -424,13 +424,13 @@ class TestSort:
     def test_sort_supply_by_abs_diff(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol, sort=True)
         # 0100/X diff=-60 (abs 60) should come before 0700/"" diff=NaN.
-        first_trans = result.supply.index.get_level_values(0)[0]
+        first_trans = result.data.supply.index.get_level_values(0)[0]
         assert first_trans == "0100"
 
     def test_sort_use_by_abs_diff(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol, sort=True)
         # 3110/HH diff=-12 (abs 12) > 2000/X diff=-8 (abs 8).
-        first_trans = result.use.index.get_level_values(0)[0]
+        first_trans = result.data.use.index.get_level_values(0)[0]
         assert first_trans == "3110"
 
 
@@ -442,19 +442,19 @@ class TestSort:
 class TestMultiIndex:
     def test_supply_two_level_index(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.supply.index.nlevels == 2
+        assert result.data.supply.index.nlevels == 2
 
     def test_use_two_level_index(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert result.use.index.nlevels == 2
+        assert result.data.use.index.nlevels == 2
 
     def test_supply_index_names(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert list(result.supply.index.names) == ["trans", "brch"]
+        assert list(result.data.supply.index.names) == ["trans", "brch"]
 
     def test_use_index_names(self, sut_no_tol):
         result = inspect_balancing_targets(sut_no_tol)
-        assert list(result.use.index.names) == ["trans", "brch"]
+        assert list(result.data.use.index.names) == ["trans", "brch"]
 
 
 # ---------------------------------------------------------------------------
@@ -508,5 +508,36 @@ class TestSUTMethod:
     def test_method_matches_free_function(self, sut_with_tol):
         via_method = sut_with_tol.inspect_balancing_targets()
         via_function = inspect_balancing_targets(sut_with_tol)
-        pd.testing.assert_frame_equal(via_method.supply, via_function.supply)
-        pd.testing.assert_frame_equal(via_method.use, via_function.use)
+        pd.testing.assert_frame_equal(via_method.data.supply, via_function.data.supply)
+        pd.testing.assert_frame_equal(via_method.data.use, via_function.data.use)
+
+
+# ---------------------------------------------------------------------------
+# Styling
+# ---------------------------------------------------------------------------
+
+
+class TestStyling:
+    from pandas.io.formats.style import Styler as _Styler
+
+    def test_supply_property_returns_styler(self, sut_no_tol):
+        from pandas.io.formats.style import Styler
+        assert isinstance(inspect_balancing_targets(sut_no_tol).supply, Styler)
+
+    def test_use_property_returns_styler(self, sut_no_tol):
+        from pandas.io.formats.style import Styler
+        assert isinstance(inspect_balancing_targets(sut_no_tol).use, Styler)
+
+    def test_supply_violations_property_returns_styler_when_tolerances_set(self, sut_with_tol):
+        from pandas.io.formats.style import Styler
+        assert isinstance(inspect_balancing_targets(sut_with_tol).supply_violations, Styler)
+
+    def test_use_violations_property_returns_styler_when_tolerances_set(self, sut_with_tol):
+        from pandas.io.formats.style import Styler
+        assert isinstance(inspect_balancing_targets(sut_with_tol).use_violations, Styler)
+
+    def test_supply_violations_property_returns_none_when_no_tolerances(self, sut_no_tol):
+        assert inspect_balancing_targets(sut_no_tol).supply_violations is None
+
+    def test_use_violations_property_returns_none_when_no_tolerances(self, sut_no_tol):
+        assert inspect_balancing_targets(sut_no_tol).use_violations is None

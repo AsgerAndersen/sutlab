@@ -1124,3 +1124,77 @@ def _style_imbalances_table(
         styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
 
     return styler
+
+
+def _style_balancing_targets_table(
+    df: pd.DataFrame,
+    price_col: str,
+    rel_col: str,
+    palette: str,
+) -> Styler:
+    """Apply column-group colours and formatting to a balancing targets table.
+
+    Columns are coloured by role:
+
+    - Actual value (``{price_col}``) and target (``target_{price_col}``) →
+      supply green or use blue, depending on ``palette``.
+    - All other columns (diff, rel, tol, violation) → neutral grey
+      (``balance`` palette), alternating row shading.
+
+    The rel column is formatted with :func:`_format_percentage`; all other
+    columns use :func:`_format_number`.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The supply or use targets DataFrame.
+    price_col : str
+        Name of the price column (e.g. ``"bas"`` or ``"koeb"``).
+    rel_col : str
+        Name of the relative-deviation column, formatted as a percentage.
+    palette : str
+        Colour palette for the price and target columns. Either
+        ``"supply"`` (green) or ``"use"`` (blue).
+    """
+    styler = df.style
+    non_rel_cols = [c for c in df.columns if c != rel_col]
+    if non_rel_cols:
+        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+    if rel_col in df.columns:
+        styler = styler.format(_format_percentage, na_rep="", subset=[rel_col])
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    target_col = f"target_{price_col}"
+    value_cols = {price_col, target_col}
+
+    css_data = {}
+    for col in df.columns:
+        col_css = []
+        for i in range(n):
+            shade = i % 2
+            if col in value_cols:
+                bg = _DATA_COLORS[palette][shade]
+            else:
+                bg = _DATA_COLORS["balance"][shade]
+            col_css.append(f"background-color: {bg}")
+        css_data[col] = col_css
+
+    css_df = pd.DataFrame(css_data, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+
+    index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}" for i in range(n)
+    ]
+
+    if isinstance(df.index, pd.MultiIndex):
+        for level in df.index.names:
+            styler = styler.apply_index(
+                lambda s, css=index_css: css, level=level, axis=0
+            )
+    else:
+        styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+
+    return styler

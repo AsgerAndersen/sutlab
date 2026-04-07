@@ -10,6 +10,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes
+from sutlab.inspect._style import _style_balancing_targets_table
 
 
 @dataclass
@@ -76,25 +77,42 @@ class BalancingTargetsInspection:
 
     data: BalancingTargetsData
 
-    @property
-    def supply(self) -> pd.DataFrame:
-        """Supply targets table (unstyled). Styling to be added."""
-        return self.data.supply
+    def _supply_styler(self, df: pd.DataFrame) -> Styler:
+        """Return a styled Styler for a supply-side targets table."""
+        # Derive column names from the DataFrame columns.
+        price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
+        rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply")
+
+    def _use_styler(self, df: pd.DataFrame) -> Styler:
+        """Return a styled Styler for a use-side targets table."""
+        price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
+        rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use")
 
     @property
-    def use(self) -> pd.DataFrame:
-        """Use targets table (unstyled). Styling to be added."""
-        return self.data.use
+    def supply(self) -> Styler:
+        """Styled supply targets table."""
+        return self._supply_styler(self.data.supply)
 
     @property
-    def supply_violations(self) -> pd.DataFrame | None:
-        """Supply violations table (unstyled). Styling to be added."""
-        return self.data.supply_violations
+    def use(self) -> Styler:
+        """Styled use targets table."""
+        return self._use_styler(self.data.use)
 
     @property
-    def use_violations(self) -> pd.DataFrame | None:
-        """Use violations table (unstyled). Styling to be added."""
-        return self.data.use_violations
+    def supply_violations(self) -> Styler | None:
+        """Styled supply violations table, or ``None`` if no tolerances configured."""
+        if self.data.supply_violations is None:
+            return None
+        return self._supply_styler(self.data.supply_violations)
+
+    @property
+    def use_violations(self) -> Styler | None:
+        """Styled use violations table, or ``None`` if no tolerances configured."""
+        if self.data.use_violations is None:
+            return None
+        return self._use_styler(self.data.use_violations)
 
 
 def inspect_balancing_targets(

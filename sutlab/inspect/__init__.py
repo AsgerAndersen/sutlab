@@ -37,6 +37,7 @@ from sutlab.inspect._style import (
     _style_final_use_use_categories_table,
     _style_final_use_use_products_table,
     _style_final_use_price_layers_table,
+    _style_balancing_targets_table,
     _DATA_COLORS,
     _INDEX_COLORS,
     _LAYER_PALETTES,
