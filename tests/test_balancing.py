@@ -7,7 +7,7 @@ from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.balancing import balance_columns, balance_products_use
+from sutlab.balancing import balance_columns, balance_products_use, resolve_target_tolerances
 from sutlab.balancing._shared import _evaluate_locks, _get_use_price_columns
 from sutlab.sut import _match_codes
 from sutlab.sut import (
@@ -17,6 +17,7 @@ from sutlab.sut import (
     Locks,
     SUTColumns,
     SUTMetadata,
+    TargetTolerances,
 )
 
 
@@ -948,3 +949,175 @@ class TestPriceLayerLockBalanceProductsUse:
         rate_before = row_before["ava"] / row_before["bas"]
         rate_after = row_after["ava"] / row_after["bas"]
         assert rate_after != pytest.approx(rate_before)
+
+
+# ---------------------------------------------------------------------------
+# Tests: resolve_target_tolerances
+#
+# Fixture data (reuses cols, supply_df, use_df, targets from above):
+#
+# Supply targets (2021):
+#   0100/X:  bas=360  → transaction-level rel=0.05, abs=10
+#              tol = min(abs(0.05 * 360), 10) = min(18, 10) = 10.0  (abs wins)
+#   0700/"": bas=NaN  → NaN target → NaN tolerance (no raise)
+#
+# Use targets (2021):
+#   3110/HH: koeb=90  → categories override rel=0.01, abs=3
+#              tol = min(abs(0.01 * 90), 3) = min(0.9, 3) = 0.9  (rel wins)
+#   2000/X:  koeb=40  → transaction-level rel=0.04, abs=6
+#              tol = min(abs(0.04 * 40), 6) = min(1.6, 6) = 1.6  (rel wins)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tolerances(cols):
+    transactions = pd.DataFrame({
+        cols.transaction: ["0100", "0700", "3110", "2000"],
+        "rel":            [0.05,   0.02,   0.03,   0.04],
+        "abs":            [10.0,   5.0,    8.0,    6.0],
+    })
+    # Override 3110/HH with tighter tolerance
+    categories = pd.DataFrame({
+        cols.transaction: ["3110"],
+        cols.category:    ["HH"],
+        "rel":            [0.01],
+        "abs":            [3.0],
+    })
+    return TargetTolerances(transactions=transactions, categories=categories)
+
+
+@pytest.fixture
+def sut_with_tolerances(supply_df, use_df, cols, locks, targets, tolerances):
+    metadata = SUTMetadata(columns=cols)
+    config = BalancingConfig(locks=locks, target_tolerances=tolerances)
+    return SUT(
+        price_basis="current_year",
+        supply=supply_df,
+        use=use_df,
+        balancing_id=2021,
+        balancing_targets=targets,
+        balancing_config=config,
+        metadata=metadata,
+    )
+
+
+class TestResolveTargetTolerances:
+
+    def test_supply_tolerance_column_added(self, sut_with_tolerances):
+        result = resolve_target_tolerances(sut_with_tolerances)
+        assert "tol_bas" in result.balancing_targets.supply.columns
+
+    def test_use_tolerance_column_added(self, sut_with_tolerances):
+        result = resolve_target_tolerances(sut_with_tolerances)
+        assert "tol_koeb" in result.balancing_targets.use.columns
+
+    def test_supply_abs_wins(self, sut_with_tolerances):
+        # 0100/X: min(abs(0.05 * 360), 10) = min(18, 10) = 10.0
+        result = resolve_target_tolerances(sut_with_tolerances)
+        row = _get_row(result.balancing_targets.supply, trans="0100", brch="X")
+        assert row["tol_bas"] == pytest.approx(10.0)
+
+    def test_supply_nan_target_gives_nan_tolerance(self, sut_with_tolerances):
+        # 0700/"": bas=NaN → tol=NaN
+        result = resolve_target_tolerances(sut_with_tolerances)
+        row = _get_row(result.balancing_targets.supply, trans="0700", brch="")
+        assert pd.isna(row["tol_bas"])
+
+    def test_use_categories_override_rel_wins(self, sut_with_tolerances):
+        # 3110/HH: categories override rel=0.01, abs=3
+        # min(abs(0.01 * 90), 3) = min(0.9, 3) = 0.9
+        result = resolve_target_tolerances(sut_with_tolerances)
+        row = _get_row(result.balancing_targets.use, trans="3110", brch="HH")
+        assert row["tol_koeb"] == pytest.approx(0.9)
+
+    def test_use_transaction_fallback_rel_wins(self, sut_with_tolerances):
+        # 2000/X: no categories override; transaction-level rel=0.04, abs=6
+        # min(abs(0.04 * 40), 6) = min(1.6, 6) = 1.6
+        result = resolve_target_tolerances(sut_with_tolerances)
+        row = _get_row(result.balancing_targets.use, trans="2000", brch="X")
+        assert row["tol_koeb"] == pytest.approx(1.6)
+
+    def test_original_columns_unchanged(self, sut_with_tolerances):
+        result = resolve_target_tolerances(sut_with_tolerances)
+        supply = result.balancing_targets.supply
+        assert list(supply.columns[:-1]) == list(sut_with_tolerances.balancing_targets.supply.columns)
+
+    def test_original_sut_not_mutated(self, sut_with_tolerances):
+        resolve_target_tolerances(sut_with_tolerances)
+        assert "tol_bas" not in sut_with_tolerances.balancing_targets.supply.columns
+
+    def test_only_rel_set_uses_rel_component(self, sut_with_tolerances, cols):
+        # abs=NaN for 0100 → tolerance = abs(rel * target) = abs(0.05 * 360) = 18.0
+        tolerances_rel_only = TargetTolerances(
+            transactions=pd.DataFrame({
+                cols.transaction: ["0100", "0700", "3110", "2000"],
+                "rel":            [0.05,   0.02,   0.03,   0.04],
+                "abs":            [float("nan"), float("nan"), float("nan"), float("nan")],
+            })
+        )
+        from dataclasses import replace
+        from sutlab.sut import BalancingConfig
+        new_config = replace(sut_with_tolerances.balancing_config, target_tolerances=tolerances_rel_only)
+        sut_rel_only = replace(sut_with_tolerances, balancing_config=new_config)
+        result = resolve_target_tolerances(sut_rel_only)
+        row = _get_row(result.balancing_targets.supply, trans="0100", brch="X")
+        assert row["tol_bas"] == pytest.approx(18.0)
+
+    def test_only_abs_set_uses_abs(self, sut_with_tolerances, cols):
+        # rel=NaN for 0100 → tolerance = abs_tol = 10.0
+        tolerances_abs_only = TargetTolerances(
+            transactions=pd.DataFrame({
+                cols.transaction: ["0100", "0700", "3110", "2000"],
+                "rel":            [float("nan"), float("nan"), float("nan"), float("nan")],
+                "abs":            [10.0,  5.0,    8.0,    6.0],
+            })
+        )
+        from dataclasses import replace
+        from sutlab.sut import BalancingConfig
+        new_config = replace(sut_with_tolerances.balancing_config, target_tolerances=tolerances_abs_only)
+        sut_abs_only = replace(sut_with_tolerances, balancing_config=new_config)
+        result = resolve_target_tolerances(sut_abs_only)
+        row = _get_row(result.balancing_targets.supply, trans="0100", brch="X")
+        assert row["tol_bas"] == pytest.approx(10.0)
+
+    def test_raises_missing_tolerance(self, sut_with_tolerances, cols):
+        # Remove tolerance entry for 0100 entirely (both rel and abs absent) — should raise
+        tolerances_missing = TargetTolerances(
+            transactions=pd.DataFrame({
+                cols.transaction: ["0700", "3110", "2000"],
+                "rel":            [0.02,   0.03,   0.04],
+                "abs":            [5.0,    8.0,    6.0],
+            })
+        )
+        from dataclasses import replace
+        from sutlab.sut import BalancingConfig
+        new_config = replace(sut_with_tolerances.balancing_config, target_tolerances=tolerances_missing)
+        sut_missing = replace(sut_with_tolerances, balancing_config=new_config)
+        with pytest.raises(ValueError, match="No tolerance found"):
+            resolve_target_tolerances(sut_missing)
+
+    def test_raises_no_target_tolerances(self, sut_with_tolerances):
+        from dataclasses import replace
+        from sutlab.sut import BalancingConfig
+        new_config = replace(sut_with_tolerances.balancing_config, target_tolerances=None)
+        sut_no_tol = replace(sut_with_tolerances, balancing_config=new_config)
+        with pytest.raises(ValueError, match="target_tolerances"):
+            resolve_target_tolerances(sut_no_tol)
+
+    def test_raises_no_balancing_config(self, sut_with_tolerances):
+        from dataclasses import replace
+        sut_no_cfg = replace(sut_with_tolerances, balancing_config=None)
+        with pytest.raises(ValueError, match="target_tolerances"):
+            resolve_target_tolerances(sut_no_cfg)
+
+    def test_sut_method_matches_free_function(self, sut_with_tolerances):
+        via_method = sut_with_tolerances.resolve_target_tolerances()
+        via_function = resolve_target_tolerances(sut_with_tolerances)
+        pd.testing.assert_frame_equal(
+            via_method.balancing_targets.supply,
+            via_function.balancing_targets.supply,
+        )
+        pd.testing.assert_frame_equal(
+            via_method.balancing_targets.use,
+            via_function.balancing_targets.use,
+        )

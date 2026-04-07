@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Iterable, Literal
 
 if TYPE_CHECKING:
-    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection
+    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, BalancingTargetsInspection
 
 import pandas as pd
 
@@ -480,6 +480,21 @@ class SUT:
         """Delegates to :func:`~sutlab.balancing.balance_products_use`."""
         from sutlab.balancing import balance_products_use
         return balance_products_use(self, products=products, adjust_transactions=adjust_transactions, adjust_categories=adjust_categories)
+
+    def resolve_target_tolerances(self) -> SUT:
+        """Delegates to :func:`~sutlab.balancing.resolve_target_tolerances`."""
+        from sutlab.balancing import resolve_target_tolerances
+        return resolve_target_tolerances(self)
+
+    def inspect_balancing_targets(
+        self,
+        transactions: str | list[str] | None = None,
+        categories: str | list[str] | None = None,
+        sort: bool = False,
+    ) -> BalancingTargetsInspection:
+        """Delegates to :func:`~sutlab.inspect.inspect_balancing_targets`."""
+        from sutlab.inspect import inspect_balancing_targets
+        return inspect_balancing_targets(self, transactions=transactions, categories=categories, sort=sort)
 
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
