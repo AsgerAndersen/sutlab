@@ -1188,9 +1188,13 @@ def _style_balancing_targets_table(
         i for i in range(n - 1)
         if trans_vals[i] != trans_vals[i + 1]
     }
-    block_start_rows = {
-        i + 1 for i in block_end_rows
-    }
+    # For transaction index levels, pandas Styler merges repeated values into
+    # a single spanning cell and takes CSS from the FIRST row of that span.
+    # The border must therefore be placed on the first row of each non-last
+    # block so it appears at the bottom edge of the merged cell.
+    all_block_starts = {0} | {i + 1 for i in block_end_rows}
+    last_block_start = max(all_block_starts)
+    trans_border_rows = all_block_starts - {last_block_start}
 
     css_data = {}
     for col in df.columns:
@@ -1216,10 +1220,10 @@ def _style_balancing_targets_table(
     trans_level_names = df.index.names[:2] if index_nlevels == 4 else df.index.names[:1]
     cat_level_names = df.index.names[2:] if index_nlevels == 4 else df.index.names[1:]
 
-    # CSS for transaction index levels: border on first row of each block.
+    # CSS for transaction index levels: border on first row of each non-last block.
     trans_index_css = [
         f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
-        + ("; border-bottom: 2px solid #999" if i in block_start_rows else "")
+        + ("; border-bottom: 2px solid #999" if i in trans_border_rows else "")
         for i in range(n)
     ]
     # CSS for category index levels: border on last row of each block.
