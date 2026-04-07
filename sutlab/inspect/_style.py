@@ -1170,6 +1170,15 @@ def _style_balancing_targets_table(
     target_col = f"target_{price_col}"
     value_cols = {price_col, target_col}
 
+    # Identify the last row of each transaction block (transaction code is
+    # always index level 0). A border-bottom is placed on those rows to
+    # separate transaction blocks visually, except after the final row.
+    trans_vals = df.index.get_level_values(0)
+    block_end_rows = {
+        i for i in range(n - 1)
+        if trans_vals[i] != trans_vals[i + 1]
+    }
+
     css_data = {}
     for col in df.columns:
         col_css = []
@@ -1179,14 +1188,17 @@ def _style_balancing_targets_table(
                 bg = _DATA_COLORS[palette][shade]
             else:
                 bg = _DATA_COLORS["balance"][shade]
-            col_css.append(f"background-color: {bg}")
+            sep = "; border-bottom: 2px solid #999" if i in block_end_rows else ""
+            col_css.append(f"background-color: {bg}{sep}")
         css_data[col] = col_css
 
     css_df = pd.DataFrame(css_data, index=df.index)
     styler = styler.apply(lambda d: css_df, axis=None)
 
     index_css = [
-        f"background-color: {_INDEX_COLORS['balance'][i % 2]}" for i in range(n)
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in block_end_rows else "")
+        for i in range(n)
     ]
 
     if isinstance(df.index, pd.MultiIndex):
