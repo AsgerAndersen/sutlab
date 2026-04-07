@@ -22,6 +22,11 @@ from sutlab.inspect._product_imbalances import (
     UnbalancedProductsInspection,
     UnbalancedProductsData,
 )
+from sutlab.inspect._balancing_targets import (
+    inspect_balancing_targets,
+    BalancingTargetsInspection,
+    BalancingTargetsData,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -50,4 +55,7 @@ __all__ = [
     "inspect_unbalanced_products",
     "UnbalancedProductsInspection",
     "UnbalancedProductsData",
+    "inspect_balancing_targets",
+    "BalancingTargetsInspection",
+    "BalancingTargetsData",
 ]
