@@ -1170,13 +1170,26 @@ def _style_balancing_targets_table(
     target_col = f"target_{price_col}"
     value_cols = {price_col, target_col}
 
-    # Identify the last row of each transaction block (transaction code is
-    # always index level 0). A border-bottom is placed on those rows to
-    # separate transaction blocks visually, except after the final row.
+    # Identify transaction block boundaries (transaction code is always index
+    # level 0). The separator border goes on different rows depending on the
+    # element being styled:
+    #
+    # - Data columns and category index levels: border on the LAST row of each
+    #   block, so it appears at the bottom of the block.
+    # - Transaction index levels (trans, trans_txt): border on the FIRST row
+    #   of each block, because pandas Styler merges repeated outer-level values
+    #   into a single spanning cell and takes CSS from the first row of that
+    #   span. Placing the border there causes it to appear at the bottom of the
+    #   merged cell, i.e. at the block boundary.
+    #
+    # No border is placed after the final block in either case.
     trans_vals = df.index.get_level_values(0)
     block_end_rows = {
         i for i in range(n - 1)
         if trans_vals[i] != trans_vals[i + 1]
+    }
+    block_start_rows = {
+        i + 1 for i in block_end_rows
     }
 
     css_data = {}
@@ -1195,18 +1208,37 @@ def _style_balancing_targets_table(
     css_df = pd.DataFrame(css_data, index=df.index)
     styler = styler.apply(lambda d: css_df, axis=None)
 
-    index_css = [
+    # Index CSS: transaction levels use block_start_rows; category levels use
+    # block_end_rows. For a 2-level index (trans, cat) level 0 is transaction
+    # and level 1 is category. For a 4-level index (trans, trans_txt, cat,
+    # cat_txt) levels 0-1 are transaction and levels 2-3 are category.
+    index_nlevels = df.index.nlevels
+    trans_level_names = df.index.names[:2] if index_nlevels == 4 else df.index.names[:1]
+    cat_level_names = df.index.names[2:] if index_nlevels == 4 else df.index.names[1:]
+
+    # CSS for transaction index levels: border on first row of each block.
+    trans_index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in block_start_rows else "")
+        for i in range(n)
+    ]
+    # CSS for category index levels: border on last row of each block.
+    cat_index_css = [
         f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
         + ("; border-bottom: 2px solid #999" if i in block_end_rows else "")
         for i in range(n)
     ]
 
     if isinstance(df.index, pd.MultiIndex):
-        for level in df.index.names:
+        for level in trans_level_names:
             styler = styler.apply_index(
-                lambda s, css=index_css: css, level=level, axis=0
+                lambda s, css=trans_index_css: css, level=level, axis=0
+            )
+        for level in cat_level_names:
+            styler = styler.apply_index(
+                lambda s, css=cat_index_css: css, level=level, axis=0
             )
     else:
-        styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+        styler = styler.apply_index(lambda s, css=trans_index_css: css, axis=0)
 
     return styler
