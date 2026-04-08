@@ -976,6 +976,61 @@ def load_sut_from_combined_excel(
     return _assemble_sut(df, metadata, price_basis)
 
 
+def load_sut_from_dataframe(
+    df: pd.DataFrame,
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+) -> SUT:
+    """
+    Load a SUT collection from a combined supply+use DataFrame.
+
+    The DataFrame contains both supply and use rows for all collection members
+    (typically all years), with the id column already present. Supply and use
+    rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are cast to ``str``.
+    The id column type is preserved as-is. Price columns must already be
+    numeric.
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Combined supply+use data for all collection members. The id column
+        must be present.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    return _assemble_sut(df, metadata, price_basis)
+
+
 def write_sut_to_separated_parquet(
     sut: SUT,
     folder: str | Path,
@@ -1315,6 +1370,73 @@ def write_sut_to_combined_excel(
     combined.to_excel(folder / f"{prefix}_{code}.xlsx", index=False)
 
 
+def _assemble_balancing_targets(
+    df: pd.DataFrame,
+    metadata: SUTMetadata,
+) -> BalancingTargets:
+    """Validate, split, and assemble a BalancingTargets from a combined DataFrame.
+
+    The DataFrame must already contain the id column. Transaction and category
+    columns are cast to ``str``; category NaN is filled with ``""``. Price
+    columns must already be numeric.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Combined supply+use targets for all collection members, with the id
+        column already present. ``metadata.classifications.transactions`` must
+        be present.
+    metadata : SUTMetadata
+        Metadata for the SUT.
+
+    Returns
+    -------
+    BalancingTargets
+    """
+    cols = metadata.columns
+    trans_df = metadata.classifications.transactions  # type: ignore[union-attr]
+
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+
+    df = df.copy()
+    df[cols.transaction] = df[cols.transaction].astype(str)
+    df[cols.category] = df[cols.category].fillna("").astype(str)
+
+    # Validate that all transaction codes in the targets are known
+    known_codes = set(trans_df[cols.transaction])
+    data_codes = set(df[cols.transaction].unique())
+    unknown_codes = data_codes - known_codes
+    if unknown_codes:
+        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
+        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+        raise ValueError(
+            f"Transaction codes in targets not found in classifications.transactions: "
+            f"{unknown_str}. Known codes: {known_str}"
+        )
+
+    # Split into supply and use
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
+    supply_mask = df[cols.transaction].isin(supply_codes)
+
+    # Supply: id, transaction, category, price_basic
+    supply_col_order = [cols.id, cols.transaction, cols.category, cols.price_basic]
+    supply = df[supply_mask][supply_col_order].reset_index(drop=True)
+
+    # Use: id, transaction, category, price_basic, [layers], price_purchasers
+    use_col_order = (
+        [cols.id, cols.transaction, cols.category, cols.price_basic]
+        + layer_cols
+        + [cols.price_purchasers]
+    )
+    use = df[~supply_mask][use_col_order].reset_index(drop=True)
+
+    return BalancingTargets(supply=supply, use=use)
+
+
 def load_balancing_targets_from_separated_excel(
     id_values: list[str | int],
     paths: list[str | Path],
@@ -1409,43 +1531,11 @@ def load_balancing_targets_from_separated_excel(
 
     combined = pd.concat(frames, ignore_index=True)
 
-    # Fill empty category cells with "" to match SUT data convention
-    combined[cols.category] = combined[cols.category].fillna("")
-
     # Convert all price columns from string to numeric
     for col in price_cols:
         combined[col] = pd.to_numeric(combined[col])
 
-    # Validate all transaction codes are known
-    trans_df = metadata.classifications.transactions
-    known_codes = set(trans_df[cols.transaction])
-    data_codes = set(combined[cols.transaction].unique())
-    unknown_codes = data_codes - known_codes
-    if unknown_codes:
-        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
-        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
-        raise ValueError(
-            f"Transaction codes in targets not found in classifications.transactions: "
-            f"{unknown_str}. Known codes: {known_str}"
-        )
-
-    # Split into supply and use
-    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
-    supply_mask = combined[cols.transaction].isin(supply_codes)
-
-    # Supply: id, transaction, category, price_basic
-    supply_col_order = [cols.id, cols.transaction, cols.category, cols.price_basic]
-    supply = combined[supply_mask][supply_col_order].reset_index(drop=True)
-
-    # Use: id, transaction, category, price_basic, [layers], price_purchasers
-    use_col_order = (
-        [cols.id, cols.transaction, cols.category, cols.price_basic]
-        + layer_cols
-        + [cols.price_purchasers]
-    )
-    use = combined[~supply_mask][use_col_order].reset_index(drop=True)
-
-    return BalancingTargets(supply=supply, use=use)
+    return _assemble_balancing_targets(combined, metadata)
 
 
 def load_balancing_targets_from_combined_excel(
@@ -1528,43 +1618,86 @@ def load_balancing_targets_from_combined_excel(
     combined = _strip_whitespace(combined)
     _validate_required_columns(combined, required_cols, source=f"Targets file '{path}'")
 
-    # Fill empty category cells with "" to match SUT data convention
-    combined[cols.category] = combined[cols.category].fillna("")
-
     # Convert all price columns from string to numeric
     for col in price_cols:
         combined[col] = pd.to_numeric(combined[col])
 
-    # Validate all transaction codes are known
-    trans_df = metadata.classifications.transactions
-    known_codes = set(trans_df[cols.transaction])
-    data_codes = set(combined[cols.transaction].unique())
-    unknown_codes = data_codes - known_codes
-    if unknown_codes:
-        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
-        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+    return _assemble_balancing_targets(combined, metadata)
+
+
+def load_balancing_targets_from_dataframe(
+    df: pd.DataFrame,
+    metadata: SUTMetadata,
+) -> BalancingTargets:
+    """
+    Load a balancing targets collection from a combined DataFrame.
+
+    The DataFrame contains rows for all collection members, with the id column
+    present. It mirrors the combined SUT long-format but without the product
+    dimension. It must contain the id, transaction, category, and all price
+    columns defined in ``metadata.columns`` (basic price, any price layers,
+    and purchasers' price).
+
+    Supply and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
+
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    Transaction and category columns are cast to ``str``. Empty category
+    cells are filled with ``""`` to match the SUT convention. Price columns
+    must already be numeric. The id column type is preserved as-is.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Combined supply+use targets for all collection members. The id column
+        must be present.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If the DataFrame is missing a required column.
+    ValueError
+        If any transaction code is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
         raise ValueError(
-            f"Transaction codes in targets not found in classifications.transactions: "
-            f"{unknown_str}. Known codes: {known_str}"
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_dataframe."
         )
 
-    # Split into supply and use
-    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
-    supply_mask = combined[cols.transaction].isin(supply_codes)
+    cols = metadata.columns
 
-    # Supply: id, transaction, category, price_basic
-    supply_col_order = [cols.id, cols.transaction, cols.category, cols.price_basic]
-    supply = combined[supply_mask][supply_col_order].reset_index(drop=True)
+    # Price layer columns present in metadata (in order)
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
 
-    # Use: id, transaction, category, price_basic, [layers], price_purchasers
-    use_col_order = (
-        [cols.id, cols.transaction, cols.category, cols.price_basic]
-        + layer_cols
-        + [cols.price_purchasers]
-    )
-    use = combined[~supply_mask][use_col_order].reset_index(drop=True)
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+    required_cols = [cols.id, cols.transaction, cols.category] + price_cols
+    _validate_required_columns(df, required_cols, source="DataFrame")
 
-    return BalancingTargets(supply=supply, use=use)
+    return _assemble_balancing_targets(df, metadata)
 
 
 def _load_balancing_config_tolerances_from_excel(

@@ -14,10 +14,12 @@ from sutlab.io import (
     load_balancing_config_from_excel,
     load_balancing_targets_from_separated_excel,
     load_balancing_targets_from_combined_excel,
+    load_balancing_targets_from_dataframe,
     load_metadata_from_excel,
     load_sut_from_combined_csv,
     load_sut_from_combined_excel,
     load_sut_from_combined_parquet,
+    load_sut_from_dataframe,
     load_sut_from_separated_csv,
     load_sut_from_separated_excel,
     load_sut_from_separated_parquet,
@@ -685,6 +687,101 @@ class TestLoadSutFromCombinedParquet:
         base_df.to_parquet(bad_parquet, index=False)
         with pytest.raises(ValueError, match="0700"):
             load_sut_from_combined_parquet(bad_parquet, metadata, "current_year")
+
+
+# ---------------------------------------------------------------------------
+# Tests for load_sut_from_dataframe
+# ---------------------------------------------------------------------------
+
+
+def _make_combined_df(id_values: list[int]) -> pd.DataFrame:
+    """Build a combined DataFrame (id column already present) from the fixture file."""
+    base_df = pd.read_parquet(PARQUET_FILE)
+    frames = []
+    for id_value in id_values:
+        df = base_df.copy()
+        df.insert(0, "year", id_value)
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True)
+
+
+class TestLoadSutFromDataframe:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def combined_df(self):
+        return _make_combined_df([2021])
+
+    @pytest.fixture
+    def combined_df_two_years(self):
+        return _make_combined_df([2021, 2022])
+
+    def test_returns_sut(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert isinstance(result, SUT)
+
+    def test_price_basis_set(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert result.price_basis == "current_year"
+
+    def test_metadata_attached(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert result.metadata is metadata
+
+    def test_balancing_id_is_none(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert result.balancing_id is None
+
+    def test_supply_has_correct_columns(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert list(result.supply.columns) == ["year", "nrnr", "trans", "brch", "bas"]
+
+    def test_use_has_correct_columns(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert list(result.use.columns) == ["year", "nrnr", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_supply_contains_only_supply_transactions(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_supply_row_count(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert len(result.supply) == 8
+
+    def test_use_row_count(self, metadata, combined_df):
+        result = load_sut_from_dataframe(combined_df, metadata, "current_year")
+        assert len(result.use) == 21
+
+    def test_multiple_years_loaded(self, metadata, combined_df_two_years):
+        result = load_sut_from_dataframe(combined_df_two_years, metadata, "current_year")
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert set(result.use["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 16
+        assert len(result.use) == 42
+
+    def test_supply_sorted_by_id_product_transaction_category(self, metadata, combined_df_two_years):
+        result = load_sut_from_dataframe(combined_df_two_years, metadata, "current_year")
+        sort_cols = ["year", "nrnr", "trans", "brch"]
+        expected = result.supply.sort_values(sort_cols).reset_index(drop=True)
+        pd.testing.assert_frame_equal(result.supply, expected)
+
+    def test_error_when_classifications_absent(self, metadata, combined_df):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_sut_from_dataframe(combined_df, bare_metadata, "current_year")
+
+    def test_error_unknown_transaction_code(self, metadata, combined_df):
+        combined_df = combined_df.copy()
+        combined_df.loc[combined_df["trans"] == "0100", "trans"] = "ZZZZ"
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_sut_from_dataframe(combined_df, metadata, "current_year")
 
 
 # ---------------------------------------------------------------------------
@@ -1706,6 +1803,97 @@ class TestLoadBalancingTargetsFromCombinedExcel:
         path = write_targets_file(tmp_path, rows)
         with pytest.raises(ValueError, match="ZZZZ"):
             load_balancing_targets_from_combined_excel(path, metadata)
+
+
+# ---------------------------------------------------------------------------
+# Tests for load_balancing_targets_from_dataframe
+# ---------------------------------------------------------------------------
+
+
+def _make_combined_targets_df(id_values: list[int]) -> pd.DataFrame:
+    """Build a combined targets DataFrame (id column present) from the fixture file."""
+    sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+    frames = []
+    for id_value in id_values:
+        df = sep_df.copy()
+        df.insert(0, "year", id_value)
+        frames.append(df)
+    combined = pd.concat(frames, ignore_index=True)
+    for col in ["bas", "ava", "moms", "koeb"]:
+        combined[col] = pd.to_numeric(combined[col])
+    return combined
+
+
+class TestLoadBalancingTargetsFromDataframe:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def combined_df(self):
+        return _make_combined_targets_df([2021])
+
+    @pytest.fixture
+    def combined_df_two_years(self):
+        return _make_combined_targets_df([2021, 2022])
+
+    def test_returns_balancing_targets(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert isinstance(result, BalancingTargets)
+
+    def test_supply_and_use_are_dataframes(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert isinstance(result.supply, pd.DataFrame)
+        assert isinstance(result.use, pd.DataFrame)
+
+    def test_supply_contains_only_supply_transactions(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_supply_column_order(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert list(result.supply.columns) == ["year", "trans", "brch", "bas"]
+
+    def test_use_column_order(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert list(result.use.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_multiple_years_present(self, combined_df_two_years, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df_two_years, metadata)
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 8
+        assert len(result.use) == 14
+
+    def test_empty_category_filled_with_empty_string(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        imports = result.supply[result.supply["trans"] == "0700"]
+        assert imports["brch"].iloc[0] == ""
+
+    def test_price_columns_are_numeric(self, combined_df, metadata):
+        result = load_balancing_targets_from_dataframe(combined_df, metadata)
+        assert pd.api.types.is_numeric_dtype(result.supply["bas"])
+        assert pd.api.types.is_numeric_dtype(result.use["koeb"])
+
+    def test_error_when_classifications_absent(self, combined_df, metadata):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_balancing_targets_from_dataframe(combined_df, bare_metadata)
+
+    def test_error_missing_required_column(self, combined_df, metadata):
+        df = combined_df.drop(columns=["brch"])
+        with pytest.raises(ValueError, match="brch"):
+            load_balancing_targets_from_dataframe(df, metadata)
+
+    def test_error_unknown_transaction_code(self, combined_df, metadata):
+        df = combined_df.copy()
+        df.loc[df["trans"] == "0100", "trans"] = "ZZZZ"
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_balancing_targets_from_dataframe(df, metadata)
 
 
 # ---------------------------------------------------------------------------
