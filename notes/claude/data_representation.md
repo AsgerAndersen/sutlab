@@ -209,11 +209,30 @@ must match the actual data column names. Extra columns are silently ignored.
 ## I/O public API
 
 - `load_metadata_from_excel(columns_path, classifications_path)` → `SUTMetadata`
-- `load_sut_from_parquet(id_values, paths, metadata, price_basis)` → `SUT`
-- `load_balancing_targets_from_excel(id_values, paths, metadata)` → `BalancingTargets`
+- `load_sut_from_separated_parquet(id_values, paths, metadata, price_basis)` → `SUT`
+- `load_sut_from_combined_parquet(path, metadata, price_basis)` → `SUT`
+- `load_sut_from_separated_csv(id_values, paths, metadata, price_basis, *, sep, encoding)` → `SUT`
+- `load_sut_from_combined_csv(path, metadata, price_basis, *, sep, encoding)` → `SUT`
+- `load_sut_from_separated_excel(id_values, paths, metadata, price_basis)` → `SUT`
+- `load_sut_from_combined_excel(path, metadata, price_basis)` → `SUT`
+
+"Separated" = one file per member, id supplied by caller; "combined" = single file for all members, id column already present. All six loaders sort by id, product, transaction, category. CSV/Excel loaders read product/transaction/category as str and convert price columns to numeric.
+- `load_balancing_targets_from_separated_excel(id_values, paths, metadata)` → `BalancingTargets`
+- `load_balancing_targets_from_combined_excel(path, metadata)` → `BalancingTargets`
 - `load_balancing_config_from_excel(metadata, *, tolerances_path, locks_path)` → `BalancingConfig`
 
-Sub-loaders are private helpers (`_` prefix). Users call only the top-level functions.
+Six SUT writers (symmetric to loaders):
+
+- `write_sut_to_separated_parquet(sut, folder, prefix, *, price_basis_code)` — one file per id value; id column stripped from file
+- `write_sut_to_combined_parquet(sut, folder, prefix, *, price_basis_code)` — single file; id column present
+- `write_sut_to_separated_csv(sut, folder, prefix, *, price_basis_code, sep, encoding)`
+- `write_sut_to_combined_csv(sut, folder, prefix, *, price_basis_code, sep, encoding)`
+- `write_sut_to_separated_excel(sut, folder, prefix, *, price_basis_code)`
+- `write_sut_to_combined_excel(sut, folder, prefix, *, price_basis_code)`
+
+File naming: `{prefix}_{code}_{id_value}.ext` (separated) or `{prefix}_{code}.ext` (combined). Default codes: `"l"` = current year, `"d"` = previous year; overridable via `price_basis_code`. Supply and use concatenated on write; supply rows have NaN in price layer and purchasers' price columns. Integer price columns become float after a write-read cycle due to NaN.
+
+Sub-loaders, `_assemble_sut`, `_combine_supply_use`, and `_resolve_price_basis_code` are private helpers. Users call only the top-level functions.
 
 ---
 

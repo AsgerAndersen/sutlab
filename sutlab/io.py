@@ -41,6 +41,12 @@ _VALID_TABLE_VALUES: set[str] = {"supply", "use"}
 
 _VALID_ESA_CODES: set[str] = {"D2121", "P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
 
+# Default short codes used in file names for each price basis.
+_DEFAULT_PRICE_BASIS_CODES: dict[str, str] = {
+    "current_year": "l",
+    "previous_year": "d",
+}
+
 # Price layer role names in the order they should appear in the use DataFrame.
 # Matches the field order of SUTColumns.
 _PRICE_LAYER_ROLES: list[str] = [
@@ -401,23 +407,129 @@ def load_metadata_from_excel(
     return SUTMetadata(columns=columns, classifications=classifications)
 
 
-def load_sut_from_parquet(
+def _assemble_sut(
+    df: pd.DataFrame,
+    metadata: SUTMetadata,
+    price_basis: str,
+) -> SUT:
+    """Validate, split, sort, and assemble a SUT from a combined DataFrame.
+
+    The DataFrame must already contain the id column. Product, transaction,
+    and category columns are cast to ``str``; category NaN is filled with
+    ``""``. Price columns must already be numeric.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Combined supply+use data for all collection members, with the id
+        column already present. ``metadata.classifications.transactions``
+        must be present.
+    metadata : SUTMetadata
+        Metadata for the SUT.
+    price_basis : str
+        Price basis for the collection.
+
+    Returns
+    -------
+    SUT
+    """
+    cols = metadata.columns
+    trans_df = metadata.classifications.transactions  # type: ignore[union-attr]
+
+    df = df.copy()
+    df[cols.product] = df[cols.product].astype(str)
+    df[cols.transaction] = df[cols.transaction].astype(str)
+    df[cols.category] = df[cols.category].fillna("").astype(str)
+
+    # Validate that all transaction codes in the data are known
+    known_codes = set(trans_df[cols.transaction])
+    data_codes = set(df[cols.transaction].unique())
+    unknown_codes = data_codes - known_codes
+    if unknown_codes:
+        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
+        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+        raise ValueError(
+            f"Transaction codes in data not found in classifications.transactions: "
+            f"{unknown_str}. Known codes: {known_str}"
+        )
+
+    # Split into supply and use
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
+    supply_mask = df[cols.transaction].isin(supply_codes)
+    supply_raw = df[supply_mask]
+    use_raw = df[~supply_mask]
+
+    # Supply: id, product, transaction, category, price_basic
+    supply_col_order = [
+        cols.id, cols.product, cols.transaction, cols.category, cols.price_basic,
+    ]
+    supply = supply_raw[supply_col_order]
+
+    # Use: id, product, transaction, category, price_basic, [layers], price_purchasers
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    use_col_order = (
+        [cols.id, cols.product, cols.transaction, cols.category, cols.price_basic]
+        + layer_cols
+        + [cols.price_purchasers]
+    )
+    use = use_raw[use_col_order]
+
+    sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
+    supply = supply.sort_values(sort_cols).reset_index(drop=True)
+    use = use.sort_values(sort_cols).reset_index(drop=True)
+
+    return SUT(price_basis=price_basis, supply=supply, use=use, metadata=metadata)
+
+
+def _resolve_price_basis_code(sut: SUT, price_basis_code: str | None) -> str:
+    """Return the price basis code to use in file names.
+
+    If ``price_basis_code`` is provided, return it as-is. Otherwise look up
+    the default from :data:`_DEFAULT_PRICE_BASIS_CODES`.
+    """
+    if price_basis_code is not None:
+        return price_basis_code
+    code = _DEFAULT_PRICE_BASIS_CODES.get(sut.price_basis)
+    if code is None:
+        raise ValueError(
+            f"No default price basis code for '{sut.price_basis}'. "
+            f"Pass price_basis_code explicitly."
+        )
+    return code
+
+
+def _combine_supply_use(sut: SUT) -> pd.DataFrame:
+    """Concatenate supply and use into a single DataFrame.
+
+    Supply rows will have NaN in the price layer and purchasers' price columns.
+    """
+    return pd.concat([sut.supply, sut.use], ignore_index=True)
+
+
+def load_sut_from_separated_parquet(
     id_values: list[str | int],
     paths: list[str | Path],
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
 ) -> SUT:
     """
-    Load a SUT collection from combined supply+use parquet files.
+    Load a SUT collection from separate per-member supply+use parquet files.
 
     Each file in ``paths`` contains both supply and use rows for one collection
-    member (typically one year). The corresponding entry in ``id_values`` is
-    added as the id column. Supply and use rows are split using the
-    ``table`` column of ``metadata.classifications.transactions``.
+    member (typically one year), without an id column. The corresponding entry
+    in ``id_values`` is added as the id column on load. Supply and use rows are
+    split using the ``table`` column of
+    ``metadata.classifications.transactions``.
 
     The product, transaction, and category columns are cast to ``str`` on
     load, regardless of how they are stored in the parquet file. The id column
     is added with the type given in ``id_values`` (preserved as-is).
+
+    Rows are sorted by id, product, transaction, category after loading.
 
     Parameters
     ----------
@@ -463,67 +575,747 @@ def load_sut_from_parquet(
         )
 
     cols = metadata.columns
-    trans_df = metadata.classifications.transactions
 
-    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
-
-    # Load each file, cast string columns, and label with the id value
+    # Load each file and label with the id value
     frames = []
     for id_value, path in zip(id_values, paths):
         df = pd.read_parquet(path)
-        df[cols.product] = df[cols.product].astype(str)
-        df[cols.transaction] = df[cols.transaction].astype(str)
-        df[cols.category] = df[cols.category].fillna("").astype(str)
         df.insert(0, cols.id, id_value)
         frames.append(df)
 
     combined = pd.concat(frames, ignore_index=True)
+    return _assemble_sut(combined, metadata, price_basis)
 
-    # Validate that all transaction codes in the data are known
-    known_codes = set(trans_df[cols.transaction])
-    data_codes = set(combined[cols.transaction].unique())
-    unknown_codes = data_codes - known_codes
-    if unknown_codes:
-        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
-        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+
+def load_sut_from_combined_parquet(
+    path: str | Path,
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+) -> SUT:
+    """
+    Load a SUT collection from a single combined supply+use parquet file.
+
+    The file contains both supply and use rows for all collection members
+    (typically all years), with the id column already present in the file.
+    Supply and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are cast to ``str`` on
+    load, regardless of how they are stored in the parquet file. The id column
+    is read as-is from the file (type preserved).
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the combined parquet file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
         raise ValueError(
-            f"Transaction codes in data not found in classifications.transactions: "
-            f"{unknown_str}. Known codes: {known_str}"
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
         )
 
-    # Split into supply and use
-    supply_mask = combined[cols.transaction].isin(supply_codes)
-    supply_raw = combined[supply_mask].reset_index(drop=True)
-    use_raw = combined[~supply_mask].reset_index(drop=True)
+    df = pd.read_parquet(path)
+    return _assemble_sut(df, metadata, price_basis)
 
-    # Supply: id, product, transaction, category, price_basic
-    supply_col_order = [
-        cols.id, cols.product, cols.transaction, cols.category, cols.price_basic,
-    ]
-    supply = supply_raw[supply_col_order]
 
-    # Use: id, product, transaction, category, price_basic, [layers], price_purchasers
+def load_sut_from_separated_csv(
+    id_values: list[str | int],
+    paths: list[str | Path],
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+    *,
+    sep: str = ",",
+    encoding: str | None = None,
+) -> SUT:
+    """
+    Load a SUT collection from separate per-member supply+use CSV files.
+
+    Each file in ``paths`` contains both supply and use rows for one collection
+    member (typically one year), without an id column. The corresponding entry
+    in ``id_values`` is added as the id column on load. Supply and use rows are
+    split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are read as strings. Price
+    columns (basic, any price layers, purchasers) are converted to float. The
+    id column is added with the type given in ``id_values`` (preserved as-is).
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved (e.g. pass integers if you want an integer id column).
+    paths : list of str or Path
+        Paths to the CSV files, in the same order as ``id_values``.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    cols = metadata.columns
+    str_dtypes = {
+        cols.product: str,
+        cols.transaction: str,
+        cols.category: str,
+    }
     layer_cols = [
         getattr(cols, role)
         for role in _PRICE_LAYER_ROLES
         if getattr(cols, role) is not None
     ]
-    use_col_order = (
-        [cols.id, cols.product, cols.transaction, cols.category, cols.price_basic]
-        + layer_cols
-        + [cols.price_purchasers]
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_csv(path, dtype=str_dtypes, sep=sep, encoding=encoding)
+        for col in price_cols:
+            df[col] = pd.to_numeric(df[col])
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    return _assemble_sut(combined, metadata, price_basis)
+
+
+def load_sut_from_combined_csv(
+    path: str | Path,
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+    *,
+    sep: str = ",",
+    encoding: str | None = None,
+) -> SUT:
+    """
+    Load a SUT collection from a single combined supply+use CSV file.
+
+    The file contains both supply and use rows for all collection members
+    (typically all years), with the id column already present. Supply and use
+    rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are read as strings. Price
+    columns (basic, any price layers, purchasers) are converted to float. The
+    id column type is inferred by pandas from the file contents.
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the combined CSV file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    cols = metadata.columns
+    str_dtypes = {
+        cols.product: str,
+        cols.transaction: str,
+        cols.category: str,
+    }
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    df = pd.read_csv(path, dtype=str_dtypes, sep=sep, encoding=encoding)
+    for col in price_cols:
+        df[col] = pd.to_numeric(df[col])
+
+    return _assemble_sut(df, metadata, price_basis)
+
+
+def load_sut_from_separated_excel(
+    id_values: list[str | int],
+    paths: list[str | Path],
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+) -> SUT:
+    """
+    Load a SUT collection from separate per-member supply+use Excel files.
+
+    Each file in ``paths`` contains both supply and use rows for one collection
+    member (typically one year), without an id column. The corresponding entry
+    in ``id_values`` is added as the id column on load. Supply and use rows are
+    split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are read as strings. Price
+    columns (basic, any price layers, purchasers) are converted to float. The
+    id column is added with the type given in ``id_values`` (preserved as-is).
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved (e.g. pass integers if you want an integer id column).
+    paths : list of str or Path
+        Paths to the Excel files, in the same order as ``id_values``.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    cols = metadata.columns
+    str_dtypes = {
+        cols.product: str,
+        cols.transaction: str,
+        cols.category: str,
+    }
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_excel(path, dtype=str_dtypes)
+        for col in price_cols:
+            df[col] = pd.to_numeric(df[col])
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    return _assemble_sut(combined, metadata, price_basis)
+
+
+def load_sut_from_combined_excel(
+    path: str | Path,
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+) -> SUT:
+    """
+    Load a SUT collection from a single combined supply+use Excel file.
+
+    The file contains both supply and use rows for all collection members
+    (typically all years) in a single sheet, with the id column already
+    present. Supply and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The product, transaction, and category columns are read as strings. Price
+    columns (basic, any price layers, purchasers) are converted to float. The
+    id column type is inferred by pandas from the file contents.
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the combined Excel file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``; use :func:`~sutlab.sut.set_balancing_id`
+        to designate a member for balancing.
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    cols = metadata.columns
+    str_dtypes = {
+        cols.product: str,
+        cols.transaction: str,
+        cols.category: str,
+    }
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    df = pd.read_excel(path, dtype=str_dtypes)
+    for col in price_cols:
+        df[col] = pd.to_numeric(df[col])
+
+    return _assemble_sut(df, metadata, price_basis)
+
+
+def write_sut_to_separated_parquet(
+    sut: SUT,
+    folder: str | Path,
+    prefix: str,
+    *,
+    price_basis_code: str | None = None,
+) -> None:
+    """
+    Write a SUT collection to separate per-member parquet files.
+
+    One file is written per id value in the SUT. Each file contains the
+    combined supply and use rows for that member, without the id column.
+    Supply rows have NaN in the price layer and purchasers' price columns.
+
+    Files are named ``{prefix}_{code}_{id_value}.parquet``, where ``code``
+    is the price basis code (default: ``"l"`` for current year, ``"d"`` for
+    previous year).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to write. ``sut.metadata`` must be present.
+    folder : str or Path
+        Directory to write the files into.
+    prefix : str
+        File name prefix, e.g. ``"ta"``.
+    price_basis_code : str or None, optional
+        Short code for the price basis used in file names. Defaults to
+        ``"l"`` (current year) or ``"d"`` (previous year).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is absent.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to identify the id column for writing."
+        )
+
+    folder = Path(folder)
+    code = _resolve_price_basis_code(sut, price_basis_code)
+    id_col = sut.metadata.columns.id
+    combined = _combine_supply_use(sut)
+
+    cols = sut.metadata.columns
+    sort_cols = [cols.product, cols.transaction, cols.category]
+
+    for id_value in combined[id_col].unique():
+        member = (
+            combined[combined[id_col] == id_value]
+            .drop(columns=[id_col])
+            .sort_values(sort_cols)
+            .reset_index(drop=True)
+        )
+        member.to_parquet(folder / f"{prefix}_{code}_{id_value}.parquet", index=False)
+
+
+def write_sut_to_combined_parquet(
+    sut: SUT,
+    folder: str | Path,
+    prefix: str,
+    *,
+    price_basis_code: str | None = None,
+) -> None:
+    """
+    Write a SUT collection to a single combined parquet file.
+
+    The file contains supply and use rows for all collection members, with
+    the id column present. Supply rows have NaN in the price layer and
+    purchasers' price columns. Rows are sorted by id, product, transaction,
+    category before writing.
+
+    The file is named ``{prefix}_{code}.parquet``, where ``code`` is the
+    price basis code (default: ``"l"`` for current year, ``"d"`` for
+    previous year).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to write. ``sut.metadata`` must be present.
+    folder : str or Path
+        Directory to write the file into.
+    prefix : str
+        File name prefix, e.g. ``"ta"``.
+    price_basis_code : str or None, optional
+        Short code for the price basis used in the file name. Defaults to
+        ``"l"`` (current year) or ``"d"`` (previous year).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is absent.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to identify sort columns for writing."
+        )
+
+    folder = Path(folder)
+    code = _resolve_price_basis_code(sut, price_basis_code)
+    cols = sut.metadata.columns
+    sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
+    combined = _combine_supply_use(sut).sort_values(sort_cols).reset_index(drop=True)
+    combined.to_parquet(folder / f"{prefix}_{code}.parquet", index=False)
+
+
+def write_sut_to_separated_csv(
+    sut: SUT,
+    folder: str | Path,
+    prefix: str,
+    *,
+    price_basis_code: str | None = None,
+    sep: str = ",",
+    encoding: str | None = None,
+) -> None:
+    """
+    Write a SUT collection to separate per-member CSV files.
+
+    One file is written per id value in the SUT. Each file contains the
+    combined supply and use rows for that member, without the id column.
+    Supply rows have NaN in the price layer and purchasers' price columns.
+
+    Files are named ``{prefix}_{code}_{id_value}.csv``, where ``code`` is
+    the price basis code (default: ``"l"`` for current year, ``"d"`` for
+    previous year).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to write. ``sut.metadata`` must be present.
+    folder : str or Path
+        Directory to write the files into.
+    prefix : str
+        File name prefix, e.g. ``"ta"``.
+    price_basis_code : str or None, optional
+        Short code for the price basis used in file names. Defaults to
+        ``"l"`` (current year) or ``"d"`` (previous year).
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is absent.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to identify the id column for writing."
+        )
+
+    folder = Path(folder)
+    code = _resolve_price_basis_code(sut, price_basis_code)
+    cols = sut.metadata.columns
+    id_col = cols.id
+    sort_cols = [cols.product, cols.transaction, cols.category]
+    combined = _combine_supply_use(sut)
+
+    for id_value in combined[id_col].unique():
+        member = (
+            combined[combined[id_col] == id_value]
+            .drop(columns=[id_col])
+            .sort_values(sort_cols)
+            .reset_index(drop=True)
+        )
+        member.to_csv(
+            folder / f"{prefix}_{code}_{id_value}.csv",
+            index=False,
+            sep=sep,
+            encoding=encoding,
+        )
+
+
+def write_sut_to_combined_csv(
+    sut: SUT,
+    folder: str | Path,
+    prefix: str,
+    *,
+    price_basis_code: str | None = None,
+    sep: str = ",",
+    encoding: str | None = None,
+) -> None:
+    """
+    Write a SUT collection to a single combined CSV file.
+
+    The file contains supply and use rows for all collection members, with
+    the id column present. Supply rows have NaN in the price layer and
+    purchasers' price columns. Rows are sorted by id, product, transaction,
+    category before writing.
+
+    The file is named ``{prefix}_{code}.csv``, where ``code`` is the price
+    basis code (default: ``"l"`` for current year, ``"d"`` for previous year).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to write. ``sut.metadata`` must be present.
+    folder : str or Path
+        Directory to write the file into.
+    prefix : str
+        File name prefix, e.g. ``"ta"``.
+    price_basis_code : str or None, optional
+        Short code for the price basis used in the file name. Defaults to
+        ``"l"`` (current year) or ``"d"`` (previous year).
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is absent.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to identify sort columns for writing."
+        )
+
+    folder = Path(folder)
+    code = _resolve_price_basis_code(sut, price_basis_code)
+    cols = sut.metadata.columns
+    sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
+    combined = _combine_supply_use(sut).sort_values(sort_cols).reset_index(drop=True)
+    combined.to_csv(
+        folder / f"{prefix}_{code}.csv",
+        index=False,
+        sep=sep,
+        encoding=encoding,
     )
-    use = use_raw[use_col_order]
-
-    return SUT(
-        price_basis=price_basis,
-        supply=supply,
-        use=use,
-        metadata=metadata,
-    )
 
 
-def load_balancing_targets_from_excel(
+def write_sut_to_separated_excel(
+    sut: SUT,
+    folder: str | Path,
+    prefix: str,
+    *,
+    price_basis_code: str | None = None,
+) -> None:
+    """
+    Write a SUT collection to separate per-member Excel files.
+
+    One file is written per id value in the SUT. Each file contains the
+    combined supply and use rows for that member, without the id column.
+    Supply rows have NaN in the price layer and purchasers' price columns.
+
+    Files are named ``{prefix}_{code}_{id_value}.xlsx``, where ``code`` is
+    the price basis code (default: ``"l"`` for current year, ``"d"`` for
+    previous year).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to write. ``sut.metadata`` must be present.
+    folder : str or Path
+        Directory to write the files into.
+    prefix : str
+        File name prefix, e.g. ``"ta"``.
+    price_basis_code : str or None, optional
+        Short code for the price basis used in file names. Defaults to
+        ``"l"`` (current year) or ``"d"`` (previous year).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is absent.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to identify the id column for writing."
+        )
+
+    folder = Path(folder)
+    code = _resolve_price_basis_code(sut, price_basis_code)
+    cols = sut.metadata.columns
+    id_col = cols.id
+    sort_cols = [cols.product, cols.transaction, cols.category]
+    combined = _combine_supply_use(sut)
+
+    for id_value in combined[id_col].unique():
+        member = (
+            combined[combined[id_col] == id_value]
+            .drop(columns=[id_col])
+            .sort_values(sort_cols)
+            .reset_index(drop=True)
+        )
+        member.to_excel(folder / f"{prefix}_{code}_{id_value}.xlsx", index=False)
+
+
+def write_sut_to_combined_excel(
+    sut: SUT,
+    folder: str | Path,
+    prefix: str,
+    *,
+    price_basis_code: str | None = None,
+) -> None:
+    """
+    Write a SUT collection to a single combined Excel file.
+
+    The file contains supply and use rows for all collection members, with
+    the id column present. Supply rows have NaN in the price layer and
+    purchasers' price columns. Rows are sorted by id, product, transaction,
+    category before writing.
+
+    The file is named ``{prefix}_{code}.xlsx``, where ``code`` is the price
+    basis code (default: ``"l"`` for current year, ``"d"`` for previous year).
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to write. ``sut.metadata`` must be present.
+    folder : str or Path
+        Directory to write the file into.
+    prefix : str
+        File name prefix, e.g. ``"ta"``.
+    price_basis_code : str or None, optional
+        Short code for the price basis used in the file name. Defaults to
+        ``"l"`` (current year) or ``"d"`` (previous year).
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is absent.
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to identify sort columns for writing."
+        )
+
+    folder = Path(folder)
+    code = _resolve_price_basis_code(sut, price_basis_code)
+    cols = sut.metadata.columns
+    sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
+    combined = _combine_supply_use(sut).sort_values(sort_cols).reset_index(drop=True)
+    combined.to_excel(folder / f"{prefix}_{code}.xlsx", index=False)
+
+
+def load_balancing_targets_from_separated_excel(
     id_values: list[str | int],
     paths: list[str | Path],
     metadata: SUTMetadata,
@@ -590,7 +1382,7 @@ def load_balancing_targets_from_excel(
     if metadata.classifications is None or metadata.classifications.transactions is None:
         raise ValueError(
             "metadata.classifications.transactions is required to split supply "
-            "and use rows in load_balancing_targets_from_excel."
+            "and use rows in load_balancing_targets_from_separated_excel."
         )
 
     cols = metadata.columns
@@ -616,6 +1408,125 @@ def load_balancing_targets_from_excel(
         frames.append(df)
 
     combined = pd.concat(frames, ignore_index=True)
+
+    # Fill empty category cells with "" to match SUT data convention
+    combined[cols.category] = combined[cols.category].fillna("")
+
+    # Convert all price columns from string to numeric
+    for col in price_cols:
+        combined[col] = pd.to_numeric(combined[col])
+
+    # Validate all transaction codes are known
+    trans_df = metadata.classifications.transactions
+    known_codes = set(trans_df[cols.transaction])
+    data_codes = set(combined[cols.transaction].unique())
+    unknown_codes = data_codes - known_codes
+    if unknown_codes:
+        unknown_str = ", ".join(f"'{c}'" for c in sorted(unknown_codes))
+        known_str = ", ".join(f"'{c}'" for c in sorted(known_codes))
+        raise ValueError(
+            f"Transaction codes in targets not found in classifications.transactions: "
+            f"{unknown_str}. Known codes: {known_str}"
+        )
+
+    # Split into supply and use
+    supply_codes = set(trans_df.loc[trans_df["table"] == "supply", cols.transaction])
+    supply_mask = combined[cols.transaction].isin(supply_codes)
+
+    # Supply: id, transaction, category, price_basic
+    supply_col_order = [cols.id, cols.transaction, cols.category, cols.price_basic]
+    supply = combined[supply_mask][supply_col_order].reset_index(drop=True)
+
+    # Use: id, transaction, category, price_basic, [layers], price_purchasers
+    use_col_order = (
+        [cols.id, cols.transaction, cols.category, cols.price_basic]
+        + layer_cols
+        + [cols.price_purchasers]
+    )
+    use = combined[~supply_mask][use_col_order].reset_index(drop=True)
+
+    return BalancingTargets(supply=supply, use=use)
+
+
+def load_balancing_targets_from_combined_excel(
+    path: str | Path,
+    metadata: SUTMetadata,
+) -> BalancingTargets:
+    """
+    Load a balancing targets collection from a single combined Excel file.
+
+    The file contains rows for all collection members, with the id column
+    present. It mirrors the combined SUT long-format but without the product
+    dimension. It must contain the id, transaction, category, and all price
+    columns defined in ``metadata.columns`` (basic price, any price layers,
+    and purchasers' price).
+
+    Supply and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
+
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    Transaction and category columns are read as strings to preserve leading
+    zeros. Price columns are converted to numeric after loading. Empty
+    category cells are filled with ``""`` to match the SUT convention.
+    The id column type is inferred by pandas.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the combined targets Excel file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If the file is missing a required column.
+    ValueError
+        If any transaction code is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_combined_excel."
+        )
+
+    cols = metadata.columns
+
+    # Price layer columns present in metadata (in order)
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+
+    # All price columns: these must all be present in the targets file
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    required_cols = [cols.id, cols.transaction, cols.category] + price_cols
+
+    # Only override dtypes for columns that need string preservation (leading
+    # zeros in transaction codes). The id column is left to pandas inference.
+    str_dtypes = {cols.transaction: str, cols.category: str}
+    combined = pd.read_excel(path, dtype=str_dtypes)
+    combined = _strip_whitespace(combined)
+    _validate_required_columns(combined, required_cols, source=f"Targets file '{path}'")
 
     # Fill empty category cells with "" to match SUT data convention
     combined[cols.category] = combined[cols.category].fillna("")

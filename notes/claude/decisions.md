@@ -53,7 +53,7 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-03-19**: I/O module placed at `sutlab/io.py` (flat, not a subpackage). Public
   API function names: `load_metadata_from_excel`, `load_metadata_columns_from_excel`,
-  `load_metadata_classifications_from_excel`, `load_sut_from_parquet`. Naming convention:
+  `load_metadata_classifications_from_excel`, `load_sut_from_separated_parquet`. Naming convention:
   `load_<noun>_from_<source>`, hierarchically structured so related functions group in
   autocomplete. Internal helpers can be abstract; this principle applies to the public API only.
 
@@ -70,7 +70,7 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-03-19**: Raw SUT parquet files contain both supply and use rows in a single
   file. `ta_l_YEAR` = current year prices; `ta_d_YEAR` = previous year prices.
-  `load_sut_from_parquet` loads one price basis at a time. Paths supplied as
+  `load_sut_from_separated_parquet` loads one price basis at a time. Paths supplied as
   `dict[id_value, path]` for supply and use; id column name always explicit via
   `id_col` parameter.
 
@@ -601,3 +601,50 @@ Append-only. Each entry: date, decision, brief rationale.
   `price_basis` must match (raise otherwise); `SUTColumns` must match if both have metadata.
   Primary use case: benchmark revision adjustments. Parameter named `adjustments` (not
   `sut_values` or `other`) to reflect domain intent.
+
+- **2026-04-08**: `load_sut_from_parquet` renamed to `load_sut_from_separated_parquet`.
+  New function `load_sut_from_combined_parquet(path, metadata, price_basis)` added for the
+  case where all collection members live in a single parquet file with the id column already
+  present. "Separated" = one file per member, id supplied by caller; "combined" = one file
+  for all members, id already in the file. Both functions sort supply and use rows by
+  (id, product, transaction, category) and reset the index. Same transaction code validation
+  in both.
+
+- **2026-04-08**: Four new SUT loaders added: `load_sut_from_separated_csv`,
+  `load_sut_from_combined_csv`, `load_sut_from_separated_excel`,
+  `load_sut_from_combined_excel`. CSV loaders expose `sep` and `encoding` as
+  keyword-only arguments (pandas defaults). All CSV/Excel loaders read product,
+  transaction, and category columns as str; price columns converted to numeric
+  via `pd.to_numeric`. For combined loaders the id column type is inferred by
+  pandas. Private helper `_assemble_sut(df, metadata, price_basis)` extracted
+  and shared by all six SUT loaders to eliminate duplicated validation, split,
+  sort, and assembly logic.
+
+- **2026-04-08**: Six SUT write functions added to `io.py` (symmetric to the six loaders):
+  `write_sut_to_separated_parquet/csv/excel` and `write_sut_to_combined_parquet/csv/excel`.
+  All take `(sut, folder, prefix, *, price_basis_code=None)`. CSV writers add `sep` and
+  `encoding` keyword args. File naming: `{prefix}_{code}_{id_value}.ext` (separated) or
+  `{prefix}_{code}.ext` (combined). Default codes: `"l"` for current year, `"d"` for
+  previous year; overridable via `price_basis_code`. Id values extracted from the SUT data,
+  not supplied by the caller. Supply and use concatenated on write; supply rows have NaN in
+  price layer and purchasers' price columns (integer price columns become float after
+  write-read cycle). Private helpers `_combine_supply_use` and `_resolve_price_basis_code`
+  shared across all six writers.
+
+- **2026-04-08**: Writer sorting: separated writers sort each member by (product, transaction,
+  category) before writing; combined writers sort by (id, product, transaction, category).
+  Combined writers now also require `sut.metadata` (previously only separated did) — needed
+  to identify sort column names. `index=False` on all writers (no DataFrame index written).
+
+- **2026-04-08**: `load_balancing_targets_from_excel` renamed to
+  `load_balancing_targets_from_separated_excel`. New function
+  `load_balancing_targets_from_combined_excel(path, metadata)` added — reads a single file
+  with id column already present. Transaction and category columns read as str; id column
+  type inferred by pandas (not forced to str). Same transaction code validation as the
+  separated function.
+
+- **2026-04-08**: Six SUT write methods added to `SUT` class as pandas-style delegates:
+  `write_to_separated_parquet`, `write_to_combined_parquet`, `write_to_separated_csv`,
+  `write_to_combined_csv`, `write_to_separated_excel`, `write_to_combined_excel`. Named
+  without `_sut_` since it is redundant on an instance. Docstrings attached in
+  `__init__.py` following established pattern.
