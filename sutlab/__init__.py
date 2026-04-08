@@ -16,7 +16,9 @@ from sutlab.io import (
     write_sut_to_combined_excel,
     load_balancing_targets_from_separated_excel,
     load_balancing_targets_from_combined_excel,
+    load_balancing_targets_from_dataframe,
     load_balancing_config_from_excel,
+    load_sut_from_dataframe,
 )
 from sutlab.sut import (
     set_balancing_id,
