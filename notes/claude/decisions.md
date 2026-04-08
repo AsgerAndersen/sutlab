@@ -643,6 +643,14 @@ Append-only. Each entry: date, decision, brief rationale.
   type inferred by pandas (not forced to str). Same transaction code validation as the
   separated function.
 
+- **2026-04-08**: Added `load_sut_from_dataframe` and `load_balancing_targets_from_dataframe`
+  as in-memory equivalents of the file-based combined loaders. Accept a combined DataFrame
+  (id column present, all years stacked) — same format as the combined file loaders.
+  Price columns must already be numeric (no `pd.to_numeric` coercion, unlike Excel loaders).
+  Extracted `_assemble_balancing_targets` private helper, eliminating duplicated logic from
+  both existing balancing targets loaders. No `to_dataframe` functions added — users can
+  construct the combined DataFrame themselves (`pd.concat([sut.supply, sut.use])`).
+
 - **2026-04-08**: Six SUT write methods added to `SUT` class as pandas-style delegates:
   `write_to_separated_parquet`, `write_to_combined_parquet`, `write_to_separated_csv`,
   `write_to_combined_csv`, `write_to_separated_excel`, `write_to_combined_excel`. Named
