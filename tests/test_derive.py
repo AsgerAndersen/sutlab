@@ -6,7 +6,7 @@ from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.derive import compute_price_layer_rates
+from sutlab.derive import compute_price_layer_rates, compute_totals
 from sutlab.sut import SUT, SUTColumns, SUTMetadata
 
 
@@ -516,3 +516,206 @@ class TestErrors:
         )
         with pytest.raises(ValueError, match="wholesale_margins"):
             compute_price_layer_rates(sut_trade, "product")
+
+
+# ===========================================================================
+# Tests: compute_totals
+# ===========================================================================
+#
+# Fixture data recap:
+#
+#   Supply (2 rows):
+#     year  nrnr  trans   brch  bas
+#     2020  A     0100    IND   100.0
+#     2021  A     0100    IND   110.0
+#
+#   Use (6 rows):
+#     year  nrnr  trans   brch  bas   ava   moms  koeb
+#     2020  A     2000    X     20.0  2.0   NaN   22.0
+#     2020  A     3110    HH    40.0  4.0   8.0   52.0
+#     2020  A     6001    ""    20.0  NaN   NaN   20.0
+#     2021  A     2000    X     22.0  3.0   NaN   25.0
+#     2021  A     3110    HH    44.0  5.0   9.0   58.0
+#     2021  A     6001    ""    22.0  NaN   NaN   22.0
+#
+# compute_totals(sut, "product") groups by (year, nrnr), summing over
+# trans+brch. Supply rows contribute to bas only (NaN → 0 for ava/moms/koeb).
+#
+#   2020, A:
+#     bas  = 100 + 20 + 40 + 20 = 180
+#     ava  = 0   + 2  + 4  + 0  = 6
+#     moms = 0   + 0  + 8  + 0  = 8
+#     koeb = 0   + 22 + 52 + 20 = 94
+#
+#   2021, A:
+#     bas  = 110 + 22 + 44 + 22 = 198
+#     ava  = 0   + 3  + 5  + 0  = 8
+#     moms = 0   + 0  + 9  + 0  = 9
+#     koeb = 0   + 25 + 58 + 22 = 105
+#
+# compute_totals(sut, ["transaction", "category"]) groups by (year, trans,
+# brch), summing over product. Supply rows form their own groups (trans=0100).
+# Supply-only groups have ava=moms=koeb=0 (NaN → 0).
+
+
+class TestComputeTotalsOutputStructure:
+
+    def test_product_dimension_columns(self, sut):
+        result = compute_totals(sut, "product")
+        assert list(result.columns) == ["year", "nrnr", "bas", "ava", "moms", "koeb"]
+
+    def test_transaction_category_dimensions_columns(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        assert list(result.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_product_dimension_excludes_transaction_and_category(self, sut):
+        result = compute_totals(sut, "product")
+        assert "trans" not in result.columns
+        assert "brch" not in result.columns
+
+    def test_id_is_always_first_column(self, sut):
+        for dims in ("product", ["transaction", "category"], ["product", "transaction"]):
+            result = compute_totals(sut, dims)
+            assert result.columns[0] == "year"
+
+    def test_product_dimension_row_count(self, sut):
+        # One row per (year, nrnr): 1 product × 2 years = 2 rows
+        result = compute_totals(sut, "product")
+        assert len(result) == 2
+
+    def test_transaction_category_row_count(self, sut):
+        # Groups: (0100, IND), (2000, X), (3110, HH), (6001, "") × 2 years = 8 rows
+        result = compute_totals(sut, ["transaction", "category"])
+        assert len(result) == 8
+
+    def test_string_shorthand_equals_single_element_list(self, sut):
+        result_str = compute_totals(sut, "product")
+        result_list = compute_totals(sut, ["product"])
+        pd.testing.assert_frame_equal(result_str, result_list)
+
+    def test_sorted_by_group_keys(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        years = result["year"].tolist()
+        assert years == sorted(years)
+
+
+class TestComputeTotalsProductDimension:
+    """Aggregate over transaction and category, keeping product."""
+
+    def test_bas_2020(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["bas"] == pytest.approx(180.0)
+
+    def test_ava_2020(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["ava"] == pytest.approx(6.0)
+
+    def test_moms_2020(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["moms"] == pytest.approx(8.0)
+
+    def test_koeb_2020(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["koeb"] == pytest.approx(94.0)
+
+    def test_bas_2021(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2021, nrnr="A")
+        assert row["bas"] == pytest.approx(198.0)
+
+    def test_ava_2021(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2021, nrnr="A")
+        assert row["ava"] == pytest.approx(8.0)
+
+    def test_moms_2021(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2021, nrnr="A")
+        assert row["moms"] == pytest.approx(9.0)
+
+    def test_koeb_2021(self, sut):
+        result = compute_totals(sut, "product")
+        row = _get_row(result, year=2021, nrnr="A")
+        assert row["koeb"] == pytest.approx(105.0)
+
+
+class TestComputeTotalsTransactionCategoryDimensions:
+    """Aggregate over product, keeping transaction and category.
+
+    Supply rows form their own groups (trans=0100, brch=IND) and have
+    NaN for ava/moms/koeb, which sum() treats as 0.
+    """
+
+    def test_supply_row_bas_2020(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        row = _get_row(result, year=2020, trans="0100", brch="IND")
+        assert row["bas"] == pytest.approx(100.0)
+
+    def test_supply_row_ava_is_nan_2020(self, sut):
+        """Supply has no ava column — all-NaN group stays NaN (min_count=1)."""
+        import math
+        result = compute_totals(sut, ["transaction", "category"])
+        row = _get_row(result, year=2020, trans="0100", brch="IND")
+        assert math.isnan(row["ava"])
+
+    def test_use_row_bas_3110_2020(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        row = _get_row(result, year=2020, trans="3110", brch="HH")
+        assert row["bas"] == pytest.approx(40.0)
+
+    def test_use_row_ava_3110_2020(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        row = _get_row(result, year=2020, trans="3110", brch="HH")
+        assert row["ava"] == pytest.approx(4.0)
+
+    def test_use_row_moms_3110_2020(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        row = _get_row(result, year=2020, trans="3110", brch="HH")
+        assert row["moms"] == pytest.approx(8.0)
+
+    def test_use_row_koeb_3110_2020(self, sut):
+        result = compute_totals(sut, ["transaction", "category"])
+        row = _get_row(result, year=2020, trans="3110", brch="HH")
+        assert row["koeb"] == pytest.approx(52.0)
+
+
+class TestComputeTotalsErrors:
+
+    def test_no_metadata_raises(self, supply_df, use_df):
+        sut_no_meta = SUT(
+            price_basis="current_year",
+            supply=supply_df,
+            use=use_df,
+        )
+        with pytest.raises(ValueError, match="sut.metadata is required"):
+            compute_totals(sut_no_meta, "product")
+
+    def test_unknown_role_raises(self, sut):
+        with pytest.raises(ValueError, match="unknown role"):
+            compute_totals(sut, "industry")
+
+    def test_unknown_role_in_list_raises(self, sut):
+        with pytest.raises(ValueError, match="unknown role"):
+            compute_totals(sut, ["product", "industry"])
+
+    def test_none_mapped_role_raises(self, sut):
+        """retail_margins is None in the fixture columns."""
+        with pytest.raises(ValueError, match="not mapped"):
+            compute_totals(sut, "retail_margins")
+
+
+class TestComputeTotalsSUTMethod:
+
+    def test_method_equals_free_function(self, sut):
+        result_free = compute_totals(sut, "product")
+        result_method = sut.compute_totals("product")
+        pd.testing.assert_frame_equal(result_free, result_method)
+
+    def test_method_list_dimensions(self, sut):
+        result_free = compute_totals(sut, ["transaction", "category"])
+        result_method = sut.compute_totals(["transaction", "category"])
+        pd.testing.assert_frame_equal(result_free, result_method)

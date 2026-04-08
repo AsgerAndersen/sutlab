@@ -420,6 +420,11 @@ class SUT:
         from sutlab.derive import compute_price_layer_rates
         return compute_price_layer_rates(self, aggregation_level)
 
+    def compute_totals(self, dimensions: str | list[str]) -> pd.DataFrame:
+        """Delegates to :func:`~sutlab.derive.compute_totals`."""
+        from sutlab.derive import compute_totals
+        return compute_totals(self, dimensions)
+
     def inspect_products(
         self,
         products: str | list[str],

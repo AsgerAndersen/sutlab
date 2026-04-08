@@ -4,6 +4,8 @@ Computation functions for supply and use tables.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pandas as pd
 
 from sutlab.sut import SUT
@@ -146,7 +148,6 @@ def compute_price_layer_rates(
         if not attr.startswith("_")
     ]
     # Use the instance attributes (dataclass fields) instead.
-    import dataclasses
     valid_role_names = [f.name for f in dataclasses.fields(cols)]
     for role in roles:
         if role not in valid_role_names:
@@ -226,3 +227,125 @@ def compute_price_layer_rates(
         result[col_name] = aggregated[col_name] / safe_denom
 
     return result.sort_values(group_keys).reset_index(drop=True)
+
+
+def compute_totals(
+    sut: SUT,
+    dimensions: str | list[str],
+) -> pd.DataFrame:
+    """Compute summed totals over one or more dimensions.
+
+    Stacks supply and use in combined format and sums all price columns
+    within each group formed by ``id`` and the requested dimensions.
+    Supply rows carry ``NaN`` for price layer and purchasers' price columns.
+    Groups where all values for a column are ``NaN`` (e.g. supply-only
+    groups for price layer columns) remain ``NaN`` in the result.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to aggregate.
+    dimensions : str or list of str
+        One or more column role names (as defined on ``SUTColumns``) that
+        specify which dimensions to **keep** in the result. The ``id``
+        column is always kept automatically. All other key dimensions
+        (product, transaction, category — whichever are not listed) are
+        summed over.
+
+        Examples:
+
+        - ``"product"`` — one row per ``(id, product)``.
+        - ``["transaction", "category"]`` — one row per
+          ``(id, transaction, category)``.
+
+        A plain string is treated as a single-element list.
+
+    Returns
+    -------
+    pd.DataFrame
+        Long-format DataFrame. The ``id`` column comes first, followed by
+        the resolved groupby columns in the order given, then one column
+        per price column present in the data: basic prices, price layers
+        (in the order they appear in ``SUTColumns``), and purchasers'
+        prices. Rows are sorted by the groupby columns.
+
+    Raises
+    ------
+    ValueError
+        If ``sut.metadata`` is ``None``.
+    ValueError
+        If any role in ``dimensions`` is not a valid ``SUTColumns``
+        attribute or maps to ``None``.
+
+    Examples
+    --------
+    Aggregate over all products to get transaction-level totals:
+
+    >>> totals = compute_totals(sut, ["transaction", "category"])
+
+    Aggregate over transactions and categories to get product totals:
+
+    >>> totals = compute_totals(sut, "product")
+    """
+    if sut.metadata is None:
+        raise ValueError(
+            "sut.metadata is required to call compute_totals. "
+            "Provide a SUTMetadata with column name mappings."
+        )
+
+    cols = sut.metadata.columns
+
+    # Normalise string shorthand to list.
+    if isinstance(dimensions, str):
+        roles = [dimensions]
+    else:
+        roles = list(dimensions)
+
+    # Validate each role: must be a known SUTColumns attribute with a non-None value.
+    valid_role_names = [f.name for f in dataclasses.fields(cols)]
+    resolved_dims = []
+    for role in roles:
+        if role not in valid_role_names:
+            raise ValueError(
+                f"dimensions contains unknown role {role!r}. "
+                f"Valid roles: {valid_role_names}."
+            )
+        col_name = getattr(cols, role)
+        if col_name is None:
+            raise ValueError(
+                f"dimensions role {role!r} is not mapped in SUTColumns "
+                f"(its value is None)."
+            )
+        resolved_dims.append(col_name)
+
+    id_col = cols.id
+    group_keys = [id_col] + resolved_dims
+
+    # Collect price columns: price_basic, then mapped and present layer columns
+    # (in _ALL_LAYER_ROLES order), then price_purchasers.
+    layer_cols = [
+        getattr(cols, role)
+        for role in _ALL_LAYER_ROLES
+        if getattr(cols, role) is not None
+        and getattr(cols, role) in sut.use.columns
+    ]
+    all_price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    # Stack supply and use in combined format.
+    # reindex selects only the needed columns, filling missing ones with NaN.
+    # Supply rows will have NaN for price layer and purchasers' price columns.
+    all_cols = group_keys + all_price_cols
+    supply_stacked = sut.supply.reindex(columns=all_cols)
+    use_stacked = sut.use.reindex(columns=all_cols)
+    stacked = pd.concat([supply_stacked, use_stacked], ignore_index=True)
+
+    # Group by id and the requested dimensions; sum all price columns.
+    # NaN values are treated as zero by default (skipna=True).
+    # groupby sorts by group keys by default (sort=True).
+    result = (
+        stacked
+        .groupby(group_keys, as_index=False, dropna=False)[all_price_cols]
+        .sum(min_count=1)
+    )
+
+    return result
