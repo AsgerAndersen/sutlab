@@ -651,6 +651,14 @@ Append-only. Each entry: date, decision, brief rationale.
   both existing balancing targets loaders. No `to_dataframe` functions added — users can
   construct the combined DataFrame themselves (`pd.concat([sut.supply, sut.use])`).
 
+- **2026-04-08**: `compute_totals(sut, dimensions)` added to `derive.py`. `dimensions`
+  specifies which of `{product, transaction, category}` to **keep** in the groupby; `id`
+  is always kept. Returns a single stacked DataFrame (combined format: supply + use, NaN
+  in price layer and purchasers' price columns for supply rows). All-NaN groups remain NaN
+  (`min_count=1`). String or list accepted. Callable as `sut.compute_totals(dimensions)`.
+  Placed in `derive.py` rather than a new `aggregate.py` module, which is reserved for
+  classification aggregation (different concept).
+
 - **2026-04-08**: Six SUT write methods added to `SUT` class as pandas-style delegates:
   `write_to_separated_parquet`, `write_to_combined_parquet`, `write_to_separated_csv`,
   `write_to_combined_csv`, `write_to_separated_excel`, `write_to_combined_excel`. Named
