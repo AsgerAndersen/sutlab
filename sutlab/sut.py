@@ -283,7 +283,8 @@ class BalancingTargets:
     ``price_basic`` (supply) and ``price_purchasers`` (use) carry non-NaN
     values, but the structure is ready for layer-level targets.
 
-    Typically produced by :func:`~sutlab.io.load_balancing_targets_from_excel`
+    Typically produced by :func:`~sutlab.io.load_balancing_targets_from_separated_excel`
+    or :func:`~sutlab.io.load_balancing_targets_from_combined_excel`
     and attached to a :class:`SUT` via :func:`set_balancing_targets`.
 
     Parameters
@@ -499,6 +500,76 @@ class SUT:
     def add_sut(self, adjustments: SUT) -> SUT:
         """Delegates to :func:`add_sut`."""
         return add_sut(self, adjustments)
+
+    def write_to_separated_parquet(
+        self,
+        folder: str,
+        prefix: str,
+        *,
+        price_basis_code: str | None = None,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_separated_parquet`."""
+        from sutlab.io import write_sut_to_separated_parquet
+        write_sut_to_separated_parquet(self, folder, prefix, price_basis_code=price_basis_code)
+
+    def write_to_combined_parquet(
+        self,
+        folder: str,
+        prefix: str,
+        *,
+        price_basis_code: str | None = None,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_combined_parquet`."""
+        from sutlab.io import write_sut_to_combined_parquet
+        write_sut_to_combined_parquet(self, folder, prefix, price_basis_code=price_basis_code)
+
+    def write_to_separated_csv(
+        self,
+        folder: str,
+        prefix: str,
+        *,
+        price_basis_code: str | None = None,
+        sep: str = ",",
+        encoding: str | None = None,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_separated_csv`."""
+        from sutlab.io import write_sut_to_separated_csv
+        write_sut_to_separated_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding)
+
+    def write_to_combined_csv(
+        self,
+        folder: str,
+        prefix: str,
+        *,
+        price_basis_code: str | None = None,
+        sep: str = ",",
+        encoding: str | None = None,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_combined_csv`."""
+        from sutlab.io import write_sut_to_combined_csv
+        write_sut_to_combined_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding)
+
+    def write_to_separated_excel(
+        self,
+        folder: str,
+        prefix: str,
+        *,
+        price_basis_code: str | None = None,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_separated_excel`."""
+        from sutlab.io import write_sut_to_separated_excel
+        write_sut_to_separated_excel(self, folder, prefix, price_basis_code=price_basis_code)
+
+    def write_to_combined_excel(
+        self,
+        folder: str,
+        prefix: str,
+        *,
+        price_basis_code: str | None = None,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_combined_excel`."""
+        from sutlab.io import write_sut_to_combined_excel
+        write_sut_to_combined_excel(self, folder, prefix, price_basis_code=price_basis_code)
 
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
