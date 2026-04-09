@@ -232,6 +232,8 @@ def compute_price_layer_rates(
 def compute_totals(
     sut: SUT,
     dimensions: str | list[str],
+    *,
+    use_price_columns: str | list[str] | None = None,
 ) -> pd.DataFrame:
     """Compute summed totals over one or more dimensions.
 
@@ -260,6 +262,16 @@ def compute_totals(
 
         A plain string is treated as a single-element list.
 
+    use_price_columns : str or list of str or None, optional
+        Actual column names (not role names) of the price columns to sum
+        for use rows. All other price columns are set to ``NaN`` for use
+        rows before aggregation. Supply rows are unaffected. When ``None``
+        (the default), all price columns are summed.
+
+        Example: ``use_price_columns="koeb"`` computes only purchasers'
+        prices for use rows; basic prices and price layers will be ``NaN``
+        in use groups (supply groups still show basic prices).
+
     Returns
     -------
     pd.DataFrame
@@ -276,6 +288,8 @@ def compute_totals(
     ValueError
         If any role in ``dimensions`` is not a valid ``SUTColumns``
         attribute or maps to ``None``.
+    ValueError
+        If any name in ``use_price_columns`` is not a known price column.
 
     Examples
     --------
@@ -286,6 +300,10 @@ def compute_totals(
     Aggregate over transactions and categories to get product totals:
 
     >>> totals = compute_totals(sut, "product")
+
+    Compute only purchasers' price totals for use rows:
+
+    >>> totals = compute_totals(sut, "product", use_price_columns="koeb")
     """
     if sut.metadata is None:
         raise ValueError(
@@ -337,6 +355,25 @@ def compute_totals(
     all_cols = group_keys + all_price_cols
     supply_stacked = sut.supply.reindex(columns=all_cols)
     use_stacked = sut.use.reindex(columns=all_cols)
+
+    # If use_price_columns is specified, null out all other price columns for
+    # use rows. Supply rows are left untouched.
+    if use_price_columns is not None:
+        if isinstance(use_price_columns, str):
+            keep_cols = [use_price_columns]
+        else:
+            keep_cols = list(use_price_columns)
+
+        unknown = [c for c in keep_cols if c not in all_price_cols]
+        if unknown:
+            raise ValueError(
+                f"use_price_columns contains unknown column(s) {unknown!r}. "
+                f"Available price columns: {all_price_cols}."
+            )
+
+        cols_to_null = [c for c in all_price_cols if c not in keep_cols]
+        use_stacked[cols_to_null] = float("nan")
+
     stacked = pd.concat([supply_stacked, use_stacked], ignore_index=True)
 
     # Group by id and the requested dimensions; sum all price columns.
