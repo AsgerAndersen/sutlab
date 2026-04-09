@@ -65,6 +65,11 @@ _PRICE_LAYER_ROLES: list[str] = [
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _format_price_basis(price_basis: str) -> str:
+    """Return a human-readable price basis label, e.g. 'current year'."""
+    return price_basis.replace("_", " ")
+
+
 def _strip_whitespace(df: pd.DataFrame) -> pd.DataFrame:
     """Strip leading and trailing whitespace from all string columns in df."""
     result = df.copy()
@@ -366,6 +371,8 @@ def _load_metadata_classifications_from_excel(
 def load_metadata_from_excel(
     columns_path: str | Path,
     classifications_path: str | Path,
+    *,
+    print_paths: bool = False,
 ) -> SUTMetadata:
     """
     Load full SUT metadata from two Excel files.
@@ -382,6 +389,9 @@ def load_metadata_from_excel(
         Path to the columns Excel file.
     classifications_path : str or Path
         Path to the classifications Excel file.
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -394,6 +404,11 @@ def load_metadata_from_excel(
     ValueError
         Any error raised by the underlying loader functions.
     """
+    if print_paths:
+        print("Loading metadata:")
+        print(f"  columns: {columns_path}")
+        print(f"  classifications: {classifications_path}")
+
     columns = _load_metadata_columns_from_excel(columns_path)
     classifications = _load_metadata_classifications_from_excel(classifications_path, columns)
 
@@ -515,6 +530,8 @@ def load_sut_from_separated_parquet(
     paths: list[str | Path],
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
+    *,
+    print_paths: bool = False,
 ) -> SUT:
     """
     Load a SUT collection from separate per-member supply+use parquet files.
@@ -543,6 +560,9 @@ def load_sut_from_separated_parquet(
         be present — it is used to split supply and use rows.
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -574,6 +594,13 @@ def load_sut_from_separated_parquet(
             "requires a 'transactions' sheet."
         )
 
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        n = len(paths)
+        print(f"Loading SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
+
     cols = metadata.columns
 
     # Load each file and label with the id value
@@ -591,6 +618,8 @@ def load_sut_from_combined_parquet(
     path: str | Path,
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
+    *,
+    print_paths: bool = False,
 ) -> SUT:
     """
     Load a SUT collection from a single combined supply+use parquet file.
@@ -615,6 +644,9 @@ def load_sut_from_combined_parquet(
         be present — it is used to split supply and use rows.
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
+    print_paths : bool, optional
+        If ``True``, print the path being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -638,6 +670,10 @@ def load_sut_from_combined_parquet(
             "requires a 'transactions' sheet."
         )
 
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        print(f"Loading SUT ({basis}) from: {path}")
+
     df = pd.read_parquet(path)
     return _assemble_sut(df, metadata, price_basis)
 
@@ -650,6 +686,7 @@ def load_sut_from_separated_csv(
     *,
     sep: str = ",",
     encoding: str | None = None,
+    print_paths: bool = False,
 ) -> SUT:
     """
     Load a SUT collection from separate per-member supply+use CSV files.
@@ -682,6 +719,9 @@ def load_sut_from_separated_csv(
         Column separator. Defaults to ``','``.
     encoding : str or None, optional
         File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -712,6 +752,13 @@ def load_sut_from_separated_csv(
             "and use rows. Load metadata using load_metadata_from_excel, which "
             "requires a 'transactions' sheet."
         )
+
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        n = len(paths)
+        print(f"Loading SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
 
     cols = metadata.columns
     str_dtypes = {
@@ -745,6 +792,7 @@ def load_sut_from_combined_csv(
     *,
     sep: str = ",",
     encoding: str | None = None,
+    print_paths: bool = False,
 ) -> SUT:
     """
     Load a SUT collection from a single combined supply+use CSV file.
@@ -773,6 +821,9 @@ def load_sut_from_combined_csv(
         Column separator. Defaults to ``','``.
     encoding : str or None, optional
         File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the path being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -795,6 +846,10 @@ def load_sut_from_combined_csv(
             "and use rows. Load metadata using load_metadata_from_excel, which "
             "requires a 'transactions' sheet."
         )
+
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        print(f"Loading SUT ({basis}) from: {path}")
 
     cols = metadata.columns
     str_dtypes = {
@@ -821,6 +876,8 @@ def load_sut_from_separated_excel(
     paths: list[str | Path],
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
+    *,
+    print_paths: bool = False,
 ) -> SUT:
     """
     Load a SUT collection from separate per-member supply+use Excel files.
@@ -849,6 +906,9 @@ def load_sut_from_separated_excel(
         be present — it is used to split supply and use rows.
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -880,6 +940,13 @@ def load_sut_from_separated_excel(
             "requires a 'transactions' sheet."
         )
 
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        n = len(paths)
+        print(f"Loading SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
+
     cols = metadata.columns
     str_dtypes = {
         cols.product: str,
@@ -909,6 +976,8 @@ def load_sut_from_combined_excel(
     path: str | Path,
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
+    *,
+    print_paths: bool = False,
 ) -> SUT:
     """
     Load a SUT collection from a single combined supply+use Excel file.
@@ -933,6 +1002,9 @@ def load_sut_from_combined_excel(
         be present — it is used to split supply and use rows.
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
+    print_paths : bool, optional
+        If ``True``, print the path being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -955,6 +1027,10 @@ def load_sut_from_combined_excel(
             "and use rows. Load metadata using load_metadata_from_excel, which "
             "requires a 'transactions' sheet."
         )
+
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        print(f"Loading SUT ({basis}) from: {path}")
 
     cols = metadata.columns
     str_dtypes = {
@@ -1037,6 +1113,7 @@ def write_sut_to_separated_parquet(
     prefix: str,
     *,
     price_basis_code: str | None = None,
+    print_paths: bool = False,
 ) -> None:
     """
     Write a SUT collection to separate per-member parquet files.
@@ -1060,6 +1137,9 @@ def write_sut_to_separated_parquet(
     price_basis_code : str or None, optional
         Short code for the price basis used in file names. Defaults to
         ``"l"`` (current year) or ``"d"`` (previous year).
+    print_paths : bool, optional
+        If ``True``, print the paths being written before writing. Defaults to
+        ``False``.
 
     Raises
     ------
@@ -1079,14 +1159,24 @@ def write_sut_to_separated_parquet(
     cols = sut.metadata.columns
     sort_cols = [cols.product, cols.transaction, cols.category]
 
-    for id_value in combined[id_col].unique():
+    id_values = list(combined[id_col].unique())
+    output_paths = [folder / f"{prefix}_{code}_{id_value}.parquet" for id_value in id_values]
+
+    if print_paths:
+        basis = _format_price_basis(sut.price_basis)
+        n = len(id_values)
+        print(f"Writing SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, output_path in zip(id_values, output_paths):
+            print(f"  {id_value}: {output_path}")
+
+    for id_value, output_path in zip(id_values, output_paths):
         member = (
             combined[combined[id_col] == id_value]
             .drop(columns=[id_col])
             .sort_values(sort_cols)
             .reset_index(drop=True)
         )
-        member.to_parquet(folder / f"{prefix}_{code}_{id_value}.parquet", index=False)
+        member.to_parquet(output_path, index=False)
 
 
 def write_sut_to_combined_parquet(
@@ -1095,6 +1185,7 @@ def write_sut_to_combined_parquet(
     prefix: str,
     *,
     price_basis_code: str | None = None,
+    print_paths: bool = False,
 ) -> None:
     """
     Write a SUT collection to a single combined parquet file.
@@ -1119,6 +1210,9 @@ def write_sut_to_combined_parquet(
     price_basis_code : str or None, optional
         Short code for the price basis used in the file name. Defaults to
         ``"l"`` (current year) or ``"d"`` (previous year).
+    print_paths : bool, optional
+        If ``True``, print the path being written before writing. Defaults to
+        ``False``.
 
     Raises
     ------
@@ -1132,10 +1226,16 @@ def write_sut_to_combined_parquet(
 
     folder = Path(folder)
     code = _resolve_price_basis_code(sut, price_basis_code)
+    output_path = folder / f"{prefix}_{code}.parquet"
+
+    if print_paths:
+        basis = _format_price_basis(sut.price_basis)
+        print(f"Writing SUT ({basis}) to: {output_path}")
+
     cols = sut.metadata.columns
     sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut).sort_values(sort_cols).reset_index(drop=True)
-    combined.to_parquet(folder / f"{prefix}_{code}.parquet", index=False)
+    combined.to_parquet(output_path, index=False)
 
 
 def write_sut_to_separated_csv(
@@ -1146,6 +1246,7 @@ def write_sut_to_separated_csv(
     price_basis_code: str | None = None,
     sep: str = ",",
     encoding: str | None = None,
+    print_paths: bool = False,
 ) -> None:
     """
     Write a SUT collection to separate per-member CSV files.
@@ -1173,6 +1274,9 @@ def write_sut_to_separated_csv(
         Column separator. Defaults to ``','``.
     encoding : str or None, optional
         File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the paths being written before writing. Defaults to
+        ``False``.
 
     Raises
     ------
@@ -1191,7 +1295,17 @@ def write_sut_to_separated_csv(
     sort_cols = [cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut)
 
-    for id_value in combined[id_col].unique():
+    id_values = list(combined[id_col].unique())
+    output_paths = [folder / f"{prefix}_{code}_{id_value}.csv" for id_value in id_values]
+
+    if print_paths:
+        basis = _format_price_basis(sut.price_basis)
+        n = len(id_values)
+        print(f"Writing SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, output_path in zip(id_values, output_paths):
+            print(f"  {id_value}: {output_path}")
+
+    for id_value, output_path in zip(id_values, output_paths):
         member = (
             combined[combined[id_col] == id_value]
             .drop(columns=[id_col])
@@ -1199,7 +1313,7 @@ def write_sut_to_separated_csv(
             .reset_index(drop=True)
         )
         member.to_csv(
-            folder / f"{prefix}_{code}_{id_value}.csv",
+            output_path,
             index=False,
             sep=sep,
             encoding=encoding,
@@ -1214,6 +1328,7 @@ def write_sut_to_combined_csv(
     price_basis_code: str | None = None,
     sep: str = ",",
     encoding: str | None = None,
+    print_paths: bool = False,
 ) -> None:
     """
     Write a SUT collection to a single combined CSV file.
@@ -1241,6 +1356,9 @@ def write_sut_to_combined_csv(
         Column separator. Defaults to ``','``.
     encoding : str or None, optional
         File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the path being written before writing. Defaults to
+        ``False``.
 
     Raises
     ------
@@ -1254,11 +1372,17 @@ def write_sut_to_combined_csv(
 
     folder = Path(folder)
     code = _resolve_price_basis_code(sut, price_basis_code)
+    output_path = folder / f"{prefix}_{code}.csv"
+
+    if print_paths:
+        basis = _format_price_basis(sut.price_basis)
+        print(f"Writing SUT ({basis}) to: {output_path}")
+
     cols = sut.metadata.columns
     sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut).sort_values(sort_cols).reset_index(drop=True)
     combined.to_csv(
-        folder / f"{prefix}_{code}.csv",
+        output_path,
         index=False,
         sep=sep,
         encoding=encoding,
@@ -1271,6 +1395,7 @@ def write_sut_to_separated_excel(
     prefix: str,
     *,
     price_basis_code: str | None = None,
+    print_paths: bool = False,
 ) -> None:
     """
     Write a SUT collection to separate per-member Excel files.
@@ -1294,6 +1419,9 @@ def write_sut_to_separated_excel(
     price_basis_code : str or None, optional
         Short code for the price basis used in file names. Defaults to
         ``"l"`` (current year) or ``"d"`` (previous year).
+    print_paths : bool, optional
+        If ``True``, print the paths being written before writing. Defaults to
+        ``False``.
 
     Raises
     ------
@@ -1312,14 +1440,24 @@ def write_sut_to_separated_excel(
     sort_cols = [cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut)
 
-    for id_value in combined[id_col].unique():
+    id_values = list(combined[id_col].unique())
+    output_paths = [folder / f"{prefix}_{code}_{id_value}.xlsx" for id_value in id_values]
+
+    if print_paths:
+        basis = _format_price_basis(sut.price_basis)
+        n = len(id_values)
+        print(f"Writing SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, output_path in zip(id_values, output_paths):
+            print(f"  {id_value}: {output_path}")
+
+    for id_value, output_path in zip(id_values, output_paths):
         member = (
             combined[combined[id_col] == id_value]
             .drop(columns=[id_col])
             .sort_values(sort_cols)
             .reset_index(drop=True)
         )
-        member.to_excel(folder / f"{prefix}_{code}_{id_value}.xlsx", index=False)
+        member.to_excel(output_path, index=False)
 
 
 def write_sut_to_combined_excel(
@@ -1328,6 +1466,7 @@ def write_sut_to_combined_excel(
     prefix: str,
     *,
     price_basis_code: str | None = None,
+    print_paths: bool = False,
 ) -> None:
     """
     Write a SUT collection to a single combined Excel file.
@@ -1351,6 +1490,9 @@ def write_sut_to_combined_excel(
     price_basis_code : str or None, optional
         Short code for the price basis used in the file name. Defaults to
         ``"l"`` (current year) or ``"d"`` (previous year).
+    print_paths : bool, optional
+        If ``True``, print the path being written before writing. Defaults to
+        ``False``.
 
     Raises
     ------
@@ -1364,10 +1506,16 @@ def write_sut_to_combined_excel(
 
     folder = Path(folder)
     code = _resolve_price_basis_code(sut, price_basis_code)
+    output_path = folder / f"{prefix}_{code}.xlsx"
+
+    if print_paths:
+        basis = _format_price_basis(sut.price_basis)
+        print(f"Writing SUT ({basis}) to: {output_path}")
+
     cols = sut.metadata.columns
     sort_cols = [cols.id, cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut).sort_values(sort_cols).reset_index(drop=True)
-    combined.to_excel(folder / f"{prefix}_{code}.xlsx", index=False)
+    combined.to_excel(output_path, index=False)
 
 
 def _assemble_balancing_targets(
@@ -1441,6 +1589,8 @@ def load_balancing_targets_from_separated_excel(
     id_values: list[str | int],
     paths: list[str | Path],
     metadata: SUTMetadata,
+    *,
+    print_paths: bool = False,
 ) -> BalancingTargets:
     """
     Load a balancing targets collection from one Excel file per id value.
@@ -1478,6 +1628,9 @@ def load_balancing_targets_from_separated_excel(
     metadata : SUTMetadata
         Metadata for the SUT. ``metadata.classifications.transactions`` must
         be present — it is used to split supply and use rows.
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -1506,6 +1659,12 @@ def load_balancing_targets_from_separated_excel(
             "metadata.classifications.transactions is required to split supply "
             "and use rows in load_balancing_targets_from_separated_excel."
         )
+
+    if print_paths:
+        n = len(paths)
+        print(f"Loading balancing targets ({n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
 
     cols = metadata.columns
 
@@ -1541,6 +1700,8 @@ def load_balancing_targets_from_separated_excel(
 def load_balancing_targets_from_combined_excel(
     path: str | Path,
     metadata: SUTMetadata,
+    *,
+    print_paths: bool = False,
 ) -> BalancingTargets:
     """
     Load a balancing targets collection from a single combined Excel file.
@@ -1576,6 +1737,9 @@ def load_balancing_targets_from_combined_excel(
     metadata : SUTMetadata
         Metadata for the SUT. ``metadata.classifications.transactions`` must
         be present — it is used to split supply and use rows.
+    print_paths : bool, optional
+        If ``True``, print the path being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -1596,6 +1760,9 @@ def load_balancing_targets_from_combined_excel(
             "metadata.classifications.transactions is required to split supply "
             "and use rows in load_balancing_targets_from_combined_excel."
         )
+
+    if print_paths:
+        print(f"Loading balancing targets from: {path}")
 
     cols = metadata.columns
 
@@ -1856,6 +2023,7 @@ def load_balancing_config_from_excel(
     *,
     tolerances_path: str | Path | None = None,
     locks_path: str | Path | None = None,
+    print_paths: bool = False,
 ) -> BalancingConfig:
     """
     Load balancing configuration from Excel files.
@@ -1891,6 +2059,9 @@ def load_balancing_config_from_excel(
         provided.
     locks_path : str, Path, or None
         Path to the locks Excel file. ``None`` if no locks file is provided.
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
 
     Returns
     -------
@@ -1907,6 +2078,13 @@ def load_balancing_config_from_excel(
         raise ValueError(
             "At least one of tolerances_path or locks_path must be provided."
         )
+
+    if print_paths:
+        print("Loading balancing config:")
+        if tolerances_path is not None:
+            print(f"  tolerances: {tolerances_path}")
+        if locks_path is not None:
+            print(f"  locks: {locks_path}")
 
     target_tolerances = None
     if tolerances_path is not None:
