@@ -675,3 +675,11 @@ Append-only. Each entry: date, decision, brief rationale.
   balancing targets messages (always current prices). Argument name chosen over `verbose`
   (too abstract) for clarity. `_format_price_basis` private helper added to convert
   `"current_year"` → `"current year"` for display.
+
+- **2026-04-09**: `use_price_columns: str | list[str] | None = None` (keyword-only)
+  added to `compute_totals`. When specified, only the listed price columns (actual column
+  names, not role names) are summed for use rows; all other price columns are set to NaN
+  before aggregation. Supply rows are unaffected. Column names used (not role names)
+  because price column names are user-defined and data-specific — users know their column
+  names, not the abstract role names. Unknown column names raise ValueError with available
+  columns listed. `SUT.compute_totals` delegate updated to pass the argument through.
