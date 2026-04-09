@@ -2136,3 +2136,172 @@ class TestLoadBalancingConfigFromExcel:
         path = write_locks_file(tmp_path, {"price_layers": price_layers_df})
         with pytest.raises(ValueError, match="'price_layer'"):
             load_balancing_config_from_excel(metadata, locks_path=path)
+
+
+# ---------------------------------------------------------------------------
+# Tests for print_paths argument
+# ---------------------------------------------------------------------------
+
+class TestPrintPaths:
+    """Tests that print_paths=True prints the expected messages, and
+    print_paths=False (default) prints nothing."""
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def sut(self, metadata):
+        return load_sut_from_separated_parquet(
+            [2021], [PARQUET_FILE], metadata, "current_year"
+        )
+
+    # --- loaders ---
+
+    def test_load_metadata_prints_paths(self, capsys):
+        load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading metadata:" in out
+        assert str(COLUMNS_FILE) in out
+        assert str(CLASSIFICATIONS_FILE) in out
+
+    def test_load_metadata_no_print_by_default(self, capsys):
+        load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+        assert capsys.readouterr().out == ""
+
+    def test_load_sut_from_separated_parquet_prints_paths(self, metadata, capsys):
+        load_sut_from_separated_parquet(
+            [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year",
+            print_paths=True,
+        )
+        out = capsys.readouterr().out
+        assert "Loading SUT (current year, 2 members):" in out
+        assert "2021:" in out
+        assert "2022:" in out
+        assert str(PARQUET_FILE) in out
+
+    def test_load_sut_from_separated_parquet_no_print_by_default(self, metadata, capsys):
+        load_sut_from_separated_parquet([2021], [PARQUET_FILE], metadata, "current_year")
+        assert capsys.readouterr().out == ""
+
+    def test_load_sut_from_combined_parquet_prints_path(self, metadata, tmp_path, sut, capsys):
+        combined_path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, tmp_path, "ta")
+        load_sut_from_combined_parquet(combined_path, metadata, "previous_year", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading SUT (previous year) from:" in out
+        assert str(combined_path) in out
+
+    def test_load_sut_from_combined_parquet_no_print_by_default(self, metadata, tmp_path, sut, capsys):
+        write_sut_to_combined_parquet(sut, tmp_path, "ta")
+        load_sut_from_combined_parquet(tmp_path / "ta_l.parquet", metadata, "current_year")
+        assert capsys.readouterr().out == ""
+
+    def test_load_balancing_targets_separated_prints_paths(self, metadata, capsys):
+        load_balancing_targets_from_separated_excel(
+            [2021], [TARGETS_FILE], metadata, print_paths=True,
+        )
+        out = capsys.readouterr().out
+        assert "Loading balancing targets (1 member):" in out
+        assert "2021:" in out
+        assert str(TARGETS_FILE) in out
+
+    def test_load_balancing_targets_separated_no_print_by_default(self, metadata, capsys):
+        load_balancing_targets_from_separated_excel([2021], [TARGETS_FILE], metadata)
+        assert capsys.readouterr().out == ""
+
+    def test_load_balancing_targets_combined_prints_path(self, metadata, tmp_path, capsys):
+        # Build a combined targets file (id column required)
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        sep_df.insert(0, "year", "2021")
+        combined_path = tmp_path / "ta_targets_combined.xlsx"
+        sep_df.to_excel(combined_path, index=False)
+        load_balancing_targets_from_combined_excel(combined_path, metadata, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading balancing targets from:" in out
+        assert str(combined_path) in out
+
+    def test_load_balancing_targets_combined_no_print_by_default(self, metadata, tmp_path, capsys):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        sep_df.insert(0, "year", "2021")
+        combined_path = tmp_path / "ta_targets_combined.xlsx"
+        sep_df.to_excel(combined_path, index=False)
+        load_balancing_targets_from_combined_excel(combined_path, metadata)
+        assert capsys.readouterr().out == ""
+
+    def test_load_balancing_config_prints_paths(self, metadata, capsys):
+        load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE, locks_path=LOCKS_FILE,
+            print_paths=True,
+        )
+        out = capsys.readouterr().out
+        assert "Loading balancing config:" in out
+        assert "tolerances:" in out
+        assert "locks:" in out
+        assert str(TOLERANCES_FILE) in out
+        assert str(LOCKS_FILE) in out
+
+    def test_load_balancing_config_omits_none_paths(self, metadata, capsys):
+        load_balancing_config_from_excel(
+            metadata, tolerances_path=TOLERANCES_FILE, print_paths=True,
+        )
+        out = capsys.readouterr().out
+        assert "tolerances:" in out
+        assert "locks:" not in out
+
+    def test_load_balancing_config_no_print_by_default(self, metadata, capsys):
+        load_balancing_config_from_excel(metadata, locks_path=LOCKS_FILE)
+        assert capsys.readouterr().out == ""
+
+    # --- writers ---
+
+    def test_write_sut_to_separated_parquet_prints_paths(self, sut, tmp_path, capsys):
+        write_sut_to_separated_parquet(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year, 1 member):" in out
+        assert "2021:" in out
+        assert "ta_l_2021.parquet" in out
+
+    def test_write_sut_to_separated_parquet_no_print_by_default(self, sut, tmp_path, capsys):
+        write_sut_to_separated_parquet(sut, tmp_path, "ta")
+        assert capsys.readouterr().out == ""
+
+    def test_write_sut_to_combined_parquet_prints_path(self, sut, tmp_path, capsys):
+        write_sut_to_combined_parquet(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year) to:" in out
+        assert "ta_l.parquet" in out
+
+    def test_write_sut_to_combined_parquet_no_print_by_default(self, sut, tmp_path, capsys):
+        write_sut_to_combined_parquet(sut, tmp_path, "ta")
+        assert capsys.readouterr().out == ""
+
+    def test_write_sut_to_separated_csv_prints_paths(self, sut, tmp_path, capsys):
+        write_sut_to_separated_csv(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year, 1 member):" in out
+        assert "ta_l_2021.csv" in out
+
+    def test_write_sut_to_combined_csv_prints_path(self, sut, tmp_path, capsys):
+        write_sut_to_combined_csv(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year) to:" in out
+        assert "ta_l.csv" in out
+
+    def test_write_sut_to_separated_excel_prints_paths(self, sut, tmp_path, capsys):
+        write_sut_to_separated_excel(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year, 1 member):" in out
+        assert "ta_l_2021.xlsx" in out
+
+    def test_write_sut_to_combined_excel_prints_path(self, sut, tmp_path, capsys):
+        write_sut_to_combined_excel(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year) to:" in out
+        assert "ta_l.xlsx" in out
+
+    def test_previous_year_in_message(self, metadata, tmp_path, capsys):
+        sut = load_sut_from_separated_parquet([2021], [PARQUET_FILE], metadata, "previous_year")
+        write_sut_to_combined_parquet(sut, tmp_path, "ta", print_paths=True)
+        out = capsys.readouterr().out
+        assert "previous year" in out

@@ -512,10 +512,11 @@ class SUT:
         prefix: str,
         *,
         price_basis_code: str | None = None,
+        print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_separated_parquet`."""
         from sutlab.io import write_sut_to_separated_parquet
-        write_sut_to_separated_parquet(self, folder, prefix, price_basis_code=price_basis_code)
+        write_sut_to_separated_parquet(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
 
     def write_to_combined_parquet(
         self,
@@ -523,10 +524,11 @@ class SUT:
         prefix: str,
         *,
         price_basis_code: str | None = None,
+        print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_parquet`."""
         from sutlab.io import write_sut_to_combined_parquet
-        write_sut_to_combined_parquet(self, folder, prefix, price_basis_code=price_basis_code)
+        write_sut_to_combined_parquet(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
 
     def write_to_separated_csv(
         self,
@@ -536,10 +538,11 @@ class SUT:
         price_basis_code: str | None = None,
         sep: str = ",",
         encoding: str | None = None,
+        print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_separated_csv`."""
         from sutlab.io import write_sut_to_separated_csv
-        write_sut_to_separated_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding)
+        write_sut_to_separated_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding, print_paths=print_paths)
 
     def write_to_combined_csv(
         self,
@@ -549,10 +552,11 @@ class SUT:
         price_basis_code: str | None = None,
         sep: str = ",",
         encoding: str | None = None,
+        print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_csv`."""
         from sutlab.io import write_sut_to_combined_csv
-        write_sut_to_combined_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding)
+        write_sut_to_combined_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding, print_paths=print_paths)
 
     def write_to_separated_excel(
         self,
@@ -560,10 +564,11 @@ class SUT:
         prefix: str,
         *,
         price_basis_code: str | None = None,
+        print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_separated_excel`."""
         from sutlab.io import write_sut_to_separated_excel
-        write_sut_to_separated_excel(self, folder, prefix, price_basis_code=price_basis_code)
+        write_sut_to_separated_excel(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
 
     def write_to_combined_excel(
         self,
@@ -571,10 +576,11 @@ class SUT:
         prefix: str,
         *,
         price_basis_code: str | None = None,
+        print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_excel`."""
         from sutlab.io import write_sut_to_combined_excel
-        write_sut_to_combined_excel(self, folder, prefix, price_basis_code=price_basis_code)
+        write_sut_to_combined_excel(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
 
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
