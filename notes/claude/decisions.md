@@ -664,3 +664,14 @@ Append-only. Each entry: date, decision, brief rationale.
   `write_to_combined_csv`, `write_to_separated_excel`, `write_to_combined_excel`. Named
   without `_sut_` since it is redundant on an instance. Docstrings attached in
   `__init__.py` following established pattern.
+
+- **2026-04-09**: `print_paths: bool = False` (keyword-only) added to all loader and
+  writer functions in `io.py` (and the six `SUT` write delegate methods). When `True`,
+  prints a brief message with the paths being read or written before the I/O operation.
+  Format: combined functions print a single line; separated functions print a header with
+  member count and an indented `id: path` list. Writers compute all output paths up-front
+  before printing (consistent "before" timing across all functions). Price basis included
+  in SUT messages; omitted from metadata and balancing config messages; omitted from
+  balancing targets messages (always current prices). Argument name chosen over `verbose`
+  (too abstract) for clarity. `_format_price_basis` private helper added to convert
+  `"current_year"` → `"current year"` for display.
