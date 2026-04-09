@@ -719,3 +719,77 @@ class TestComputeTotalsSUTMethod:
         result_free = compute_totals(sut, ["transaction", "category"])
         result_method = sut.compute_totals(["transaction", "category"])
         pd.testing.assert_frame_equal(result_free, result_method)
+
+
+class TestComputeTotalsUsePriceColumns:
+    """use_price_columns nulls non-specified price columns for use rows only.
+
+    Fixture recap:
+      Supply 2020 A: bas=100 (ava/moms/koeb absent)
+      Use 2020 A: bas=80, ava=6, moms=8, koeb=94  (summed over trans+brch)
+
+    With use_price_columns="koeb" and dimensions="product":
+      bas = 100  (supply unaffected; use bas nulled → all-supply group → 100)
+      ava = NaN  (use ava nulled; supply has no ava → all-NaN)
+      moms= NaN  (same)
+      koeb= 94   (only use koeb kept)
+    """
+
+    def test_single_column_string_keeps_only_that_column_for_use(self, sut):
+        import math
+        result = compute_totals(sut, "product", use_price_columns="koeb")
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["koeb"] == pytest.approx(94.0)
+        assert math.isnan(row["ava"])
+        assert math.isnan(row["moms"])
+
+    def test_single_column_supply_bas_unaffected(self, sut):
+        # Supply basic prices must not be nulled even though "bas" is not in use_price_columns.
+        result = compute_totals(sut, "product", use_price_columns="koeb")
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["bas"] == pytest.approx(100.0)
+
+    def test_list_form_equals_string_form(self, sut):
+        result_str = compute_totals(sut, "product", use_price_columns="koeb")
+        result_list = compute_totals(sut, "product", use_price_columns=["koeb"])
+        pd.testing.assert_frame_equal(result_str, result_list)
+
+    def test_multiple_columns(self, sut):
+        import math
+        result = compute_totals(sut, "product", use_price_columns=["ava", "moms"])
+        row = _get_row(result, year=2020, nrnr="A")
+        assert row["ava"] == pytest.approx(6.0)
+        assert row["moms"] == pytest.approx(8.0)
+        assert math.isnan(row["koeb"])
+        # Supply bas still present
+        assert row["bas"] == pytest.approx(100.0)
+
+    def test_transaction_category_dimensions_use_rows_nulled(self, sut):
+        import math
+        result = compute_totals(sut, ["transaction", "category"], use_price_columns="koeb")
+        # Use group (3110, HH): only koeb kept
+        row = _get_row(result, year=2020, trans="3110", brch="HH")
+        assert row["koeb"] == pytest.approx(52.0)
+        assert math.isnan(row["bas"])
+        assert math.isnan(row["ava"])
+        assert math.isnan(row["moms"])
+
+    def test_transaction_category_dimensions_supply_bas_unaffected(self, sut):
+        # Supply-only group (0100, IND): bas comes from supply, unaffected
+        result = compute_totals(sut, ["transaction", "category"], use_price_columns="koeb")
+        row = _get_row(result, year=2020, trans="0100", brch="IND")
+        assert row["bas"] == pytest.approx(100.0)
+
+    def test_none_is_default_behaviour(self, sut):
+        result_none = compute_totals(sut, "product", use_price_columns=None)
+        result_default = compute_totals(sut, "product")
+        pd.testing.assert_frame_equal(result_none, result_default)
+
+    def test_unknown_column_raises(self, sut):
+        with pytest.raises(ValueError, match="unknown column"):
+            compute_totals(sut, "product", use_price_columns="nonexistent")
+
+    def test_method_delegate_passes_use_price_columns(self, sut):
+        result_free = compute_totals(sut, "product", use_price_columns="koeb")
+        result_method = sut.compute_totals("product", use_price_columns="koeb")
+        pd.testing.assert_frame_equal(result_free, result_method)
