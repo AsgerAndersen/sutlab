@@ -27,6 +27,11 @@ from sutlab.inspect._balancing_targets import (
     BalancingTargetsInspection,
     BalancingTargetsData,
 )
+from sutlab.inspect._sut_comparison import (
+    inspect_sut_comparison,
+    SUTComparisonInspection,
+    SUTComparisonData,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -59,4 +64,7 @@ __all__ = [
     "inspect_balancing_targets",
     "BalancingTargetsInspection",
     "BalancingTargetsData",
+    "inspect_sut_comparison",
+    "SUTComparisonInspection",
+    "SUTComparisonData",
 ]

@@ -1246,3 +1246,288 @@ def _style_balancing_targets_table(
         styler = styler.apply_index(lambda s, css=trans_index_css: css, axis=0)
 
     return styler
+
+
+def _style_comparison_table(
+    df: pd.DataFrame,
+    palette: str,
+    rel_col: str,
+) -> Styler:
+    """Apply colours and formatting to a scalar comparison table.
+
+    Used for ``supply``, ``use_basic``, ``use_purchasers`` and the
+    corresponding balancing-targets tables.
+
+    Colour scheme:
+
+    - ``before_*`` columns → shade 0 of ``palette`` (supply green or use
+      blue), fixed across all rows.
+    - ``after_*`` columns → shade 1 of ``palette``, fixed across all rows.
+      The two shades make before/after visually distinguishable by column.
+    - ``diff_*`` and ``rel_*`` columns → neutral grey (``balance`` palette),
+      alternating by row position.
+
+    The ``id`` index level (outermost, always merged) gets a thick
+    ``2px solid #999`` border at the bottom of each non-last id block,
+    placed on the **first** row of the block (pandas takes CSS from the
+    first row of a merged span). All inner index levels and data cells get
+    the border on the **last** row of each block.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Comparison table with a MultiIndex whose first level is the id
+        column. Columns: ``before_{col}``, ``after_{col}``, ``diff_{col}``,
+        ``rel_{col}``.
+    palette : str
+        ``"supply"`` (green) or ``"use"`` (blue).
+    rel_col : str
+        Name of the relative-difference column, formatted as a percentage.
+        Pass an empty string when no rel column is present.
+    """
+    non_rel_cols = [c for c in df.columns if c != rel_col]
+    styler = df.style
+    if non_rel_cols:
+        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+    if rel_col and rel_col in df.columns:
+        styler = styler.format(_format_percentage, na_rep="", subset=[rel_col])
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    id_vals = df.index.get_level_values(0)
+
+    # Identify id block boundaries.
+    block_end_rows = {i for i in range(n - 1) if id_vals[i] != id_vals[i + 1]}
+    all_block_starts = {0} | {i + 1 for i in block_end_rows}
+    last_block_start = max(all_block_starts)
+    id_border_rows = all_block_starts - {last_block_start}
+
+    # Data CSS: column role determines shade; row position selects alternating
+    # grey for diff/rel; id-block separator on the last row of each block.
+    css_data = {}
+    for col in df.columns:
+        col_css = []
+        for i in range(n):
+            sep = "; border-bottom: 2px solid #999" if i in block_end_rows else ""
+            if col.startswith("before_"):
+                bg = _DATA_COLORS[palette][0]
+            elif col.startswith("after_"):
+                bg = _DATA_COLORS[palette][1]
+            else:
+                bg = _DATA_COLORS["balance"][i % 2]
+            col_css.append(f"background-color: {bg}{sep}")
+        css_data[col] = col_css
+
+    css_df = pd.DataFrame(css_data, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+
+    # id index level (level 0): merged cell — border on first row of each
+    # non-last block so it aligns with the full block height.
+    id_index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in id_border_rows else "")
+        for i in range(n)
+    ]
+    # All other index levels: border on last row of each id block.
+    inner_index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in block_end_rows else "")
+        for i in range(n)
+    ]
+
+    if isinstance(df.index, pd.MultiIndex):
+        styler = styler.apply_index(lambda s, css=id_index_css: css, level=0, axis=0)
+        for level_name in df.index.names[1:]:
+            styler = styler.apply_index(
+                lambda s, css=inner_index_css: css, level=level_name, axis=0
+            )
+    else:
+        styler = styler.apply_index(lambda s, css=id_index_css: css, axis=0)
+
+    return styler
+
+
+def _style_comparison_layers_table(df: pd.DataFrame) -> Styler:
+    """Apply colours and formatting to a price-layers comparison table.
+
+    Used for ``use_price_layers`` and
+    ``balancing_targets_use_price_layers``.
+
+    Colour scheme:
+
+    - ``before`` and ``after`` columns → cycling layer palette based on the
+      ``price_layer`` index value: ``data[0]`` for ``before``,
+      ``data[1]`` for ``after``.
+    - ``diff`` and ``rel`` columns → neutral grey (``balance`` palette),
+      alternating by row position. ``rel`` is formatted as a percentage.
+    - ``price_layer`` index level → ``index_total`` shade of its palette.
+    - All other inner index levels → alternating neutral grey.
+    - ``id`` index level (level 0) → merged cell with thick separator on the
+      first row of each non-last id block.
+    - Data cells and inner index levels → thick separator on the last row of
+      each id block.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Price-layers comparison table with ``price_layer`` as the last
+        index level. Columns: ``before``, ``after``, ``diff``, ``rel``.
+    """
+    non_rel_cols = [c for c in df.columns if c != "rel"]
+    styler = df.style
+    if non_rel_cols:
+        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+    if "rel" in df.columns:
+        styler = styler.format(_format_percentage, na_rep="", subset=["rel"])
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    id_vals = df.index.get_level_values(0)
+    layer_vals = df.index.get_level_values("price_layer")
+
+    # Assign a cycling palette to each distinct price_layer value.
+    distinct_layers = list(dict.fromkeys(layer_vals))
+    layer_palette = {
+        layer: _LAYER_PALETTES[i % len(_LAYER_PALETTES)]
+        for i, layer in enumerate(distinct_layers)
+    }
+
+    # Identify id block boundaries.
+    block_end_rows = {i for i in range(n - 1) if id_vals[i] != id_vals[i + 1]}
+    all_block_starts = {0} | {i + 1 for i in block_end_rows}
+    last_block_start = max(all_block_starts)
+    id_border_rows = all_block_starts - {last_block_start}
+
+    # Data CSS.
+    css_data = {}
+    for col in df.columns:
+        col_css = []
+        for i in range(n):
+            sep = "; border-bottom: 2px solid #999" if i in block_end_rows else ""
+            if col == "before":
+                palette = layer_palette.get(layer_vals[i], _LAYER_PALETTES[0])
+                bg = palette["data"][0]
+            elif col == "after":
+                palette = layer_palette.get(layer_vals[i], _LAYER_PALETTES[0])
+                bg = palette["data"][1]
+            else:
+                bg = _DATA_COLORS["balance"][i % 2]
+            col_css.append(f"background-color: {bg}{sep}")
+        css_data[col] = col_css
+
+    css_df = pd.DataFrame(css_data, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+
+    # price_layer index level: layer palette index_total shade + id separator.
+    layer_index_css = []
+    for i in range(n):
+        palette = layer_palette.get(layer_vals[i], _LAYER_PALETTES[0])
+        sep = "; border-bottom: 2px solid #999" if i in block_end_rows else ""
+        layer_index_css.append(f"background-color: {palette['index_total']}{sep}")
+
+    # id index level (level 0): merged cell — border on first row of each non-last block.
+    id_index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in id_border_rows else "")
+        for i in range(n)
+    ]
+
+    # All other inner index levels (not id, not price_layer): alternating grey + id separator.
+    inner_index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in block_end_rows else "")
+        for i in range(n)
+    ]
+
+    if isinstance(df.index, pd.MultiIndex):
+        styler = styler.apply_index(lambda s, css=id_index_css: css, level=0, axis=0)
+        for level_name in df.index.names[1:]:
+            if level_name == "price_layer":
+                styler = styler.apply_index(
+                    lambda s, css=layer_index_css: css, level=level_name, axis=0
+                )
+            else:
+                styler = styler.apply_index(
+                    lambda s, css=inner_index_css: css, level=level_name, axis=0
+                )
+    else:
+        styler = styler.apply_index(lambda s, css=id_index_css: css, axis=0)
+
+    return styler
+
+
+def _style_summary_table(df: pd.DataFrame) -> Styler:
+    """Apply row colours and block separators to the comparison summary table.
+
+    Colour scheme:
+
+    - ``supply`` and ``balancing_targets_supply`` rows → green
+      (``supply`` palette, shade 0).
+    - Use rows (``use_basic``, ``use_purchasers``, ``use_price_layers`` and
+      their ``balancing_targets_*`` counterparts) → alternating blue
+      (``use`` palette), counter resetting at the start of each block.
+    - Data cells use ``_DATA_COLORS``; index cells use the more saturated
+      ``_INDEX_COLORS``, matching the convention in other inspection tables.
+
+    A ``2px solid #999`` separator is placed between the SUT block (first
+    four rows) and the balancing-targets block (last four rows) when both
+    are present.
+
+    Formats ``n_differences`` as a plain integer (no decimals).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary DataFrame with ``table`` as the index name and
+        ``n_differences`` as the sole column.
+    """
+    styler = df.style.format(
+        lambda v: "" if pd.isna(v) else str(int(v)), na_rep=""
+    )
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    table_names = df.index.tolist()
+
+    # Determine the separator row: last SUT row, when a targets block follows.
+    has_targets_block = any(name.startswith("balancing_targets_") for name in table_names)
+    sut_end = next(
+        (i for i in range(n - 1, -1, -1) if not table_names[i].startswith("balancing_targets_")),
+        None,
+    )
+    separator_row = sut_end if (has_targets_block and sut_end is not None) else None
+
+    data_css = []
+    index_css = []
+    use_counter = 0
+
+    for i, name in enumerate(table_names):
+        # Reset the use-row alternation counter at the start of each block.
+        if name in ("supply", "balancing_targets_supply"):
+            use_counter = 0
+
+        sep = "; border-bottom: 2px solid #999" if i == separator_row else ""
+
+        is_supply = name in ("supply", "balancing_targets_supply")
+        if is_supply:
+            data_bg = _DATA_COLORS["supply"][0]
+            index_bg = _INDEX_COLORS["supply"][0]
+        else:
+            data_bg = _DATA_COLORS["use"][use_counter % 2]
+            index_bg = _INDEX_COLORS["use"][use_counter % 2]
+            use_counter += 1
+
+        data_css.append(f"background-color: {data_bg}{sep}")
+        index_css.append(f"background-color: {index_bg}{sep}")
+
+    css_df = pd.DataFrame({"n_differences": data_css}, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+    styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+
+    return styler

@@ -699,3 +699,35 @@ Append-only. Each entry: date, decision, brief rationale.
   to every file. Default `0` preserves existing behaviour (first sheet). `None` not used as
   default because `pd.read_excel(..., sheet_name=None)` returns a dict of DataFrames rather
   than a single DataFrame.
+
+- **2026-04-10**: `inspect_sut_comparison(before, after, ...)` added in `sutlab/inspect/_sut_comparison.py`.
+  Returns `SUTComparisonInspection` with `data: SUTComparisonData` (8 table fields + `summary`).
+  Compares two SUTs row-level across all price columns using a single outer merge per side
+  (supply: 1 merge, use: 1 merge reused for all three use tables). Key design decisions:
+  - Outer join: rows present in only one SUT always included.
+  - 4 SUT tables: `supply` (basic prices), `use_basic`, `use_purchasers`, `use_price_layers`
+    (long-format, one row per key+price_layer).
+  - 4 nullable balancing targets tables: same structure, no product dimension. All four are
+    `None` when either SUT lacks `balancing_targets`.
+  - `summary` DataFrame: index=table name, column=`n_differences`. Row order: supply,
+    use_basic, use_price_layers, use_purchasers in each block. Targets block omitted when absent.
+  - Filtering arguments: `ids`, `products`, `transactions`, `categories` (same pattern syntax
+    as `get_rows`). Products filter not applied to targets tables (no product dimension).
+  - `diff_tolerance` / `rel_tolerance`: rows excluded when both `abs(diff) <= diff_tolerance`
+    and `abs(rel) <= rel_tolerance`. One-sided rows (present in only one SUT) always included
+    unless `filter_nan_as_zero=True` suppresses NaN-vs-zero cases.
+  - `filter_nan_as_zero: bool = False`: post-filter mask `(before.isna() & after.eq(0)) |
+    (before.eq(0) & after.isna())` applied after the main keep filter; applies to all tables.
+  - `sort: bool = False`: sorts within id (or id+price_layer for layers table) by abs(diff)
+    descending.
+  - Index: `(id, product, transaction, category)` with optional `_txt` companions from
+    classifications. Layers table adds `price_layer` as final level (no txt companion).
+    Targets tables: `(id, transaction, category)`, no product.
+  - Delegate: `after_sut.inspect_sut_comparison(before_sut)` (self=after, arg=before).
+  - Styled properties on `SUTComparisonInspection`: `supply` (green), `use_basic`/
+    `use_purchasers` (blue), `use_price_layers` (cycling layer palettes), `summary`
+    (supply rows green, use rows alternating blue, block separator between SUT and targets
+    blocks), and the four nullable `balancing_targets_*` properties. `before_*` columns get
+    palette shade 0, `after_*` get shade 1; `diff_*`/`rel_*` get alternating grey.
+    Id-block separators follow the merged-cell convention (border on first row for merged
+    id level, last row for data and inner index levels).
