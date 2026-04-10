@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Iterable, Literal
 
 if TYPE_CHECKING:
-    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, BalancingTargetsInspection
+    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, BalancingTargetsInspection, SUTComparisonInspection
 
 import pandas as pd
 
@@ -506,6 +506,28 @@ class SUT:
         """Delegates to :func:`~sutlab.inspect.inspect_balancing_targets`."""
         from sutlab.inspect import inspect_balancing_targets
         return inspect_balancing_targets(self, transactions=transactions, categories=categories, sort=sort)
+
+    def inspect_sut_comparison(
+        self,
+        before: SUT,
+        *,
+        ids: str | int | Iterable[str | int] | None = None,
+        products: str | list[str] | None = None,
+        transactions: str | list[str] | None = None,
+        categories: str | list[str] | None = None,
+        diff_tolerance: float = 0,
+        rel_tolerance: float = 0,
+        filter_nan_as_zero: bool = False,
+        sort: bool = False,
+    ) -> SUTComparisonInspection:
+        """Delegates to :func:`~sutlab.inspect.inspect_sut_comparison`."""
+        from sutlab.inspect import inspect_sut_comparison
+        return inspect_sut_comparison(
+            before, self,
+            ids=ids, products=products, transactions=transactions, categories=categories,
+            diff_tolerance=diff_tolerance, rel_tolerance=rel_tolerance,
+            filter_nan_as_zero=filter_nan_as_zero, sort=sort,
+        )
 
     def adjust_add_sut(self, adjustments: SUT) -> SUT:
         """Delegates to :func:`~sutlab.adjust.adjust_add_sut`."""
