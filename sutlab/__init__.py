@@ -31,11 +31,11 @@ from sutlab.sut import (
     get_individual_consumption_codes,
     get_collective_consumption_codes,
     get_ids,
-    add_sut,
 )
 from sutlab.inspect import inspect_products, inspect_industries, inspect_final_uses
 from sutlab.derive import compute_price_layer_rates
 from sutlab.balancing import balance_columns, balance_products_use
+from sutlab.adjust import adjust_add_sut
 from sutlab.sut import SUT
 
 # Attach free-function docstrings to SUT methods so that
@@ -46,7 +46,7 @@ SUT.balance_columns.__doc__ = balance_columns.__doc__
 SUT.balance_products_use.__doc__ = balance_products_use.__doc__
 SUT.inspect_industries.__doc__ = inspect_industries.__doc__
 SUT.inspect_final_uses.__doc__ = inspect_final_uses.__doc__
-SUT.add_sut.__doc__ = add_sut.__doc__
+SUT.adjust_add_sut.__doc__ = adjust_add_sut.__doc__
 SUT.write_to_separated_parquet.__doc__ = write_sut_to_separated_parquet.__doc__
 SUT.write_to_combined_parquet.__doc__ = write_sut_to_combined_parquet.__doc__
 SUT.write_to_separated_csv.__doc__ = write_sut_to_separated_csv.__doc__
