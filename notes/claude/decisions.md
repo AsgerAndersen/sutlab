@@ -691,3 +691,11 @@ Append-only. Each entry: date, decision, brief rationale.
   `adjust_add_sut` a home. `_add_long_tables` private helper moved alongside it.
   Tests moved to `tests/test_adjust.py`. `SUT.add_sut` method renamed `SUT.adjust_add_sut`
   with a local import to avoid circular imports (same pattern as inspect/balancing methods).
+
+- **2026-04-10**: `sheet_name: str | int = 0` (keyword-only) added to all four Excel
+  loaders: `load_sut_from_separated_excel`, `load_sut_from_combined_excel`,
+  `load_balancing_targets_from_separated_excel`, `load_balancing_targets_from_combined_excel`.
+  Passed directly to `pd.read_excel`. In the separated loaders the same sheet name applies
+  to every file. Default `0` preserves existing behaviour (first sheet). `None` not used as
+  default because `pd.read_excel(..., sheet_name=None)` returns a dict of DataFrames rather
+  than a single DataFrame.
