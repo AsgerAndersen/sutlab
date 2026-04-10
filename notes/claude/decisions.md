@@ -683,3 +683,11 @@ Append-only. Each entry: date, decision, brief rationale.
   because price column names are user-defined and data-specific — users know their column
   names, not the abstract role names. Unknown column names raise ValueError with available
   columns listed. `SUT.compute_totals` delegate updated to pass the argument through.
+
+- **2026-04-10**: `add_sut` renamed `adjust_add_sut` and moved to a new `sutlab/adjust/`
+  package. The adjust module is intended to hold functions that directly adjust SUT values
+  (e.g. `adjust_multiply`, `adjust_move` — not yet designed). Full scope of the adjust
+  module is unsettled pending user discussions; the module was created now to give
+  `adjust_add_sut` a home. `_add_long_tables` private helper moved alongside it.
+  Tests moved to `tests/test_adjust.py`. `SUT.add_sut` method renamed `SUT.adjust_add_sut`
+  with a local import to avoid circular imports (same pattern as inspect/balancing methods).
