@@ -877,6 +877,7 @@ def load_sut_from_separated_excel(
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
     *,
+    sheet_name: str | int = 0,
     print_paths: bool = False,
 ) -> SUT:
     """
@@ -906,6 +907,10 @@ def load_sut_from_separated_excel(
         be present — it is used to split supply and use rows.
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
+    sheet_name : str or int, optional
+        Sheet to read from each file. Accepts a sheet name (str) or zero-based
+        index (int). The same sheet name is used for every file. Defaults to
+        ``0`` (first sheet).
     print_paths : bool, optional
         If ``True``, print the paths being read before loading. Defaults to
         ``False``.
@@ -962,7 +967,7 @@ def load_sut_from_separated_excel(
 
     frames = []
     for id_value, path in zip(id_values, paths):
-        df = pd.read_excel(path, dtype=str_dtypes)
+        df = pd.read_excel(path, sheet_name=sheet_name, dtype=str_dtypes)
         for col in price_cols:
             df[col] = pd.to_numeric(df[col])
         df.insert(0, cols.id, id_value)
@@ -977,6 +982,7 @@ def load_sut_from_combined_excel(
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
     *,
+    sheet_name: str | int = 0,
     print_paths: bool = False,
 ) -> SUT:
     """
@@ -1002,6 +1008,9 @@ def load_sut_from_combined_excel(
         be present — it is used to split supply and use rows.
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
+    sheet_name : str or int, optional
+        Sheet to read from the file. Accepts a sheet name (str) or zero-based
+        index (int). Defaults to ``0`` (first sheet).
     print_paths : bool, optional
         If ``True``, print the path being read before loading. Defaults to
         ``False``.
@@ -1045,7 +1054,7 @@ def load_sut_from_combined_excel(
     ]
     price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
 
-    df = pd.read_excel(path, dtype=str_dtypes)
+    df = pd.read_excel(path, sheet_name=sheet_name, dtype=str_dtypes)
     for col in price_cols:
         df[col] = pd.to_numeric(df[col])
 
@@ -1590,6 +1599,7 @@ def load_balancing_targets_from_separated_excel(
     paths: list[str | Path],
     metadata: SUTMetadata,
     *,
+    sheet_name: str | int = 0,
     print_paths: bool = False,
 ) -> BalancingTargets:
     """
@@ -1628,6 +1638,10 @@ def load_balancing_targets_from_separated_excel(
     metadata : SUTMetadata
         Metadata for the SUT. ``metadata.classifications.transactions`` must
         be present — it is used to split supply and use rows.
+    sheet_name : str or int, optional
+        Sheet to read from each file. Accepts a sheet name (str) or zero-based
+        index (int). The same sheet name is used for every file. Defaults to
+        ``0`` (first sheet).
     print_paths : bool, optional
         If ``True``, print the paths being read before loading. Defaults to
         ``False``.
@@ -1682,7 +1696,7 @@ def load_balancing_targets_from_separated_excel(
 
     frames = []
     for id_value, path in zip(id_values, paths):
-        df = pd.read_excel(path, dtype=str)
+        df = pd.read_excel(path, sheet_name=sheet_name, dtype=str)
         df = _strip_whitespace(df)
         _validate_required_columns(df, required_cols, source=f"Targets file '{path}'")
         df.insert(0, cols.id, id_value)
@@ -1701,6 +1715,7 @@ def load_balancing_targets_from_combined_excel(
     path: str | Path,
     metadata: SUTMetadata,
     *,
+    sheet_name: str | int = 0,
     print_paths: bool = False,
 ) -> BalancingTargets:
     """
@@ -1737,6 +1752,9 @@ def load_balancing_targets_from_combined_excel(
     metadata : SUTMetadata
         Metadata for the SUT. ``metadata.classifications.transactions`` must
         be present — it is used to split supply and use rows.
+    sheet_name : str or int, optional
+        Sheet to read from the file. Accepts a sheet name (str) or zero-based
+        index (int). Defaults to ``0`` (first sheet).
     print_paths : bool, optional
         If ``True``, print the path being read before loading. Defaults to
         ``False``.
@@ -1781,7 +1799,7 @@ def load_balancing_targets_from_combined_excel(
     # Only override dtypes for columns that need string preservation (leading
     # zeros in transaction codes). The id column is left to pandas inference.
     str_dtypes = {cols.transaction: str, cols.category: str}
-    combined = pd.read_excel(path, dtype=str_dtypes)
+    combined = pd.read_excel(path, sheet_name=sheet_name, dtype=str_dtypes)
     combined = _strip_whitespace(combined)
     _validate_required_columns(combined, required_cols, source=f"Targets file '{path}'")
 

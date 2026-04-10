@@ -1152,6 +1152,30 @@ class TestLoadSutFromSeparatedExcel:
         with pytest.raises(ValueError, match="ZZZZ"):
             load_sut_from_separated_excel([2021], [bad_excel], metadata, "current_year")
 
+    def test_sheet_name_by_string(self, tmp_path, metadata):
+        df = pd.read_parquet(PARQUET_FILE)
+        path = tmp_path / "multisheet_sep.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_sut_from_separated_excel(
+            [2021], [path], metadata, "current_year", sheet_name="Data"
+        )
+        assert len(result.supply) == 8
+        assert len(result.use) == 21
+
+    def test_sheet_name_by_index(self, tmp_path, metadata):
+        df = pd.read_parquet(PARQUET_FILE)
+        path = tmp_path / "multisheet_sep_idx.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_sut_from_separated_excel(
+            [2021], [path], metadata, "current_year", sheet_name=1
+        )
+        assert len(result.supply) == 8
+        assert len(result.use) == 21
+
 
 class TestLoadSutFromCombinedExcel:
 
@@ -1241,6 +1265,28 @@ class TestLoadSutFromCombinedExcel:
         base_df.to_excel(bad_excel, index=False)
         with pytest.raises(ValueError, match="ZZZZ"):
             load_sut_from_combined_excel(bad_excel, metadata, "current_year")
+
+    def test_sheet_name_by_string(self, tmp_path, metadata):
+        base_df = pd.read_parquet(PARQUET_FILE)
+        base_df.insert(0, "year", 2021)
+        path = tmp_path / "multisheet_comb.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            base_df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_sut_from_combined_excel(path, metadata, "current_year", sheet_name="Data")
+        assert len(result.supply) == 8
+        assert len(result.use) == 21
+
+    def test_sheet_name_by_index(self, tmp_path, metadata):
+        base_df = pd.read_parquet(PARQUET_FILE)
+        base_df.insert(0, "year", 2021)
+        path = tmp_path / "multisheet_comb_idx.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            base_df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_sut_from_combined_excel(path, metadata, "current_year", sheet_name=1)
+        assert len(result.supply) == 8
+        assert len(result.use) == 21
 
 
 # ---------------------------------------------------------------------------
@@ -1719,6 +1765,30 @@ class TestLoadBalancingTargetsFromSeparatedExcel:
         with pytest.raises(ValueError, match="ZZZZ"):
             load_balancing_targets_from_separated_excel([2021], [path], metadata)
 
+    def test_sheet_name_by_string(self, tmp_path, metadata):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        path = tmp_path / "multisheet_sep_targets.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            sep_df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_balancing_targets_from_separated_excel(
+            [2021], [path], metadata, sheet_name="Data"
+        )
+        assert len(result.supply) == 4
+        assert len(result.use) == 7
+
+    def test_sheet_name_by_index(self, tmp_path, metadata):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        path = tmp_path / "multisheet_sep_targets_idx.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            sep_df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_balancing_targets_from_separated_excel(
+            [2021], [path], metadata, sheet_name=1
+        )
+        assert len(result.supply) == 4
+        assert len(result.use) == 7
+
 
 class TestLoadBalancingTargetsFromCombinedExcel:
 
@@ -1803,6 +1873,28 @@ class TestLoadBalancingTargetsFromCombinedExcel:
         path = write_targets_file(tmp_path, rows)
         with pytest.raises(ValueError, match="ZZZZ"):
             load_balancing_targets_from_combined_excel(path, metadata)
+
+    def test_sheet_name_by_string(self, tmp_path, metadata):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        sep_df.insert(0, "year", "2021")
+        path = tmp_path / "multisheet_comb_targets.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            sep_df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_balancing_targets_from_combined_excel(path, metadata, sheet_name="Data")
+        assert len(result.supply) == 4
+        assert len(result.use) == 7
+
+    def test_sheet_name_by_index(self, tmp_path, metadata):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        sep_df.insert(0, "year", "2021")
+        path = tmp_path / "multisheet_comb_targets_idx.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame().to_excel(writer, sheet_name="Ignore", index=False)
+            sep_df.to_excel(writer, sheet_name="Data", index=False)
+        result = load_balancing_targets_from_combined_excel(path, metadata, sheet_name=1)
+        assert len(result.supply) == 4
+        assert len(result.use) == 7
 
 
 # ---------------------------------------------------------------------------
