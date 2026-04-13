@@ -52,6 +52,7 @@ The `role` values must be chosen from the fixed list below.
 | `product_subsidies` | Subsidies on products, if recorded separately |
 | `product_taxes_less_subsidies` | Taxes less subsidies on products, net |
 | `vat` | VAT |
+| `target` | Target column totals used during balancing — the value column in balancing targets files |
 
 ---
 

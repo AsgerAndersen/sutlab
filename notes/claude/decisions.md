@@ -732,6 +732,14 @@ Append-only. Each entry: date, decision, brief rationale.
     Id-block separators follow the merged-cell convention (border on first row for merged
     id level, last row for data and inner index levels).
 
+- **2026-04-13**: Add `isinstance` type validation (raising `TypeError`) for custom-class
+  inputs across six functions: `set_balancing_targets` (targets: BalancingTargets),
+  `set_balancing_config` (config: BalancingConfig), `adjust_add_sut` (both sut and
+  adjustments: SUT), `inspect_sut_comparison` (before: SUT), `load_sut_from_dataframe`
+  (df: pd.DataFrame), `load_balancing_targets_from_dataframe` (df: pd.DataFrame).
+  Scope rule: validate user-supplied custom-class arguments only; skip the `sut` parameter
+  when the function is also callable as a SUT method (sut is guaranteed to be SUT via self).
+
 - **2026-04-13**: `write_sut_to_separated_parquet/csv/excel` (and their `SUT` delegate
   methods) changed to take `id_values: list[str | int]` and `paths: list[str | Path]`
   instead of `folder`, `prefix`, `price_basis_code`. Caller now controls exact output

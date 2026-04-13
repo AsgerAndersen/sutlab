@@ -21,6 +21,23 @@ Three folders:
 
 When a year looks strange, the user copies `balance_YYYY.ipynb` from `run_balancing` back into `explore_balancing`, experiments, and when satisfied moves the updated notebook to `balancing_anchors` (updating the Excel mapping if the anchor structure changes). Then reruns the program for the affected years.
 
+## Workflow package
+
+A small standalone package (separate from sutlab) with two functions, intended to be called from a notebook. The notebook then serves as a log of what was copied and run.
+
+**Copy function**: reads the Excel mapping, copies each anchor notebook for every year it covers into `run_balancing` (renaming to `balance_YYYY.ipynb` for the target year and injecting `BALANCING_YEAR = YYYY` as a papermill parameter), and prints one line per action.
+
+**Run function**: executes the notebooks in `run_balancing` sequentially using papermill, printing progress before and after each notebook. Fail-fast: stops on the first failure and propagates the error (a `PapermillExecutionError` carrying the full traceback from the failed notebook) to the calling notebook. The output in the calling notebook acts as a running log:
+
+```
+Running balance_2023.ipynb... done
+Running balance_2022.ipynb... done
+Running balance_2021.ipynb... FAILED
+
+PapermillExecutionError: balance_2021.ipynb cell 7
+...traceback from the executed notebook...
+```
+
 ## Open question: inspection context
 
 Balancing operates on a single year, but inspection is most meaningful in a time series context. When experimenting with a sequence for year *t*, users want to see how *t* looks relative to other years in the revision period — but those other years may be in various states of balancing.

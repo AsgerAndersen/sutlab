@@ -2,14 +2,18 @@
 
 ## Next up
 
--   Implementer novo sagen som eksempel.
-    -   brug derefter combined excel loader til at loade novo sag og adde den til sut.
-    -   start med løbende priser
-    -   start med at gøre sagen væsentligt mindre (eg 5 milliarder som 2019 værdi), så den bliver nemmere at afstemme, når vi bare bruger den som eksempel
+-   Se revider.ipynb efter for to dos i fed, og fix dem.
 
 -   Design og implementer workflow til at veksle mellem udforskning af afstemning, og automatisk af alle år
     -   Se bud i notes/mine/balancing_workflow.md
     -   Start med løbende priser
+    -   implementer simplificeret novo sag som eksempel
+    -   plan:
+        -   set mappe struktur op i separat projekt.
+        -   brug sutlab til i eksplorativ mappe at finde simpel afstemning af novo sagen i 2019.
+        -   implementer pakke til at kopiere, køre og html-gemme notebooks tilbage over tid.
+        -   brug denne pakke til på novosagen.
+        -   når det er lykkedes at afstemme tilbage til 2014, så skal der implementeres tidsserie inspektions funktioner i løbende priser til at se på aggregater.
 
 -   Implementer flere inspektionsfunktioner
 
