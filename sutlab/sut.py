@@ -570,6 +570,11 @@ class SUT:
         from sutlab.balancing import balance_products_use
         return balance_products_use(self, products=products, adjust_transactions=adjust_transactions, adjust_categories=adjust_categories)
 
+    def remove_locked_cells(self) -> SUT:
+        """Delegates to :func:`~sutlab.balancing.remove_locked_cells`."""
+        from sutlab.balancing import remove_locked_cells
+        return remove_locked_cells(self)
+
     def resolve_target_tolerances(self) -> SUT:
         """Delegates to :func:`~sutlab.balancing.resolve_target_tolerances`."""
         from sutlab.balancing import resolve_target_tolerances
