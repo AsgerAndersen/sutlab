@@ -22,6 +22,7 @@ from sutlab.sut import (
     get_transaction_codes,
     set_balancing_id,
     set_balancing_targets,
+    set_metadata,
 )
 
 
@@ -211,6 +212,42 @@ class TestSetBalancingTargets:
         )
         with pytest.raises(ValueError, match="brch"):
             set_balancing_targets(sut, targets)
+
+
+# ---------------------------------------------------------------------------
+# Tests for set_metadata
+# ---------------------------------------------------------------------------
+
+
+class TestSetMetadata:
+
+    def test_returns_sut_with_metadata_set(self, sut, metadata):
+        result = set_metadata(sut, metadata)
+        assert result.metadata is metadata
+
+    def test_does_not_mutate_original(self, sut, metadata):
+        original_metadata = sut.metadata
+        set_metadata(sut, metadata)
+        assert sut.metadata is original_metadata
+
+    def test_data_is_shared_not_copied(self, sut, metadata):
+        result = set_metadata(sut, metadata)
+        assert result.supply is sut.supply
+        assert result.use is sut.use
+
+    def test_other_fields_are_preserved(self, sut, metadata):
+        result = set_metadata(sut, metadata)
+        assert result.price_basis == sut.price_basis
+        assert result.balancing_id == sut.balancing_id
+
+    def test_raises_when_not_sut_metadata(self, sut):
+        with pytest.raises(TypeError, match="SUTMetadata"):
+            set_metadata(sut, "not_metadata")
+
+    def test_delegate_method_equivalent(self, sut, metadata):
+        result_free = set_metadata(sut, metadata)
+        result_method = sut.set_metadata(metadata)
+        assert result_free.metadata is result_method.metadata
 
 
 # ---------------------------------------------------------------------------

@@ -451,6 +451,10 @@ class SUT:
         """Delegates to :func:`set_balancing_config`."""
         return set_balancing_config(self, config)
 
+    def set_metadata(self, metadata: SUTMetadata) -> SUT:
+        """Delegates to :func:`set_metadata`."""
+        return set_metadata(self, metadata)
+
     def get_rows(
         self,
         *,
@@ -826,6 +830,39 @@ def set_balancing_config(sut: SUT, config: BalancingConfig) -> SUT:
         )
 
     return replace(sut, balancing_config=config)
+
+
+def set_metadata(sut: SUT, metadata: SUTMetadata) -> SUT:
+    """
+    Return a new SUT with ``metadata`` set to the given value.
+
+    The original SUT is not modified.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to update.
+    metadata : SUTMetadata
+        Metadata to attach, containing column name mappings and optional
+        classification tables.
+
+    Returns
+    -------
+    SUT
+        A new SUT with ``metadata`` set. The underlying data is shared with
+        the original (not copied).
+
+    Raises
+    ------
+    TypeError
+        If ``metadata`` is not a ``SUTMetadata`` instance.
+    """
+    if not isinstance(metadata, SUTMetadata):
+        raise TypeError(
+            f"metadata must be a SUTMetadata instance, got {type(metadata).__name__}."
+        )
+
+    return replace(sut, metadata=metadata)
 
 
 # ---------------------------------------------------------------------------
