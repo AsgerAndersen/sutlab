@@ -731,3 +731,10 @@ Append-only. Each entry: date, decision, brief rationale.
     palette shade 0, `after_*` get shade 1; `diff_*`/`rel_*` get alternating grey.
     Id-block separators follow the merged-cell convention (border on first row for merged
     id level, last row for data and inner index levels).
+
+- **2026-04-13**: `write_sut_to_separated_parquet/csv/excel` (and their `SUT` delegate
+  methods) changed to take `id_values: list[str | int]` and `paths: list[str | Path]`
+  instead of `folder`, `prefix`, `price_basis_code`. Caller now controls exact output
+  paths; auto-naming logic removed. Validates that all provided id values are present in
+  the SUT (informative error listing available ids); also validates equal lengths of
+  `id_values` and `paths`. `Path` import added to `sut.py`.
