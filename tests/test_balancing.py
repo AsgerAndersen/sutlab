@@ -7,7 +7,7 @@ from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.balancing import balance_columns, balance_products_use, resolve_target_tolerances
+from sutlab.balancing import balance_columns, balance_products_use, remove_locked_cells, resolve_target_tolerances
 from sutlab.balancing._shared import _evaluate_locks, _get_use_price_columns
 from sutlab.sut import _match_codes
 from sutlab.sut import (
@@ -1121,3 +1121,120 @@ class TestResolveTargetTolerances:
             via_method.balancing_targets.use,
             via_function.balancing_targets.use,
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests: remove_locked_cells
+# ---------------------------------------------------------------------------
+
+
+class TestRemoveLockedCells:
+    # The default `sut` fixture has product C locked (products lock only).
+    # Supply rows: A/0100/X, B/0100/X, C/0100/X (locked), A/0700/"", B/0700/""
+    #              + 2020 context rows (A/0100/X, B/0100/X)
+    # Use rows:    A/3110/HH, B/3110/HH, C/3110/HH (locked), A/2000/X, B/2000/X
+    #              + 2020 context row (A/3110/HH)
+
+    def test_locked_product_removed_from_supply(self, sut):
+        result = remove_locked_cells(sut)
+        assert not (result.supply["nrnr"] == "C").any()
+
+    def test_locked_product_removed_from_use(self, sut):
+        result = remove_locked_cells(sut)
+        assert not (result.use["nrnr"] == "C").any()
+
+    def test_unlocked_supply_rows_preserved(self, sut):
+        result = remove_locked_cells(sut)
+        expected_supply_rows = {
+            (2021, "A", "0100", "X"),
+            (2021, "B", "0100", "X"),
+            (2021, "A", "0700", ""),
+            (2021, "B", "0700", ""),
+            (2020, "A", "0100", "X"),
+            (2020, "B", "0100", "X"),
+        }
+        actual = set(
+            zip(result.supply["year"], result.supply["nrnr"], result.supply["trans"], result.supply["brch"])
+        )
+        assert actual == expected_supply_rows
+
+    def test_unlocked_use_rows_preserved(self, sut):
+        result = remove_locked_cells(sut)
+        expected_use_rows = {
+            (2021, "A", "3110", "HH"),
+            (2021, "B", "3110", "HH"),
+            (2021, "A", "2000", "X"),
+            (2021, "B", "2000", "X"),
+            (2020, "A", "3110", "HH"),
+        }
+        actual = set(
+            zip(result.use["year"], result.use["nrnr"], result.use["trans"], result.use["brch"])
+        )
+        assert actual == expected_use_rows
+
+    def test_balancing_targets_intact(self, sut):
+        result = remove_locked_cells(sut)
+        pd.testing.assert_frame_equal(result.balancing_targets.supply, sut.balancing_targets.supply)
+        pd.testing.assert_frame_equal(result.balancing_targets.use, sut.balancing_targets.use)
+
+    def test_original_sut_unchanged(self, sut):
+        original_supply_len = len(sut.supply)
+        original_use_len = len(sut.use)
+        remove_locked_cells(sut)
+        assert len(sut.supply) == original_supply_len
+        assert len(sut.use) == original_use_len
+
+    def test_transaction_lock(self, sut):
+        from dataclasses import replace as dc_replace
+        new_locks = Locks(transactions=pd.DataFrame({"trans": ["3110"]}))
+        new_config = dc_replace(sut.balancing_config, locks=new_locks)
+        sut_trans_locked = dc_replace(sut, balancing_config=new_config)
+        result = remove_locked_cells(sut_trans_locked)
+        assert not (result.use["trans"] == "3110").any()
+        assert (result.use["trans"] == "2000").any()
+
+    def test_category_lock(self, sut):
+        from dataclasses import replace as dc_replace
+        new_locks = Locks(categories=pd.DataFrame({"trans": ["3110"], "brch": ["HH"]}))
+        new_config = dc_replace(sut.balancing_config, locks=new_locks)
+        sut_cat_locked = dc_replace(sut, balancing_config=new_config)
+        result = remove_locked_cells(sut_cat_locked)
+        locked_mask = (result.use["trans"] == "3110") & (result.use["brch"] == "HH")
+        assert not locked_mask.any()
+        assert (result.use["trans"] == "2000").any()
+
+    def test_cell_lock(self, sut):
+        from dataclasses import replace as dc_replace
+        new_locks = Locks(cells=pd.DataFrame({"nrnr": ["A"], "trans": ["3110"], "brch": ["HH"]}))
+        new_config = dc_replace(sut.balancing_config, locks=new_locks)
+        sut_cell_locked = dc_replace(sut, balancing_config=new_config)
+        result = remove_locked_cells(sut_cell_locked)
+        locked_mask = (result.use["nrnr"] == "A") & (result.use["trans"] == "3110") & (result.use["brch"] == "HH")
+        assert not locked_mask.any()
+        # other rows with trans=3110 still present
+        assert ((result.use["nrnr"] == "B") & (result.use["trans"] == "3110")).any()
+
+    def test_raises_no_metadata(self, sut):
+        from dataclasses import replace as dc_replace
+        sut_no_meta = dc_replace(sut, metadata=None)
+        with pytest.raises(ValueError, match="metadata"):
+            remove_locked_cells(sut_no_meta)
+
+    def test_raises_no_balancing_config(self, sut):
+        from dataclasses import replace as dc_replace
+        sut_no_cfg = dc_replace(sut, balancing_config=None)
+        with pytest.raises(ValueError, match="balancing_config"):
+            remove_locked_cells(sut_no_cfg)
+
+    def test_raises_no_locks(self, sut):
+        from dataclasses import replace as dc_replace
+        new_config = dc_replace(sut.balancing_config, locks=None)
+        sut_no_locks = dc_replace(sut, balancing_config=new_config)
+        with pytest.raises(ValueError, match="locks"):
+            remove_locked_cells(sut_no_locks)
+
+    def test_sut_method_matches_free_function(self, sut):
+        via_method = sut.remove_locked_cells()
+        via_function = remove_locked_cells(sut)
+        pd.testing.assert_frame_equal(via_method.supply, via_function.supply)
+        pd.testing.assert_frame_equal(via_method.use, via_function.use)
