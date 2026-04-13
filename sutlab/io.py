@@ -1125,34 +1125,27 @@ def load_sut_from_dataframe(
 
 def write_sut_to_separated_parquet(
     sut: SUT,
-    folder: str | Path,
-    prefix: str,
+    id_values: list[str | int],
+    paths: list[str | Path],
     *,
-    price_basis_code: str | None = None,
     print_paths: bool = False,
 ) -> None:
     """
-    Write a SUT collection to separate per-member parquet files.
+    Write selected SUT members to separate per-member parquet files.
 
-    One file is written per id value in the SUT. Each file contains the
+    One file is written per entry in ``id_values``. Each file contains the
     combined supply and use rows for that member, without the id column.
     Supply rows have NaN in the price layer and purchasers' price columns.
-
-    Files are named ``{prefix}_{code}_{id_value}.parquet``, where ``code``
-    is the price basis code (default: ``"l"`` for current year, ``"d"`` for
-    previous year).
 
     Parameters
     ----------
     sut : SUT
         The SUT collection to write. ``sut.metadata`` must be present.
-    folder : str or Path
-        Directory to write the files into.
-    prefix : str
-        File name prefix, e.g. ``"ta"``.
-    price_basis_code : str or None, optional
-        Short code for the price basis used in file names. Defaults to
-        ``"l"`` (current year) or ``"d"`` (previous year).
+    id_values : list of str or int
+        Id values to write, one per output file. Must all be present in the
+        SUT.
+    paths : list of str or Path
+        Output file paths, in the same order as ``id_values``.
     print_paths : bool, optional
         If ``True``, print the paths being written before writing. Defaults to
         ``False``.
@@ -1161,31 +1154,42 @@ def write_sut_to_separated_parquet(
     ------
     ValueError
         If ``sut.metadata`` is absent.
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If any value in ``id_values`` is not present in the SUT.
     """
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to identify the id column for writing."
         )
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
 
-    folder = Path(folder)
-    code = _resolve_price_basis_code(sut, price_basis_code)
     id_col = sut.metadata.columns.id
     combined = _combine_supply_use(sut)
+    available = list(combined[id_col].unique())
+    missing = [v for v in id_values if v not in available]
+    if missing:
+        raise ValueError(
+            f"id_values not found in SUT: {missing}. Available: {available}"
+        )
 
     cols = sut.metadata.columns
     sort_cols = [cols.product, cols.transaction, cols.category]
-
-    id_values = list(combined[id_col].unique())
-    output_paths = [folder / f"{prefix}_{code}_{id_value}.parquet" for id_value in id_values]
+    paths = [Path(p) for p in paths]
 
     if print_paths:
         basis = _format_price_basis(sut.price_basis)
         n = len(id_values)
         print(f"Writing SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
-        for id_value, output_path in zip(id_values, output_paths):
+        for id_value, output_path in zip(id_values, paths):
             print(f"  {id_value}: {output_path}")
 
-    for id_value, output_path in zip(id_values, output_paths):
+    for id_value, output_path in zip(id_values, paths):
         member = (
             combined[combined[id_col] == id_value]
             .drop(columns=[id_col])
@@ -1256,36 +1260,29 @@ def write_sut_to_combined_parquet(
 
 def write_sut_to_separated_csv(
     sut: SUT,
-    folder: str | Path,
-    prefix: str,
+    id_values: list[str | int],
+    paths: list[str | Path],
     *,
-    price_basis_code: str | None = None,
     sep: str = ",",
     encoding: str | None = None,
     print_paths: bool = False,
 ) -> None:
     """
-    Write a SUT collection to separate per-member CSV files.
+    Write selected SUT members to separate per-member CSV files.
 
-    One file is written per id value in the SUT. Each file contains the
+    One file is written per entry in ``id_values``. Each file contains the
     combined supply and use rows for that member, without the id column.
     Supply rows have NaN in the price layer and purchasers' price columns.
-
-    Files are named ``{prefix}_{code}_{id_value}.csv``, where ``code`` is
-    the price basis code (default: ``"l"`` for current year, ``"d"`` for
-    previous year).
 
     Parameters
     ----------
     sut : SUT
         The SUT collection to write. ``sut.metadata`` must be present.
-    folder : str or Path
-        Directory to write the files into.
-    prefix : str
-        File name prefix, e.g. ``"ta"``.
-    price_basis_code : str or None, optional
-        Short code for the price basis used in file names. Defaults to
-        ``"l"`` (current year) or ``"d"`` (previous year).
+    id_values : list of str or int
+        Id values to write, one per output file. Must all be present in the
+        SUT.
+    paths : list of str or Path
+        Output file paths, in the same order as ``id_values``.
     sep : str, optional
         Column separator. Defaults to ``','``.
     encoding : str or None, optional
@@ -1298,30 +1295,42 @@ def write_sut_to_separated_csv(
     ------
     ValueError
         If ``sut.metadata`` is absent.
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If any value in ``id_values`` is not present in the SUT.
     """
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to identify the id column for writing."
         )
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
 
-    folder = Path(folder)
-    code = _resolve_price_basis_code(sut, price_basis_code)
     cols = sut.metadata.columns
     id_col = cols.id
     sort_cols = [cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut)
+    available = list(combined[id_col].unique())
+    missing = [v for v in id_values if v not in available]
+    if missing:
+        raise ValueError(
+            f"id_values not found in SUT: {missing}. Available: {available}"
+        )
 
-    id_values = list(combined[id_col].unique())
-    output_paths = [folder / f"{prefix}_{code}_{id_value}.csv" for id_value in id_values]
+    paths = [Path(p) for p in paths]
 
     if print_paths:
         basis = _format_price_basis(sut.price_basis)
         n = len(id_values)
         print(f"Writing SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
-        for id_value, output_path in zip(id_values, output_paths):
+        for id_value, output_path in zip(id_values, paths):
             print(f"  {id_value}: {output_path}")
 
-    for id_value, output_path in zip(id_values, output_paths):
+    for id_value, output_path in zip(id_values, paths):
         member = (
             combined[combined[id_col] == id_value]
             .drop(columns=[id_col])
@@ -1407,34 +1416,27 @@ def write_sut_to_combined_csv(
 
 def write_sut_to_separated_excel(
     sut: SUT,
-    folder: str | Path,
-    prefix: str,
+    id_values: list[str | int],
+    paths: list[str | Path],
     *,
-    price_basis_code: str | None = None,
     print_paths: bool = False,
 ) -> None:
     """
-    Write a SUT collection to separate per-member Excel files.
+    Write selected SUT members to separate per-member Excel files.
 
-    One file is written per id value in the SUT. Each file contains the
+    One file is written per entry in ``id_values``. Each file contains the
     combined supply and use rows for that member, without the id column.
     Supply rows have NaN in the price layer and purchasers' price columns.
-
-    Files are named ``{prefix}_{code}_{id_value}.xlsx``, where ``code`` is
-    the price basis code (default: ``"l"`` for current year, ``"d"`` for
-    previous year).
 
     Parameters
     ----------
     sut : SUT
         The SUT collection to write. ``sut.metadata`` must be present.
-    folder : str or Path
-        Directory to write the files into.
-    prefix : str
-        File name prefix, e.g. ``"ta"``.
-    price_basis_code : str or None, optional
-        Short code for the price basis used in file names. Defaults to
-        ``"l"`` (current year) or ``"d"`` (previous year).
+    id_values : list of str or int
+        Id values to write, one per output file. Must all be present in the
+        SUT.
+    paths : list of str or Path
+        Output file paths, in the same order as ``id_values``.
     print_paths : bool, optional
         If ``True``, print the paths being written before writing. Defaults to
         ``False``.
@@ -1443,30 +1445,42 @@ def write_sut_to_separated_excel(
     ------
     ValueError
         If ``sut.metadata`` is absent.
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If any value in ``id_values`` is not present in the SUT.
     """
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to identify the id column for writing."
         )
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
 
-    folder = Path(folder)
-    code = _resolve_price_basis_code(sut, price_basis_code)
     cols = sut.metadata.columns
     id_col = cols.id
     sort_cols = [cols.product, cols.transaction, cols.category]
     combined = _combine_supply_use(sut)
+    available = list(combined[id_col].unique())
+    missing = [v for v in id_values if v not in available]
+    if missing:
+        raise ValueError(
+            f"id_values not found in SUT: {missing}. Available: {available}"
+        )
 
-    id_values = list(combined[id_col].unique())
-    output_paths = [folder / f"{prefix}_{code}_{id_value}.xlsx" for id_value in id_values]
+    paths = [Path(p) for p in paths]
 
     if print_paths:
         basis = _format_price_basis(sut.price_basis)
         n = len(id_values)
         print(f"Writing SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
-        for id_value, output_path in zip(id_values, output_paths):
+        for id_value, output_path in zip(id_values, paths):
             print(f"  {id_value}: {output_path}")
 
-    for id_value, output_path in zip(id_values, output_paths):
+    for id_value, output_path in zip(id_values, paths):
         member = (
             combined[combined[id_col] == id_value]
             .drop(columns=[id_col])

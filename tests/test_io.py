@@ -1306,39 +1306,35 @@ class TestWriteSutToSeparatedParquet:
             [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
         )
 
-    def test_creates_file_per_id(self, sut, tmp_path):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_l_2021.parquet").exists()
-        assert (tmp_path / "ta_l_2022.parquet").exists()
+    def test_creates_files_at_specified_paths(self, sut, tmp_path):
+        paths = [tmp_path / "a.parquet", tmp_path / "b.parquet"]
+        write_sut_to_separated_parquet(sut, [2021, 2022], paths)
+        assert paths[0].exists()
+        assert paths[1].exists()
 
     def test_id_column_absent_in_file(self, sut, tmp_path):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta")
-        df = pd.read_parquet(tmp_path / "ta_l_2021.parquet")
+        path = tmp_path / "out.parquet"
+        write_sut_to_separated_parquet(sut, [2021], [path])
+        df = pd.read_parquet(path)
         assert "year" not in df.columns
 
-    def test_previous_year_default_code(self, metadata, tmp_path):
-        sut = load_sut_from_separated_parquet([2021], [PARQUET_FILE], metadata, "previous_year")
-        write_sut_to_separated_parquet(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_d_2021.parquet").exists()
-
-    def test_custom_price_basis_code(self, sut, tmp_path):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta", price_basis_code="x")
-        assert (tmp_path / "ta_x_2021.parquet").exists()
+    def test_subset_of_ids(self, sut, tmp_path):
+        path = tmp_path / "out.parquet"
+        write_sut_to_separated_parquet(sut, [2021], [path])
+        df = pd.read_parquet(path)
+        assert len(df) > 0
 
     def test_round_trip(self, sut, metadata, tmp_path):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta")
-        result = load_sut_from_separated_parquet(
-            [2021, 2022],
-            [tmp_path / "ta_l_2021.parquet", tmp_path / "ta_l_2022.parquet"],
-            metadata,
-            "current_year",
-        )
+        paths = [tmp_path / "2021.parquet", tmp_path / "2022.parquet"]
+        write_sut_to_separated_parquet(sut, [2021, 2022], paths)
+        result = load_sut_from_separated_parquet([2021, 2022], paths, metadata, "current_year")
         pd.testing.assert_frame_equal(sut.supply, result.supply, check_dtype=False)
         pd.testing.assert_frame_equal(sut.use, result.use, check_dtype=False)
 
     def test_rows_sorted_by_product_transaction_category(self, sut, tmp_path):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta")
-        df = pd.read_parquet(tmp_path / "ta_l_2021.parquet")
+        path = tmp_path / "out.parquet"
+        write_sut_to_separated_parquet(sut, [2021], [path])
+        df = pd.read_parquet(path)
         expected = df.sort_values(["nrnr", "trans", "brch"]).reset_index(drop=True)
         pd.testing.assert_frame_equal(df, expected)
 
@@ -1346,7 +1342,15 @@ class TestWriteSutToSeparatedParquet:
         from sutlab.sut import SUT
         bare_sut = SUT(price_basis="current_year", supply=pd.DataFrame(), use=pd.DataFrame())
         with pytest.raises(ValueError, match="metadata"):
-            write_sut_to_separated_parquet(bare_sut, tmp_path, "ta")
+            write_sut_to_separated_parquet(bare_sut, [2021], [tmp_path / "out.parquet"])
+
+    def test_error_mismatched_lengths(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_sut_to_separated_parquet(sut, [2021, 2022], [tmp_path / "out.parquet"])
+
+    def test_error_id_not_in_sut(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_sut_to_separated_parquet(sut, [9999], [tmp_path / "out.parquet"])
 
 
 class TestWriteSutToCombinedParquet:
@@ -1415,46 +1419,51 @@ class TestWriteSutToSeparatedCsv:
             [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
         )
 
-    def test_creates_file_per_id(self, sut, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_l_2021.csv").exists()
-        assert (tmp_path / "ta_l_2022.csv").exists()
+    def test_creates_files_at_specified_paths(self, sut, tmp_path):
+        paths = [tmp_path / "a.csv", tmp_path / "b.csv"]
+        write_sut_to_separated_csv(sut, [2021, 2022], paths)
+        assert paths[0].exists()
+        assert paths[1].exists()
 
     def test_id_column_absent_in_file(self, sut, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta")
-        df = pd.read_csv(tmp_path / "ta_l_2021.csv")
+        path = tmp_path / "out.csv"
+        write_sut_to_separated_csv(sut, [2021], [path])
+        df = pd.read_csv(path)
         assert "year" not in df.columns
 
-    def test_custom_price_basis_code(self, sut, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta", price_basis_code="x")
-        assert (tmp_path / "ta_x_2021.csv").exists()
-
     def test_custom_separator(self, sut, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta", sep=";")
-        df = pd.read_csv(tmp_path / "ta_l_2021.csv", sep=";")
+        path = tmp_path / "out.csv"
+        write_sut_to_separated_csv(sut, [2021], [path], sep=";")
+        df = pd.read_csv(path, sep=";")
         assert "nrnr" in df.columns
 
     def test_custom_encoding(self, sut, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta", encoding="latin-1")
-        df = pd.read_csv(tmp_path / "ta_l_2021.csv", encoding="latin-1")
+        path = tmp_path / "out.csv"
+        write_sut_to_separated_csv(sut, [2021], [path], encoding="latin-1")
+        df = pd.read_csv(path, encoding="latin-1")
         assert "nrnr" in df.columns
 
     def test_rows_sorted_by_product_transaction_category(self, sut, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta")
-        df = pd.read_csv(tmp_path / "ta_l_2021.csv", dtype={"trans": str, "nrnr": str, "brch": str})
+        path = tmp_path / "out.csv"
+        write_sut_to_separated_csv(sut, [2021], [path])
+        df = pd.read_csv(path, dtype={"trans": str, "nrnr": str, "brch": str})
         expected = df.sort_values(["nrnr", "trans", "brch"]).reset_index(drop=True)
         pd.testing.assert_frame_equal(df, expected)
 
     def test_round_trip(self, sut, metadata, tmp_path):
-        write_sut_to_separated_csv(sut, tmp_path, "ta")
-        result = load_sut_from_separated_csv(
-            [2021, 2022],
-            [tmp_path / "ta_l_2021.csv", tmp_path / "ta_l_2022.csv"],
-            metadata,
-            "current_year",
-        )
+        paths = [tmp_path / "2021.csv", tmp_path / "2022.csv"]
+        write_sut_to_separated_csv(sut, [2021, 2022], paths)
+        result = load_sut_from_separated_csv([2021, 2022], paths, metadata, "current_year")
         pd.testing.assert_frame_equal(sut.supply, result.supply, check_dtype=False)
         pd.testing.assert_frame_equal(sut.use, result.use, check_dtype=False)
+
+    def test_error_mismatched_lengths(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_sut_to_separated_csv(sut, [2021, 2022], [tmp_path / "out.csv"])
+
+    def test_error_id_not_in_sut(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_sut_to_separated_csv(sut, [9999], [tmp_path / "out.csv"])
 
 
 class TestWriteSutToCombinedCsv:
@@ -1519,36 +1528,39 @@ class TestWriteSutToSeparatedExcel:
             [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
         )
 
-    def test_creates_file_per_id(self, sut, tmp_path):
-        write_sut_to_separated_excel(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_l_2021.xlsx").exists()
-        assert (tmp_path / "ta_l_2022.xlsx").exists()
+    def test_creates_files_at_specified_paths(self, sut, tmp_path):
+        paths = [tmp_path / "a.xlsx", tmp_path / "b.xlsx"]
+        write_sut_to_separated_excel(sut, [2021, 2022], paths)
+        assert paths[0].exists()
+        assert paths[1].exists()
 
     def test_id_column_absent_in_file(self, sut, tmp_path):
-        write_sut_to_separated_excel(sut, tmp_path, "ta")
-        df = pd.read_excel(tmp_path / "ta_l_2021.xlsx")
+        path = tmp_path / "out.xlsx"
+        write_sut_to_separated_excel(sut, [2021], [path])
+        df = pd.read_excel(path)
         assert "year" not in df.columns
 
-    def test_custom_price_basis_code(self, sut, tmp_path):
-        write_sut_to_separated_excel(sut, tmp_path, "ta", price_basis_code="x")
-        assert (tmp_path / "ta_x_2021.xlsx").exists()
-
     def test_rows_sorted_by_product_transaction_category(self, sut, tmp_path):
-        write_sut_to_separated_excel(sut, tmp_path, "ta")
-        df = pd.read_excel(tmp_path / "ta_l_2021.xlsx", dtype={"trans": str, "nrnr": str, "brch": str})
+        path = tmp_path / "out.xlsx"
+        write_sut_to_separated_excel(sut, [2021], [path])
+        df = pd.read_excel(path, dtype={"trans": str, "nrnr": str, "brch": str})
         expected = df.sort_values(["nrnr", "trans", "brch"]).reset_index(drop=True)
         pd.testing.assert_frame_equal(df, expected)
 
     def test_round_trip(self, sut, metadata, tmp_path):
-        write_sut_to_separated_excel(sut, tmp_path, "ta")
-        result = load_sut_from_separated_excel(
-            [2021, 2022],
-            [tmp_path / "ta_l_2021.xlsx", tmp_path / "ta_l_2022.xlsx"],
-            metadata,
-            "current_year",
-        )
+        paths = [tmp_path / "2021.xlsx", tmp_path / "2022.xlsx"]
+        write_sut_to_separated_excel(sut, [2021, 2022], paths)
+        result = load_sut_from_separated_excel([2021, 2022], paths, metadata, "current_year")
         pd.testing.assert_frame_equal(sut.supply, result.supply, check_dtype=False)
         pd.testing.assert_frame_equal(sut.use, result.use, check_dtype=False)
+
+    def test_error_mismatched_lengths(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_sut_to_separated_excel(sut, [2021, 2022], [tmp_path / "out.xlsx"])
+
+    def test_error_id_not_in_sut(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_sut_to_separated_excel(sut, [9999], [tmp_path / "out.xlsx"])
 
 
 class TestWriteSutToCombinedExcel:
@@ -2348,14 +2360,15 @@ class TestPrintPaths:
     # --- writers ---
 
     def test_write_sut_to_separated_parquet_prints_paths(self, sut, tmp_path, capsys):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta", print_paths=True)
+        path = tmp_path / "out_2021.parquet"
+        write_sut_to_separated_parquet(sut, [2021], [path], print_paths=True)
         out = capsys.readouterr().out
         assert "Writing SUT (current year, 1 member):" in out
         assert "2021:" in out
-        assert "ta_l_2021.parquet" in out
+        assert "out_2021.parquet" in out
 
     def test_write_sut_to_separated_parquet_no_print_by_default(self, sut, tmp_path, capsys):
-        write_sut_to_separated_parquet(sut, tmp_path, "ta")
+        write_sut_to_separated_parquet(sut, [2021], [tmp_path / "out.parquet"])
         assert capsys.readouterr().out == ""
 
     def test_write_sut_to_combined_parquet_prints_path(self, sut, tmp_path, capsys):
@@ -2369,10 +2382,11 @@ class TestPrintPaths:
         assert capsys.readouterr().out == ""
 
     def test_write_sut_to_separated_csv_prints_paths(self, sut, tmp_path, capsys):
-        write_sut_to_separated_csv(sut, tmp_path, "ta", print_paths=True)
+        path = tmp_path / "out_2021.csv"
+        write_sut_to_separated_csv(sut, [2021], [path], print_paths=True)
         out = capsys.readouterr().out
         assert "Writing SUT (current year, 1 member):" in out
-        assert "ta_l_2021.csv" in out
+        assert "out_2021.csv" in out
 
     def test_write_sut_to_combined_csv_prints_path(self, sut, tmp_path, capsys):
         write_sut_to_combined_csv(sut, tmp_path, "ta", print_paths=True)
@@ -2381,10 +2395,11 @@ class TestPrintPaths:
         assert "ta_l.csv" in out
 
     def test_write_sut_to_separated_excel_prints_paths(self, sut, tmp_path, capsys):
-        write_sut_to_separated_excel(sut, tmp_path, "ta", print_paths=True)
+        path = tmp_path / "out_2021.xlsx"
+        write_sut_to_separated_excel(sut, [2021], [path], print_paths=True)
         out = capsys.readouterr().out
         assert "Writing SUT (current year, 1 member):" in out
-        assert "ta_l_2021.xlsx" in out
+        assert "out_2021.xlsx" in out
 
     def test_write_sut_to_combined_excel_prints_path(self, sut, tmp_path, capsys):
         write_sut_to_combined_excel(sut, tmp_path, "ta", print_paths=True)

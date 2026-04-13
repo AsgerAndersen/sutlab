@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Literal
 
 if TYPE_CHECKING:
@@ -536,15 +537,14 @@ class SUT:
 
     def write_to_separated_parquet(
         self,
-        folder: str,
-        prefix: str,
+        id_values: list[str | int],
+        paths: list[str | Path],
         *,
-        price_basis_code: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_separated_parquet`."""
         from sutlab.io import write_sut_to_separated_parquet
-        write_sut_to_separated_parquet(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
+        write_sut_to_separated_parquet(self, id_values, paths, print_paths=print_paths)
 
     def write_to_combined_parquet(
         self,
@@ -560,17 +560,16 @@ class SUT:
 
     def write_to_separated_csv(
         self,
-        folder: str,
-        prefix: str,
+        id_values: list[str | int],
+        paths: list[str | Path],
         *,
-        price_basis_code: str | None = None,
         sep: str = ",",
         encoding: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_separated_csv`."""
         from sutlab.io import write_sut_to_separated_csv
-        write_sut_to_separated_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding, print_paths=print_paths)
+        write_sut_to_separated_csv(self, id_values, paths, sep=sep, encoding=encoding, print_paths=print_paths)
 
     def write_to_combined_csv(
         self,
@@ -588,15 +587,14 @@ class SUT:
 
     def write_to_separated_excel(
         self,
-        folder: str,
-        prefix: str,
+        id_values: list[str | int],
+        paths: list[str | Path],
         *,
-        price_basis_code: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_separated_excel`."""
         from sutlab.io import write_sut_to_separated_excel
-        write_sut_to_separated_excel(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
+        write_sut_to_separated_excel(self, id_values, paths, print_paths=print_paths)
 
     def write_to_combined_excel(
         self,
