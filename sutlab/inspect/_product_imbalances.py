@@ -12,6 +12,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._style import _style_imbalances_table
+from sutlab.inspect._shared import _write_inspection_to_excel
 
 
 @dataclass
@@ -74,6 +75,21 @@ class UnbalancedProductsInspection:
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
         return _style_imbalances_table(df, supply_cols, use_cols, rel_col)
+
+    def write_to_excel(self, path) -> None:
+        """Write all tables to an Excel file, one sheet per table.
+
+        Each field in ``self.data`` is written to a separate sheet. Fields
+        whose value is ``None`` are skipped. Sheet names match the field name;
+        names exceeding Excel's 31-character limit are shortened by truncating
+        each underscore-separated segment to its first three characters.
+
+        Parameters
+        ----------
+        path : str or Path
+            Destination ``.xlsx`` file path.
+        """
+        _write_inspection_to_excel(self, path)
 
 
 def inspect_unbalanced_products(

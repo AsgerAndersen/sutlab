@@ -13,6 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
+from sutlab.inspect._shared import _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -192,6 +193,21 @@ class FinalUseInspection:
         return _style_final_use_price_layers_table(
             self.data.price_layers_growth, _format_percentage
         )
+
+    def write_to_excel(self, path) -> None:
+        """Write all tables to an Excel file, one sheet per table.
+
+        Each field in ``self.data`` is written to a separate sheet. Fields
+        whose value is ``None`` are skipped. Sheet names match the field name;
+        names exceeding Excel's 31-character limit are shortened by truncating
+        each underscore-separated segment to its first three characters.
+
+        Parameters
+        ----------
+        path : str or Path
+            Destination ``.xlsx`` file path.
+        """
+        _write_inspection_to_excel(self, path)
 
 
 def inspect_final_uses(
