@@ -12,6 +12,10 @@ from sutlab.io import (
     _load_metadata_classifications_from_excel,
     _load_metadata_columns_from_excel,
     load_balancing_config_from_excel,
+    load_balancing_targets_from_separated_parquet,
+    load_balancing_targets_from_combined_parquet,
+    load_balancing_targets_from_separated_csv,
+    load_balancing_targets_from_combined_csv,
     load_balancing_targets_from_separated_excel,
     load_balancing_targets_from_combined_excel,
     load_balancing_targets_from_dataframe,
@@ -1365,33 +1369,28 @@ class TestWriteSutToCombinedParquet:
             [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
         )
 
-    def test_creates_single_file(self, sut, tmp_path):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_l.parquet").exists()
+    def test_creates_file_at_given_path(self, sut, tmp_path):
+        path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, path)
+        assert path.exists()
 
     def test_id_column_present_in_file(self, sut, tmp_path):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
-        df = pd.read_parquet(tmp_path / "ta_l.parquet")
+        path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, path)
+        df = pd.read_parquet(path)
         assert "year" in df.columns
 
-    def test_previous_year_default_code(self, metadata, tmp_path):
-        sut = load_sut_from_separated_parquet([2021], [PARQUET_FILE], metadata, "previous_year")
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_d.parquet").exists()
-
-    def test_custom_price_basis_code(self, sut, tmp_path):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta", price_basis_code="x")
-        assert (tmp_path / "ta_x.parquet").exists()
-
     def test_rows_sorted_by_id_product_transaction_category(self, sut, tmp_path):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
-        df = pd.read_parquet(tmp_path / "ta_l.parquet")
+        path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, path)
+        df = pd.read_parquet(path)
         expected = df.sort_values(["year", "nrnr", "trans", "brch"]).reset_index(drop=True)
         pd.testing.assert_frame_equal(df, expected)
 
     def test_round_trip(self, sut, metadata, tmp_path):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
-        result = load_sut_from_combined_parquet(tmp_path / "ta_l.parquet", metadata, "current_year")
+        path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, path)
+        result = load_sut_from_combined_parquet(path, metadata, "current_year")
         pd.testing.assert_frame_equal(sut.supply, result.supply, check_dtype=False)
         pd.testing.assert_frame_equal(sut.use, result.use, check_dtype=False)
 
@@ -1399,7 +1398,7 @@ class TestWriteSutToCombinedParquet:
         from sutlab.sut import SUT
         bare_sut = SUT(price_basis="current_year", supply=pd.DataFrame(), use=pd.DataFrame())
         with pytest.raises(ValueError, match="metadata"):
-            write_sut_to_combined_parquet(bare_sut, tmp_path, "ta")
+            write_sut_to_combined_parquet(bare_sut, tmp_path / "out.parquet")
 
 
 # ---------------------------------------------------------------------------
@@ -1478,29 +1477,34 @@ class TestWriteSutToCombinedCsv:
             [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
         )
 
-    def test_creates_single_file(self, sut, tmp_path):
-        write_sut_to_combined_csv(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_l.csv").exists()
+    def test_creates_file_at_given_path(self, sut, tmp_path):
+        path = tmp_path / "ta_l.csv"
+        write_sut_to_combined_csv(sut, path)
+        assert path.exists()
 
     def test_id_column_present_in_file(self, sut, tmp_path):
-        write_sut_to_combined_csv(sut, tmp_path, "ta")
-        df = pd.read_csv(tmp_path / "ta_l.csv")
+        path = tmp_path / "ta_l.csv"
+        write_sut_to_combined_csv(sut, path)
+        df = pd.read_csv(path)
         assert "year" in df.columns
 
     def test_custom_separator(self, sut, tmp_path):
-        write_sut_to_combined_csv(sut, tmp_path, "ta", sep=";")
-        df = pd.read_csv(tmp_path / "ta_l.csv", sep=";")
+        path = tmp_path / "ta_l.csv"
+        write_sut_to_combined_csv(sut, path, sep=";")
+        df = pd.read_csv(path, sep=";")
         assert "year" in df.columns
 
     def test_rows_sorted_by_id_product_transaction_category(self, sut, tmp_path):
-        write_sut_to_combined_csv(sut, tmp_path, "ta")
-        df = pd.read_csv(tmp_path / "ta_l.csv", dtype={"trans": str, "nrnr": str, "brch": str})
+        path = tmp_path / "ta_l.csv"
+        write_sut_to_combined_csv(sut, path)
+        df = pd.read_csv(path, dtype={"trans": str, "nrnr": str, "brch": str})
         expected = df.sort_values(["year", "nrnr", "trans", "brch"]).reset_index(drop=True)
         pd.testing.assert_frame_equal(df, expected)
 
     def test_round_trip(self, sut, metadata, tmp_path):
-        write_sut_to_combined_csv(sut, tmp_path, "ta")
-        result = load_sut_from_combined_csv(tmp_path / "ta_l.csv", metadata, "current_year")
+        path = tmp_path / "ta_l.csv"
+        write_sut_to_combined_csv(sut, path)
+        result = load_sut_from_combined_csv(path, metadata, "current_year")
         pd.testing.assert_frame_equal(sut.supply, result.supply, check_dtype=False)
         pd.testing.assert_frame_equal(sut.use, result.use, check_dtype=False)
 
@@ -1508,7 +1512,7 @@ class TestWriteSutToCombinedCsv:
         from sutlab.sut import SUT
         bare_sut = SUT(price_basis="current_year", supply=pd.DataFrame(), use=pd.DataFrame())
         with pytest.raises(ValueError, match="metadata"):
-            write_sut_to_combined_csv(bare_sut, tmp_path, "ta")
+            write_sut_to_combined_csv(bare_sut, tmp_path / "out.csv")
 
 
 # ---------------------------------------------------------------------------
@@ -1575,28 +1579,28 @@ class TestWriteSutToCombinedExcel:
             [2021, 2022], [PARQUET_FILE, PARQUET_FILE], metadata, "current_year"
         )
 
-    def test_creates_single_file(self, sut, tmp_path):
-        write_sut_to_combined_excel(sut, tmp_path, "ta")
-        assert (tmp_path / "ta_l.xlsx").exists()
+    def test_creates_file_at_given_path(self, sut, tmp_path):
+        path = tmp_path / "ta_l.xlsx"
+        write_sut_to_combined_excel(sut, path)
+        assert path.exists()
 
     def test_id_column_present_in_file(self, sut, tmp_path):
-        write_sut_to_combined_excel(sut, tmp_path, "ta")
-        df = pd.read_excel(tmp_path / "ta_l.xlsx")
+        path = tmp_path / "ta_l.xlsx"
+        write_sut_to_combined_excel(sut, path)
+        df = pd.read_excel(path)
         assert "year" in df.columns
 
-    def test_custom_price_basis_code(self, sut, tmp_path):
-        write_sut_to_combined_excel(sut, tmp_path, "ta", price_basis_code="x")
-        assert (tmp_path / "ta_x.xlsx").exists()
-
     def test_rows_sorted_by_id_product_transaction_category(self, sut, tmp_path):
-        write_sut_to_combined_excel(sut, tmp_path, "ta")
-        df = pd.read_excel(tmp_path / "ta_l.xlsx", dtype={"trans": str, "nrnr": str, "brch": str})
+        path = tmp_path / "ta_l.xlsx"
+        write_sut_to_combined_excel(sut, path)
+        df = pd.read_excel(path, dtype={"trans": str, "nrnr": str, "brch": str})
         expected = df.sort_values(["year", "nrnr", "trans", "brch"]).reset_index(drop=True)
         pd.testing.assert_frame_equal(df, expected)
 
     def test_round_trip(self, sut, metadata, tmp_path):
-        write_sut_to_combined_excel(sut, tmp_path, "ta")
-        result = load_sut_from_combined_excel(tmp_path / "ta_l.xlsx", metadata, "current_year")
+        path = tmp_path / "ta_l.xlsx"
+        write_sut_to_combined_excel(sut, path)
+        result = load_sut_from_combined_excel(path, metadata, "current_year")
         pd.testing.assert_frame_equal(sut.supply, result.supply, check_dtype=False)
         pd.testing.assert_frame_equal(sut.use, result.use, check_dtype=False)
 
@@ -1604,7 +1608,7 @@ class TestWriteSutToCombinedExcel:
         from sutlab.sut import SUT
         bare_sut = SUT(price_basis="current_year", supply=pd.DataFrame(), use=pd.DataFrame())
         with pytest.raises(ValueError, match="metadata"):
-            write_sut_to_combined_excel(bare_sut, tmp_path, "ta")
+            write_sut_to_combined_excel(bare_sut, tmp_path / "out.xlsx")
 
 
 # ---------------------------------------------------------------------------
@@ -1910,6 +1914,484 @@ class TestLoadBalancingTargetsFromCombinedExcel:
 
 
 # ---------------------------------------------------------------------------
+# Tests for load_balancing_targets_from_separated_parquet / _combined_parquet
+# ---------------------------------------------------------------------------
+
+
+def _write_targets_parquet(tmp_path: Path, rows: list[dict], filename="targets.parquet") -> Path:
+    """Write a targets parquet file from a list of row dicts and return its path."""
+    path = tmp_path / filename
+    pd.DataFrame(rows).to_parquet(path, index=False)
+    return path
+
+
+def _targets_rows_numeric() -> list[dict]:
+    """Minimal valid targets with numeric price columns (as parquet stores them)."""
+    return [
+        {"trans": "0100", "brch": "X",  "bas": 202.0, "ava": NAN, "moms": NAN, "koeb": NAN},
+        {"trans": "2000", "brch": "X",  "bas": NAN,   "ava": NAN, "moms": NAN, "koeb": 64.0},
+    ]
+
+
+def _make_separated_targets_parquet(tmp_path: Path, metadata) -> Path:
+    """Write the fixture targets as a separated parquet file (no id column)."""
+    sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+    cols = metadata.columns
+    for col in ["bas", "ava", "moms", "koeb"]:
+        sep_df[col] = pd.to_numeric(sep_df[col])
+    path = tmp_path / "ta_targets_2021.parquet"
+    sep_df.to_parquet(path, index=False)
+    return path
+
+
+def _make_combined_targets_parquet(tmp_path: Path, metadata, id_values: list[int]) -> Path:
+    """Write the fixture targets as a combined parquet file (id column present)."""
+    sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+    for col in ["bas", "ava", "moms", "koeb"]:
+        sep_df[col] = pd.to_numeric(sep_df[col])
+    frames = []
+    for id_value in id_values:
+        df = sep_df.copy()
+        df.insert(0, "year", id_value)
+        frames.append(df)
+    combined = pd.concat(frames, ignore_index=True)
+    path = tmp_path / "ta_targets_combined.parquet"
+    combined.to_parquet(path, index=False)
+    return path
+
+
+class TestLoadBalancingTargetsFromSeparatedParquet:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def sep_path(self, tmp_path, metadata):
+        return _make_separated_targets_parquet(tmp_path, metadata)
+
+    def test_returns_balancing_targets(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert isinstance(result, BalancingTargets)
+
+    def test_supply_and_use_are_dataframes(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert isinstance(result.supply, pd.DataFrame)
+        assert isinstance(result.use, pd.DataFrame)
+
+    def test_supply_contains_only_supply_transactions(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_supply_row_count(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert len(result.supply) == 4
+
+    def test_use_row_count(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert len(result.use) == 7
+
+    def test_supply_column_order(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert list(result.supply.columns) == ["year", "trans", "brch", "bas"]
+
+    def test_use_column_order(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert list(result.use.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_id_column_populated(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert (result.supply["year"] == 2021).all()
+        assert (result.use["year"] == 2021).all()
+
+    def test_id_value_type_preserved(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert result.supply["year"].iloc[0] == 2021
+
+    def test_string_id_value_preserved(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet(["2021"], [sep_path], metadata)
+        assert result.supply["year"].iloc[0] == "2021"
+
+    def test_multiple_years_concatenated(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet(
+            [2021, 2022], [sep_path, sep_path], metadata
+        )
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 8
+        assert len(result.use) == 14
+
+    def test_price_columns_are_numeric(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert pd.api.types.is_numeric_dtype(result.supply["bas"])
+        assert pd.api.types.is_numeric_dtype(result.use["koeb"])
+
+    def test_supply_target_values_correct(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        supply_0100_x = result.supply[
+            (result.supply["trans"] == "0100") & (result.supply["brch"] == "X")
+        ]["bas"].iloc[0]
+        assert supply_0100_x == 202
+
+    def test_empty_category_filled_with_empty_string(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        imports = result.supply[result.supply["trans"] == "0700"]
+        assert imports["brch"].iloc[0] == ""
+
+    def test_error_mismatched_lengths(self, sep_path, metadata):
+        with pytest.raises(ValueError, match="same length"):
+            load_balancing_targets_from_separated_parquet([2021, 2022], [sep_path], metadata)
+
+    def test_error_when_classifications_absent(self, sep_path, metadata):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_balancing_targets_from_separated_parquet([2021], [sep_path], bare_metadata)
+
+    def test_error_unknown_transaction_code(self, tmp_path, metadata):
+        rows = _targets_rows_numeric() + [
+            {"trans": "ZZZZ", "brch": "X", "bas": NAN, "ava": NAN, "moms": NAN, "koeb": 10.0}
+        ]
+        path = _write_targets_parquet(tmp_path, rows)
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_balancing_targets_from_separated_parquet([2021], [path], metadata)
+
+    def test_print_paths(self, sep_path, metadata, capsys):
+        load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading balancing targets (1 member):" in out
+        assert "2021:" in out
+        assert str(sep_path) in out
+
+    def test_no_print_by_default(self, sep_path, metadata, capsys):
+        load_balancing_targets_from_separated_parquet([2021], [sep_path], metadata)
+        assert capsys.readouterr().out == ""
+
+
+class TestLoadBalancingTargetsFromCombinedParquet:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def combined_path(self, tmp_path, metadata):
+        return _make_combined_targets_parquet(tmp_path, metadata, [2021, 2022])
+
+    def test_returns_balancing_targets(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert isinstance(result, BalancingTargets)
+
+    def test_supply_and_use_are_dataframes(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert isinstance(result.supply, pd.DataFrame)
+        assert isinstance(result.use, pd.DataFrame)
+
+    def test_supply_contains_only_supply_transactions(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_multiple_years_present(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 8
+        assert len(result.use) == 14
+
+    def test_supply_column_order(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert list(result.supply.columns) == ["year", "trans", "brch", "bas"]
+
+    def test_use_column_order(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert list(result.use.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_price_columns_are_numeric(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert pd.api.types.is_numeric_dtype(result.supply["bas"])
+        assert pd.api.types.is_numeric_dtype(result.use["koeb"])
+
+    def test_empty_category_filled_with_empty_string(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        imports = result.supply[result.supply["trans"] == "0700"]
+        assert imports["brch"].iloc[0] == ""
+
+    def test_error_when_classifications_absent(self, combined_path, metadata):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_balancing_targets_from_combined_parquet(combined_path, bare_metadata)
+
+    def test_error_unknown_transaction_code(self, tmp_path, metadata):
+        rows = [{"year": 2021, **r} for r in _targets_rows_numeric()] + [
+            {"year": 2021, "trans": "ZZZZ", "brch": "X", "bas": NAN, "ava": NAN, "moms": NAN, "koeb": 10.0}
+        ]
+        path = _write_targets_parquet(tmp_path, rows)
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_balancing_targets_from_combined_parquet(path, metadata)
+
+    def test_print_paths(self, combined_path, metadata, capsys):
+        load_balancing_targets_from_combined_parquet(combined_path, metadata, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading balancing targets from:" in out
+        assert str(combined_path) in out
+
+    def test_no_print_by_default(self, combined_path, metadata, capsys):
+        load_balancing_targets_from_combined_parquet(combined_path, metadata)
+        assert capsys.readouterr().out == ""
+
+
+# ---------------------------------------------------------------------------
+# Tests for load_balancing_targets_from_separated_csv / _combined_csv
+# ---------------------------------------------------------------------------
+
+
+def _write_targets_csv(tmp_path: Path, rows: list[dict], filename="targets.csv", sep=",") -> Path:
+    """Write a targets CSV file from a list of row dicts and return its path."""
+    path = tmp_path / filename
+    pd.DataFrame(rows).to_csv(path, index=False, sep=sep)
+    return path
+
+
+def _make_separated_targets_csv(tmp_path: Path, metadata, filename="ta_targets_2021.csv") -> Path:
+    """Write the fixture targets as a separated CSV file (no id column)."""
+    sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+    path = tmp_path / filename
+    sep_df.to_csv(path, index=False)
+    return path
+
+
+def _make_combined_targets_csv(tmp_path: Path, metadata, id_values: list[int]) -> Path:
+    """Write the fixture targets as a combined CSV file (id column present)."""
+    sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+    frames = []
+    for id_value in id_values:
+        df = sep_df.copy()
+        df.insert(0, "year", str(id_value))
+        frames.append(df)
+    combined = pd.concat(frames, ignore_index=True)
+    path = tmp_path / "ta_targets_combined.csv"
+    combined.to_csv(path, index=False)
+    return path
+
+
+class TestLoadBalancingTargetsFromSeparatedCsv:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def sep_path(self, tmp_path, metadata):
+        return _make_separated_targets_csv(tmp_path, metadata)
+
+    def test_returns_balancing_targets(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert isinstance(result, BalancingTargets)
+
+    def test_supply_and_use_are_dataframes(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert isinstance(result.supply, pd.DataFrame)
+        assert isinstance(result.use, pd.DataFrame)
+
+    def test_supply_contains_only_supply_transactions(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_supply_row_count(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert len(result.supply) == 4
+
+    def test_use_row_count(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert len(result.use) == 7
+
+    def test_supply_column_order(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert list(result.supply.columns) == ["year", "trans", "brch", "bas"]
+
+    def test_use_column_order(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert list(result.use.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_id_column_populated(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert (result.supply["year"] == 2021).all()
+        assert (result.use["year"] == 2021).all()
+
+    def test_id_value_type_preserved(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert result.supply["year"].iloc[0] == 2021
+
+    def test_string_id_value_preserved(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv(["2021"], [sep_path], metadata)
+        assert result.supply["year"].iloc[0] == "2021"
+
+    def test_multiple_years_concatenated(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv(
+            [2021, 2022], [sep_path, sep_path], metadata
+        )
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 8
+        assert len(result.use) == 14
+
+    def test_transaction_codes_preserve_leading_zeros(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert "0100" in result.supply["trans"].values
+        assert "0700" in result.supply["trans"].values
+
+    def test_empty_category_filled_with_empty_string(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        imports = result.supply[result.supply["trans"] == "0700"]
+        assert imports["brch"].iloc[0] == ""
+
+    def test_price_columns_are_numeric(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert pd.api.types.is_numeric_dtype(result.supply["bas"])
+        assert pd.api.types.is_numeric_dtype(result.use["koeb"])
+
+    def test_supply_target_values_correct(self, sep_path, metadata):
+        result = load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        supply_0100_x = result.supply[
+            (result.supply["trans"] == "0100") & (result.supply["brch"] == "X")
+        ]["bas"].iloc[0]
+        assert supply_0100_x == 202
+
+    def test_custom_separator(self, tmp_path, metadata):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        path = tmp_path / "ta_targets_2021_semicolon.csv"
+        sep_df.to_csv(path, index=False, sep=";")
+        result = load_balancing_targets_from_separated_csv([2021], [path], metadata, sep=";")
+        assert len(result.supply) == 4
+        assert len(result.use) == 7
+
+    def test_error_mismatched_lengths(self, sep_path, metadata):
+        with pytest.raises(ValueError, match="same length"):
+            load_balancing_targets_from_separated_csv([2021, 2022], [sep_path], metadata)
+
+    def test_error_when_classifications_absent(self, sep_path, metadata):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_balancing_targets_from_separated_csv([2021], [sep_path], bare_metadata)
+
+    def test_error_unknown_transaction_code(self, tmp_path, metadata):
+        rows = minimal_targets_rows() + [
+            {"trans": "ZZZZ", "brch": "X", "bas": NAN, "ava": NAN, "moms": NAN, "koeb": 10}
+        ]
+        path = _write_targets_csv(tmp_path, rows)
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_balancing_targets_from_separated_csv([2021], [path], metadata)
+
+    def test_print_paths(self, sep_path, metadata, capsys):
+        load_balancing_targets_from_separated_csv([2021], [sep_path], metadata, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading balancing targets (1 member):" in out
+        assert "2021:" in out
+        assert str(sep_path) in out
+
+    def test_no_print_by_default(self, sep_path, metadata, capsys):
+        load_balancing_targets_from_separated_csv([2021], [sep_path], metadata)
+        assert capsys.readouterr().out == ""
+
+
+class TestLoadBalancingTargetsFromCombinedCsv:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def combined_path(self, tmp_path, metadata):
+        return _make_combined_targets_csv(tmp_path, metadata, [2021, 2022])
+
+    def test_returns_balancing_targets(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert isinstance(result, BalancingTargets)
+
+    def test_supply_and_use_are_dataframes(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert isinstance(result.supply, pd.DataFrame)
+        assert isinstance(result.use, pd.DataFrame)
+
+    def test_supply_contains_only_supply_transactions(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert set(result.supply["trans"].unique()) == {"0100", "0700"}
+
+    def test_use_contains_only_use_transactions(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert set(result.use["trans"].unique()) == {"2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_multiple_years_present(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert set(result.supply["year"].unique()) == {2021, 2022}
+        assert len(result.supply) == 8
+        assert len(result.use) == 14
+
+    def test_supply_column_order(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert list(result.supply.columns) == ["year", "trans", "brch", "bas"]
+
+    def test_use_column_order(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert list(result.use.columns) == ["year", "trans", "brch", "bas", "ava", "moms", "koeb"]
+
+    def test_transaction_codes_preserve_leading_zeros(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert "0100" in result.supply["trans"].values
+        assert "0700" in result.supply["trans"].values
+
+    def test_empty_category_filled_with_empty_string(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        imports = result.supply[result.supply["trans"] == "0700"]
+        assert imports["brch"].iloc[0] == ""
+
+    def test_price_columns_are_numeric(self, combined_path, metadata):
+        result = load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert pd.api.types.is_numeric_dtype(result.supply["bas"])
+        assert pd.api.types.is_numeric_dtype(result.use["koeb"])
+
+    def test_custom_separator(self, tmp_path, metadata):
+        sep_df = pd.read_excel(TARGETS_FILE, dtype=str)
+        sep_df.insert(0, "year", "2021")
+        path = tmp_path / "ta_targets_combined_semicolon.csv"
+        sep_df.to_csv(path, index=False, sep=";")
+        result = load_balancing_targets_from_combined_csv(path, metadata, sep=";")
+        assert len(result.supply) == 4
+        assert len(result.use) == 7
+
+    def test_error_when_classifications_absent(self, combined_path, metadata):
+        bare_metadata = SUTMetadata(columns=metadata.columns)
+        with pytest.raises(ValueError, match="transactions"):
+            load_balancing_targets_from_combined_csv(combined_path, bare_metadata)
+
+    def test_error_unknown_transaction_code(self, tmp_path, metadata):
+        rows = [{"year": 2021, **r} for r in minimal_targets_rows()] + [
+            {"year": 2021, "trans": "ZZZZ", "brch": "X", "bas": NAN, "ava": NAN, "moms": NAN, "koeb": 10}
+        ]
+        path = _write_targets_csv(tmp_path, rows)
+        with pytest.raises(ValueError, match="ZZZZ"):
+            load_balancing_targets_from_combined_csv(path, metadata)
+
+    def test_print_paths(self, combined_path, metadata, capsys):
+        load_balancing_targets_from_combined_csv(combined_path, metadata, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Loading balancing targets from:" in out
+        assert str(combined_path) in out
+
+    def test_no_print_by_default(self, combined_path, metadata, capsys):
+        load_balancing_targets_from_combined_csv(combined_path, metadata)
+        assert capsys.readouterr().out == ""
+
+
+# ---------------------------------------------------------------------------
 # Tests for load_balancing_targets_from_dataframe
 # ---------------------------------------------------------------------------
 
@@ -1998,6 +2480,412 @@ class TestLoadBalancingTargetsFromDataframe:
         df.loc[df["trans"] == "0100", "trans"] = "ZZZZ"
         with pytest.raises(ValueError, match="ZZZZ"):
             load_balancing_targets_from_dataframe(df, metadata)
+
+
+# ---------------------------------------------------------------------------
+# Tests for write_balancing_targets_to_separated_* / _combined_*
+# ---------------------------------------------------------------------------
+
+from sutlab.io import (
+    write_balancing_targets_to_separated_parquet,
+    write_balancing_targets_to_combined_parquet,
+    write_balancing_targets_to_separated_csv,
+    write_balancing_targets_to_combined_csv,
+    write_balancing_targets_to_separated_excel,
+    write_balancing_targets_to_combined_excel,
+)
+
+
+def _load_targets_fixture(metadata) -> BalancingTargets:
+    """Load the standard fixture targets for year 2021."""
+    return load_balancing_targets_from_separated_excel([2021], [TARGETS_FILE], metadata)
+
+
+def _load_targets_two_years(metadata) -> BalancingTargets:
+    """Load the fixture targets for both 2021 and 2022."""
+    return load_balancing_targets_from_separated_excel(
+        [2021, 2022], [TARGETS_FILE, TARGETS_FILE], metadata
+    )
+
+
+class TestWriteBalancingTargetsToSeparatedParquet:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def targets(self, metadata):
+        return _load_targets_two_years(metadata)
+
+    @pytest.fixture
+    def cols(self, metadata):
+        return metadata.columns
+
+    def test_creates_files_at_specified_paths(self, targets, cols, tmp_path):
+        paths = [tmp_path / "2021.parquet", tmp_path / "2022.parquet"]
+        write_balancing_targets_to_separated_parquet(targets, [2021, 2022], paths, cols)
+        assert paths[0].exists()
+        assert paths[1].exists()
+
+    def test_id_column_absent_in_file(self, targets, cols, tmp_path):
+        path = tmp_path / "out.parquet"
+        write_balancing_targets_to_separated_parquet(targets, [2021], [path], cols)
+        df = pd.read_parquet(path)
+        assert "year" not in df.columns
+
+    def test_supply_and_use_rows_present(self, targets, cols, tmp_path):
+        path = tmp_path / "out.parquet"
+        write_balancing_targets_to_separated_parquet(targets, [2021], [path], cols)
+        df = pd.read_parquet(path)
+        assert set(df["trans"].unique()) == {"0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_rows_sorted_by_transaction_category(self, targets, cols, tmp_path):
+        path = tmp_path / "out.parquet"
+        write_balancing_targets_to_separated_parquet(targets, [2021], [path], cols)
+        df = pd.read_parquet(path)
+        expected = df.sort_values(["trans", "brch"]).reset_index(drop=True)
+        pd.testing.assert_frame_equal(df, expected)
+
+    def test_round_trip(self, targets, cols, metadata, tmp_path):
+        paths = [tmp_path / "2021.parquet", tmp_path / "2022.parquet"]
+        write_balancing_targets_to_separated_parquet(targets, [2021, 2022], paths, cols)
+        result = load_balancing_targets_from_separated_parquet([2021, 2022], paths, metadata)
+        pd.testing.assert_frame_equal(targets.supply, result.supply, check_dtype=False)
+        pd.testing.assert_frame_equal(targets.use, result.use, check_dtype=False)
+
+    def test_error_mismatched_lengths(self, targets, cols, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_balancing_targets_to_separated_parquet(
+                targets, [2021, 2022], [tmp_path / "out.parquet"], cols
+            )
+
+    def test_error_id_not_in_targets(self, targets, cols, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_balancing_targets_to_separated_parquet(
+                targets, [9999], [tmp_path / "out.parquet"], cols
+            )
+
+    def test_print_paths(self, targets, cols, tmp_path, capsys):
+        path = tmp_path / "out.parquet"
+        write_balancing_targets_to_separated_parquet(targets, [2021], [path], cols, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing balancing targets (1 member):" in out
+        assert "2021:" in out
+        assert str(path) in out
+
+    def test_no_print_by_default(self, targets, cols, tmp_path, capsys):
+        write_balancing_targets_to_separated_parquet(targets, [2021], [tmp_path / "out.parquet"], cols)
+        assert capsys.readouterr().out == ""
+
+
+class TestWriteBalancingTargetsToCombinedParquet:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def targets(self, metadata):
+        return _load_targets_two_years(metadata)
+
+    @pytest.fixture
+    def cols(self, metadata):
+        return metadata.columns
+
+    def test_creates_file_at_given_path(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols)
+        assert path.exists()
+
+    def test_id_column_present_in_file(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols)
+        df = pd.read_parquet(path)
+        assert "year" in df.columns
+
+    def test_supply_and_use_rows_present(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols)
+        df = pd.read_parquet(path)
+        assert set(df["trans"].unique()) == {"0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_both_years_present(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols)
+        df = pd.read_parquet(path)
+        assert set(df["year"].unique()) == {2021, 2022}
+
+    def test_rows_sorted_by_id_transaction_category(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols)
+        df = pd.read_parquet(path)
+        expected = df.sort_values(["year", "trans", "brch"]).reset_index(drop=True)
+        pd.testing.assert_frame_equal(df, expected)
+
+    def test_round_trip(self, targets, cols, metadata, tmp_path):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols)
+        result = load_balancing_targets_from_combined_parquet(path, metadata)
+        pd.testing.assert_frame_equal(targets.supply, result.supply, check_dtype=False)
+        pd.testing.assert_frame_equal(targets.use, result.use, check_dtype=False)
+
+    def test_print_paths(self, targets, cols, tmp_path, capsys):
+        path = tmp_path / "targets.parquet"
+        write_balancing_targets_to_combined_parquet(targets, path, cols, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing balancing targets to:" in out
+        assert str(path) in out
+
+    def test_no_print_by_default(self, targets, cols, tmp_path, capsys):
+        write_balancing_targets_to_combined_parquet(targets, tmp_path / "targets.parquet", cols)
+        assert capsys.readouterr().out == ""
+
+
+class TestWriteBalancingTargetsToSeparatedCsv:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def targets(self, metadata):
+        return _load_targets_two_years(metadata)
+
+    @pytest.fixture
+    def cols(self, metadata):
+        return metadata.columns
+
+    def test_creates_files_at_specified_paths(self, targets, cols, tmp_path):
+        paths = [tmp_path / "2021.csv", tmp_path / "2022.csv"]
+        write_balancing_targets_to_separated_csv(targets, [2021, 2022], paths, cols)
+        assert paths[0].exists()
+        assert paths[1].exists()
+
+    def test_id_column_absent_in_file(self, targets, cols, tmp_path):
+        path = tmp_path / "out.csv"
+        write_balancing_targets_to_separated_csv(targets, [2021], [path], cols)
+        df = pd.read_csv(path)
+        assert "year" not in df.columns
+
+    def test_supply_and_use_rows_present(self, targets, cols, tmp_path):
+        path = tmp_path / "out.csv"
+        write_balancing_targets_to_separated_csv(targets, [2021], [path], cols)
+        df = pd.read_csv(path, dtype={"trans": str})
+        assert set(df["trans"].unique()) == {"0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_custom_separator(self, targets, cols, tmp_path):
+        path = tmp_path / "out.csv"
+        write_balancing_targets_to_separated_csv(targets, [2021], [path], cols, sep=";")
+        df = pd.read_csv(path, sep=";")
+        assert "trans" in df.columns
+
+    def test_round_trip(self, targets, cols, metadata, tmp_path):
+        paths = [tmp_path / "2021.csv", tmp_path / "2022.csv"]
+        write_balancing_targets_to_separated_csv(targets, [2021, 2022], paths, cols)
+        result = load_balancing_targets_from_separated_csv([2021, 2022], paths, metadata)
+        pd.testing.assert_frame_equal(targets.supply, result.supply, check_dtype=False)
+        pd.testing.assert_frame_equal(targets.use, result.use, check_dtype=False)
+
+    def test_error_mismatched_lengths(self, targets, cols, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_balancing_targets_to_separated_csv(
+                targets, [2021, 2022], [tmp_path / "out.csv"], cols
+            )
+
+    def test_error_id_not_in_targets(self, targets, cols, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_balancing_targets_to_separated_csv(
+                targets, [9999], [tmp_path / "out.csv"], cols
+            )
+
+    def test_print_paths(self, targets, cols, tmp_path, capsys):
+        path = tmp_path / "out.csv"
+        write_balancing_targets_to_separated_csv(targets, [2021], [path], cols, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing balancing targets (1 member):" in out
+        assert "2021:" in out
+        assert str(path) in out
+
+    def test_no_print_by_default(self, targets, cols, tmp_path, capsys):
+        write_balancing_targets_to_separated_csv(targets, [2021], [tmp_path / "out.csv"], cols)
+        assert capsys.readouterr().out == ""
+
+
+class TestWriteBalancingTargetsToCombinedCsv:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def targets(self, metadata):
+        return _load_targets_two_years(metadata)
+
+    @pytest.fixture
+    def cols(self, metadata):
+        return metadata.columns
+
+    def test_creates_file_at_given_path(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.csv"
+        write_balancing_targets_to_combined_csv(targets, path, cols)
+        assert path.exists()
+
+    def test_id_column_present_in_file(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.csv"
+        write_balancing_targets_to_combined_csv(targets, path, cols)
+        df = pd.read_csv(path)
+        assert "year" in df.columns
+
+    def test_both_years_present(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.csv"
+        write_balancing_targets_to_combined_csv(targets, path, cols)
+        df = pd.read_csv(path)
+        assert set(df["year"].unique()) == {2021, 2022}
+
+    def test_custom_separator(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.csv"
+        write_balancing_targets_to_combined_csv(targets, path, cols, sep=";")
+        df = pd.read_csv(path, sep=";")
+        assert "year" in df.columns
+
+    def test_round_trip(self, targets, cols, metadata, tmp_path):
+        path = tmp_path / "targets.csv"
+        write_balancing_targets_to_combined_csv(targets, path, cols)
+        result = load_balancing_targets_from_combined_csv(path, metadata)
+        pd.testing.assert_frame_equal(targets.supply, result.supply, check_dtype=False)
+        pd.testing.assert_frame_equal(targets.use, result.use, check_dtype=False)
+
+    def test_print_paths(self, targets, cols, tmp_path, capsys):
+        path = tmp_path / "targets.csv"
+        write_balancing_targets_to_combined_csv(targets, path, cols, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing balancing targets to:" in out
+        assert str(path) in out
+
+    def test_no_print_by_default(self, targets, cols, tmp_path, capsys):
+        write_balancing_targets_to_combined_csv(targets, tmp_path / "targets.csv", cols)
+        assert capsys.readouterr().out == ""
+
+
+class TestWriteBalancingTargetsToSeparatedExcel:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def targets(self, metadata):
+        return _load_targets_two_years(metadata)
+
+    @pytest.fixture
+    def cols(self, metadata):
+        return metadata.columns
+
+    def test_creates_files_at_specified_paths(self, targets, cols, tmp_path):
+        paths = [tmp_path / "2021.xlsx", tmp_path / "2022.xlsx"]
+        write_balancing_targets_to_separated_excel(targets, [2021, 2022], paths, cols)
+        assert paths[0].exists()
+        assert paths[1].exists()
+
+    def test_id_column_absent_in_file(self, targets, cols, tmp_path):
+        path = tmp_path / "out.xlsx"
+        write_balancing_targets_to_separated_excel(targets, [2021], [path], cols)
+        df = pd.read_excel(path)
+        assert "year" not in df.columns
+
+    def test_supply_and_use_rows_present(self, targets, cols, tmp_path):
+        path = tmp_path / "out.xlsx"
+        write_balancing_targets_to_separated_excel(targets, [2021], [path], cols)
+        df = pd.read_excel(path, dtype={"trans": str})
+        assert set(df["trans"].unique()) == {"0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_round_trip(self, targets, cols, metadata, tmp_path):
+        paths = [tmp_path / "2021.xlsx", tmp_path / "2022.xlsx"]
+        write_balancing_targets_to_separated_excel(targets, [2021, 2022], paths, cols)
+        result = load_balancing_targets_from_separated_excel([2021, 2022], paths, metadata)
+        pd.testing.assert_frame_equal(targets.supply, result.supply, check_dtype=False)
+        pd.testing.assert_frame_equal(targets.use, result.use, check_dtype=False)
+
+    def test_error_mismatched_lengths(self, targets, cols, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_balancing_targets_to_separated_excel(
+                targets, [2021, 2022], [tmp_path / "out.xlsx"], cols
+            )
+
+    def test_error_id_not_in_targets(self, targets, cols, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_balancing_targets_to_separated_excel(
+                targets, [9999], [tmp_path / "out.xlsx"], cols
+            )
+
+    def test_print_paths(self, targets, cols, tmp_path, capsys):
+        path = tmp_path / "out.xlsx"
+        write_balancing_targets_to_separated_excel(targets, [2021], [path], cols, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing balancing targets (1 member):" in out
+        assert "2021:" in out
+        assert str(path) in out
+
+    def test_no_print_by_default(self, targets, cols, tmp_path, capsys):
+        write_balancing_targets_to_separated_excel(targets, [2021], [tmp_path / "out.xlsx"], cols)
+        assert capsys.readouterr().out == ""
+
+
+class TestWriteBalancingTargetsToCombinedExcel:
+
+    @pytest.fixture
+    def metadata(self):
+        return load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+
+    @pytest.fixture
+    def targets(self, metadata):
+        return _load_targets_two_years(metadata)
+
+    @pytest.fixture
+    def cols(self, metadata):
+        return metadata.columns
+
+    def test_creates_file_at_given_path(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.xlsx"
+        write_balancing_targets_to_combined_excel(targets, path, cols)
+        assert path.exists()
+
+    def test_id_column_present_in_file(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.xlsx"
+        write_balancing_targets_to_combined_excel(targets, path, cols)
+        df = pd.read_excel(path)
+        assert "year" in df.columns
+
+    def test_both_years_present(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.xlsx"
+        write_balancing_targets_to_combined_excel(targets, path, cols)
+        df = pd.read_excel(path)
+        assert set(df["year"].unique()) == {2021, 2022}
+
+    def test_supply_and_use_rows_present(self, targets, cols, tmp_path):
+        path = tmp_path / "targets.xlsx"
+        write_balancing_targets_to_combined_excel(targets, path, cols)
+        df = pd.read_excel(path, dtype={"trans": str})
+        assert set(df["trans"].unique()) == {"0100", "0700", "2000", "3110", "3200", "5139", "5200", "6001"}
+
+    def test_round_trip(self, targets, cols, metadata, tmp_path):
+        path = tmp_path / "targets.xlsx"
+        write_balancing_targets_to_combined_excel(targets, path, cols)
+        result = load_balancing_targets_from_combined_excel(path, metadata)
+        pd.testing.assert_frame_equal(targets.supply, result.supply, check_dtype=False)
+        pd.testing.assert_frame_equal(targets.use, result.use, check_dtype=False)
+
+    def test_print_paths(self, targets, cols, tmp_path, capsys):
+        path = tmp_path / "targets.xlsx"
+        write_balancing_targets_to_combined_excel(targets, path, cols, print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing balancing targets to:" in out
+        assert str(path) in out
+
+    def test_no_print_by_default(self, targets, cols, tmp_path, capsys):
+        write_balancing_targets_to_combined_excel(targets, tmp_path / "targets.xlsx", cols)
+        assert capsys.readouterr().out == ""
 
 
 # ---------------------------------------------------------------------------
@@ -2290,15 +3178,16 @@ class TestPrintPaths:
 
     def test_load_sut_from_combined_parquet_prints_path(self, metadata, tmp_path, sut, capsys):
         combined_path = tmp_path / "ta_l.parquet"
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
+        write_sut_to_combined_parquet(sut, combined_path)
         load_sut_from_combined_parquet(combined_path, metadata, "previous_year", print_paths=True)
         out = capsys.readouterr().out
         assert "Loading SUT (previous year) from:" in out
         assert str(combined_path) in out
 
     def test_load_sut_from_combined_parquet_no_print_by_default(self, metadata, tmp_path, sut, capsys):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
-        load_sut_from_combined_parquet(tmp_path / "ta_l.parquet", metadata, "current_year")
+        combined_path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, combined_path)
+        load_sut_from_combined_parquet(combined_path, metadata, "current_year")
         assert capsys.readouterr().out == ""
 
     def test_load_balancing_targets_separated_prints_paths(self, metadata, capsys):
@@ -2372,13 +3261,14 @@ class TestPrintPaths:
         assert capsys.readouterr().out == ""
 
     def test_write_sut_to_combined_parquet_prints_path(self, sut, tmp_path, capsys):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta", print_paths=True)
+        path = tmp_path / "ta_l.parquet"
+        write_sut_to_combined_parquet(sut, path, print_paths=True)
         out = capsys.readouterr().out
         assert "Writing SUT (current year) to:" in out
-        assert "ta_l.parquet" in out
+        assert str(path) in out
 
     def test_write_sut_to_combined_parquet_no_print_by_default(self, sut, tmp_path, capsys):
-        write_sut_to_combined_parquet(sut, tmp_path, "ta")
+        write_sut_to_combined_parquet(sut, tmp_path / "ta_l.parquet")
         assert capsys.readouterr().out == ""
 
     def test_write_sut_to_separated_csv_prints_paths(self, sut, tmp_path, capsys):
@@ -2389,10 +3279,11 @@ class TestPrintPaths:
         assert "out_2021.csv" in out
 
     def test_write_sut_to_combined_csv_prints_path(self, sut, tmp_path, capsys):
-        write_sut_to_combined_csv(sut, tmp_path, "ta", print_paths=True)
+        path = tmp_path / "ta_l.csv"
+        write_sut_to_combined_csv(sut, path, print_paths=True)
         out = capsys.readouterr().out
         assert "Writing SUT (current year) to:" in out
-        assert "ta_l.csv" in out
+        assert str(path) in out
 
     def test_write_sut_to_separated_excel_prints_paths(self, sut, tmp_path, capsys):
         path = tmp_path / "out_2021.xlsx"
@@ -2402,13 +3293,14 @@ class TestPrintPaths:
         assert "out_2021.xlsx" in out
 
     def test_write_sut_to_combined_excel_prints_path(self, sut, tmp_path, capsys):
-        write_sut_to_combined_excel(sut, tmp_path, "ta", print_paths=True)
+        path = tmp_path / "ta_l.xlsx"
+        write_sut_to_combined_excel(sut, path, print_paths=True)
         out = capsys.readouterr().out
         assert "Writing SUT (current year) to:" in out
-        assert "ta_l.xlsx" in out
+        assert str(path) in out
 
     def test_previous_year_in_message(self, metadata, tmp_path, capsys):
         sut = load_sut_from_separated_parquet([2021], [PARQUET_FILE], metadata, "previous_year")
-        write_sut_to_combined_parquet(sut, tmp_path, "ta", print_paths=True)
+        write_sut_to_combined_parquet(sut, tmp_path / "ta_d.parquet", print_paths=True)
         out = capsys.readouterr().out
         assert "previous year" in out

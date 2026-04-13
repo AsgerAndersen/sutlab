@@ -41,11 +41,6 @@ _VALID_TABLE_VALUES: set[str] = {"supply", "use"}
 
 _VALID_ESA_CODES: set[str] = {"D2121", "P1", "P2", "P3", "P31", "P32", "P51g", "P52", "P53", "P6", "P7"}
 
-# Default short codes used in file names for each price basis.
-_DEFAULT_PRICE_BASIS_CODES: dict[str, str] = {
-    "current_year": "l",
-    "previous_year": "d",
-}
 
 # Price layer role names in the order they should appear in the use DataFrame.
 # Matches the field order of SUTColumns.
@@ -499,22 +494,6 @@ def _assemble_sut(
 
     return SUT(price_basis=price_basis, supply=supply, use=use, metadata=metadata)
 
-
-def _resolve_price_basis_code(sut: SUT, price_basis_code: str | None) -> str:
-    """Return the price basis code to use in file names.
-
-    If ``price_basis_code`` is provided, return it as-is. Otherwise look up
-    the default from :data:`_DEFAULT_PRICE_BASIS_CODES`.
-    """
-    if price_basis_code is not None:
-        return price_basis_code
-    code = _DEFAULT_PRICE_BASIS_CODES.get(sut.price_basis)
-    if code is None:
-        raise ValueError(
-            f"No default price basis code for '{sut.price_basis}'. "
-            f"Pass price_basis_code explicitly."
-        )
-    return code
 
 
 def _combine_supply_use(sut: SUT) -> pd.DataFrame:
@@ -1201,10 +1180,8 @@ def write_sut_to_separated_parquet(
 
 def write_sut_to_combined_parquet(
     sut: SUT,
-    folder: str | Path,
-    prefix: str,
+    path: str | Path,
     *,
-    price_basis_code: str | None = None,
     print_paths: bool = False,
 ) -> None:
     """
@@ -1215,21 +1192,12 @@ def write_sut_to_combined_parquet(
     purchasers' price columns. Rows are sorted by id, product, transaction,
     category before writing.
 
-    The file is named ``{prefix}_{code}.parquet``, where ``code`` is the
-    price basis code (default: ``"l"`` for current year, ``"d"`` for
-    previous year).
-
     Parameters
     ----------
     sut : SUT
         The SUT collection to write. ``sut.metadata`` must be present.
-    folder : str or Path
-        Directory to write the file into.
-    prefix : str
-        File name prefix, e.g. ``"ta"``.
-    price_basis_code : str or None, optional
-        Short code for the price basis used in the file name. Defaults to
-        ``"l"`` (current year) or ``"d"`` (previous year).
+    path : str or Path
+        Output file path.
     print_paths : bool, optional
         If ``True``, print the path being written before writing. Defaults to
         ``False``.
@@ -1244,9 +1212,7 @@ def write_sut_to_combined_parquet(
             "sut.metadata is required to identify sort columns for writing."
         )
 
-    folder = Path(folder)
-    code = _resolve_price_basis_code(sut, price_basis_code)
-    output_path = folder / f"{prefix}_{code}.parquet"
+    output_path = Path(path)
 
     if print_paths:
         basis = _format_price_basis(sut.price_basis)
@@ -1347,10 +1313,8 @@ def write_sut_to_separated_csv(
 
 def write_sut_to_combined_csv(
     sut: SUT,
-    folder: str | Path,
-    prefix: str,
+    path: str | Path,
     *,
-    price_basis_code: str | None = None,
     sep: str = ",",
     encoding: str | None = None,
     print_paths: bool = False,
@@ -1363,20 +1327,12 @@ def write_sut_to_combined_csv(
     purchasers' price columns. Rows are sorted by id, product, transaction,
     category before writing.
 
-    The file is named ``{prefix}_{code}.csv``, where ``code`` is the price
-    basis code (default: ``"l"`` for current year, ``"d"`` for previous year).
-
     Parameters
     ----------
     sut : SUT
         The SUT collection to write. ``sut.metadata`` must be present.
-    folder : str or Path
-        Directory to write the file into.
-    prefix : str
-        File name prefix, e.g. ``"ta"``.
-    price_basis_code : str or None, optional
-        Short code for the price basis used in the file name. Defaults to
-        ``"l"`` (current year) or ``"d"`` (previous year).
+    path : str or Path
+        Output file path.
     sep : str, optional
         Column separator. Defaults to ``','``.
     encoding : str or None, optional
@@ -1395,9 +1351,7 @@ def write_sut_to_combined_csv(
             "sut.metadata is required to identify sort columns for writing."
         )
 
-    folder = Path(folder)
-    code = _resolve_price_basis_code(sut, price_basis_code)
-    output_path = folder / f"{prefix}_{code}.csv"
+    output_path = Path(path)
 
     if print_paths:
         basis = _format_price_basis(sut.price_basis)
@@ -1492,10 +1446,8 @@ def write_sut_to_separated_excel(
 
 def write_sut_to_combined_excel(
     sut: SUT,
-    folder: str | Path,
-    prefix: str,
+    path: str | Path,
     *,
-    price_basis_code: str | None = None,
     print_paths: bool = False,
 ) -> None:
     """
@@ -1506,20 +1458,12 @@ def write_sut_to_combined_excel(
     purchasers' price columns. Rows are sorted by id, product, transaction,
     category before writing.
 
-    The file is named ``{prefix}_{code}.xlsx``, where ``code`` is the price
-    basis code (default: ``"l"`` for current year, ``"d"`` for previous year).
-
     Parameters
     ----------
     sut : SUT
         The SUT collection to write. ``sut.metadata`` must be present.
-    folder : str or Path
-        Directory to write the file into.
-    prefix : str
-        File name prefix, e.g. ``"ta"``.
-    price_basis_code : str or None, optional
-        Short code for the price basis used in the file name. Defaults to
-        ``"l"`` (current year) or ``"d"`` (previous year).
+    path : str or Path
+        Output file path.
     print_paths : bool, optional
         If ``True``, print the path being written before writing. Defaults to
         ``False``.
@@ -1534,9 +1478,7 @@ def write_sut_to_combined_excel(
             "sut.metadata is required to identify sort columns for writing."
         )
 
-    folder = Path(folder)
-    code = _resolve_price_basis_code(sut, price_basis_code)
-    output_path = folder / f"{prefix}_{code}.xlsx"
+    output_path = Path(path)
 
     if print_paths:
         basis = _format_price_basis(sut.price_basis)
@@ -1613,6 +1555,341 @@ def _assemble_balancing_targets(
     use = df[~supply_mask][use_col_order].reset_index(drop=True)
 
     return BalancingTargets(supply=supply, use=use)
+
+
+def load_balancing_targets_from_separated_parquet(
+    id_values: list[str | int],
+    paths: list[str | Path],
+    metadata: SUTMetadata,
+    *,
+    print_paths: bool = False,
+) -> BalancingTargets:
+    """
+    Load a balancing targets collection from one parquet file per id value.
+
+    Each file contains both supply and use target rows for one collection
+    member (typically one year), without an id column. The corresponding entry
+    in ``id_values`` is added as the id column on load. Supply and use rows are
+    split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
+
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    Parameters
+    ----------
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved (e.g. pass integers if you want an integer id column).
+    paths : list of str or Path
+        Paths to the parquet files, in the same order as ``id_values``.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_separated_parquet."
+        )
+
+    if print_paths:
+        n = len(paths)
+        print(f"Loading balancing targets ({n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
+
+    cols = metadata.columns
+
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_parquet(path)
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    return _assemble_balancing_targets(combined, metadata)
+
+
+def load_balancing_targets_from_combined_parquet(
+    path: str | Path,
+    metadata: SUTMetadata,
+    *,
+    print_paths: bool = False,
+) -> BalancingTargets:
+    """
+    Load a balancing targets collection from a single combined parquet file.
+
+    The file contains both supply and use target rows for all collection
+    members (typically all years), with the id column already present. Supply
+    and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
+
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the combined parquet file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    print_paths : bool, optional
+        If ``True``, print the path being read before loading. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_combined_parquet."
+        )
+
+    if print_paths:
+        print(f"Loading balancing targets from: {path}")
+
+    df = pd.read_parquet(path)
+    return _assemble_balancing_targets(df, metadata)
+
+
+def load_balancing_targets_from_separated_csv(
+    id_values: list[str | int],
+    paths: list[str | Path],
+    metadata: SUTMetadata,
+    *,
+    sep: str = ",",
+    encoding: str | None = None,
+    print_paths: bool = False,
+) -> BalancingTargets:
+    """
+    Load a balancing targets collection from one CSV file per id value.
+
+    Each file contains both supply and use target rows for one collection
+    member (typically one year), without an id column. The corresponding entry
+    in ``id_values`` is added as the id column on load. Supply and use rows are
+    split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The transaction and category columns are read as strings. Price columns
+    (basic, any price layers, purchasers) are converted to float. The id
+    column is added with the type given in ``id_values`` (preserved as-is).
+
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
+
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    Parameters
+    ----------
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved (e.g. pass integers if you want an integer id column).
+    paths : list of str or Path
+        Paths to the CSV files, in the same order as ``id_values``.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_separated_csv."
+        )
+
+    if print_paths:
+        n = len(paths)
+        print(f"Loading balancing targets ({n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
+
+    cols = metadata.columns
+    str_dtypes = {
+        cols.transaction: str,
+        cols.category: str,
+    }
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_csv(path, dtype=str_dtypes, sep=sep, encoding=encoding)
+        for col in price_cols:
+            df[col] = pd.to_numeric(df[col])
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    return _assemble_balancing_targets(combined, metadata)
+
+
+def load_balancing_targets_from_combined_csv(
+    path: str | Path,
+    metadata: SUTMetadata,
+    *,
+    sep: str = ",",
+    encoding: str | None = None,
+    print_paths: bool = False,
+) -> BalancingTargets:
+    """
+    Load a balancing targets collection from a single combined CSV file.
+
+    The file contains both supply and use target rows for all collection
+    members (typically all years), with the id column already present. Supply
+    and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The transaction and category columns are read as strings. Price columns
+    (basic, any price layers, purchasers) are converted to float. The id
+    column type is inferred by pandas from the file contents.
+
+    The output supply DataFrame has columns:
+    id, transaction, category, price_basic.
+
+    The output use DataFrame has columns:
+    id, transaction, category, price_basic, [price layers], price_purchasers.
+
+    A NaN in a price column means no target for that price basis for that
+    (id, transaction, category) combination. Balancing functions skip
+    combinations with no target.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the combined CSV file.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the path being read before loading. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    BalancingTargets
+
+    Raises
+    ------
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If any transaction code is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows in load_balancing_targets_from_combined_csv."
+        )
+
+    if print_paths:
+        print(f"Loading balancing targets from: {path}")
+
+    cols = metadata.columns
+    str_dtypes = {
+        cols.transaction: str,
+        cols.category: str,
+    }
+    layer_cols = [
+        getattr(cols, role)
+        for role in _PRICE_LAYER_ROLES
+        if getattr(cols, role) is not None
+    ]
+    price_cols = [cols.price_basic] + layer_cols + [cols.price_purchasers]
+
+    combined = pd.read_csv(path, dtype=str_dtypes, sep=sep, encoding=encoding)
+    for col in price_cols:
+        combined[col] = pd.to_numeric(combined[col])
+
+    return _assemble_balancing_targets(combined, metadata)
 
 
 def load_balancing_targets_from_separated_excel(
@@ -1911,6 +2188,375 @@ def load_balancing_targets_from_dataframe(
     _validate_required_columns(df, required_cols, source="DataFrame")
 
     return _assemble_balancing_targets(df, metadata)
+
+
+def _combine_balancing_targets(
+    targets: BalancingTargets,
+    columns_metadata: SUTColumns,
+) -> pd.DataFrame:
+    """Concatenate supply and use targets into a single sorted DataFrame.
+
+    Supply rows will have NaN in any price layer and purchasers' price columns
+    (they are absent from the supply DataFrame and filled on concatenation).
+    Rows are sorted by id, transaction, category.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the sort key columns.
+
+    Returns
+    -------
+    DataFrame
+    """
+    cols = columns_metadata
+    combined = pd.concat([targets.supply, targets.use], ignore_index=True)
+    sort_cols = [cols.id, cols.transaction, cols.category]
+    return combined.sort_values(sort_cols).reset_index(drop=True)
+
+
+def write_balancing_targets_to_separated_parquet(
+    targets: BalancingTargets,
+    id_values: list[str | int],
+    paths: list[str | Path],
+    columns_metadata: SUTColumns,
+    *,
+    print_paths: bool = False,
+) -> None:
+    """
+    Write selected balancing targets members to separate per-member parquet files.
+
+    One file is written per entry in ``id_values``. Each file contains the
+    combined supply and use target rows for that member, without the id column.
+    Supply rows have NaN in the price layer and purchasers' price columns.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection to write.
+    id_values : list of str or int
+        Id values to write, one per output file. Must all be present in the
+        targets.
+    paths : list of str or Path
+        Output file paths, in the same order as ``id_values``.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the id, transaction, and category
+        columns.
+    print_paths : bool, optional
+        If ``True``, print the paths being written before writing. Defaults to
+        ``False``.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If any value in ``id_values`` is not present in the targets.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    cols = columns_metadata
+    id_col = cols.id
+    sort_cols = [cols.transaction, cols.category]
+    combined = _combine_balancing_targets(targets, columns_metadata)
+    available = list(combined[id_col].unique())
+    missing = [v for v in id_values if v not in available]
+    if missing:
+        raise ValueError(
+            f"id_values not found in balancing targets: {missing}. Available: {available}"
+        )
+
+    paths = [Path(p) for p in paths]
+
+    if print_paths:
+        n = len(id_values)
+        print(f"Writing balancing targets ({n} member{'s' if n != 1 else ''}):")
+        for id_value, output_path in zip(id_values, paths):
+            print(f"  {id_value}: {output_path}")
+
+    for id_value, output_path in zip(id_values, paths):
+        member = (
+            combined[combined[id_col] == id_value]
+            .drop(columns=[id_col])
+            .sort_values(sort_cols)
+            .reset_index(drop=True)
+        )
+        member.to_parquet(output_path, index=False)
+
+
+def write_balancing_targets_to_combined_parquet(
+    targets: BalancingTargets,
+    path: str | Path,
+    columns_metadata: SUTColumns,
+    *,
+    print_paths: bool = False,
+) -> None:
+    """
+    Write a balancing targets collection to a single combined parquet file.
+
+    The file contains supply and use target rows for all collection members,
+    with the id column present. Supply rows have NaN in the price layer and
+    purchasers' price columns. Rows are sorted by id, transaction, category
+    before writing.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection to write.
+    path : str or Path
+        Output file path.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the id, transaction, and category
+        columns.
+    print_paths : bool, optional
+        If ``True``, print the path being written before writing. Defaults to
+        ``False``.
+    """
+    output_path = Path(path)
+
+    if print_paths:
+        print(f"Writing balancing targets to: {output_path}")
+
+    combined = _combine_balancing_targets(targets, columns_metadata)
+    combined.to_parquet(output_path, index=False)
+
+
+def write_balancing_targets_to_separated_csv(
+    targets: BalancingTargets,
+    id_values: list[str | int],
+    paths: list[str | Path],
+    columns_metadata: SUTColumns,
+    *,
+    sep: str = ",",
+    encoding: str | None = None,
+    print_paths: bool = False,
+) -> None:
+    """
+    Write selected balancing targets members to separate per-member CSV files.
+
+    One file is written per entry in ``id_values``. Each file contains the
+    combined supply and use target rows for that member, without the id column.
+    Supply rows have NaN in the price layer and purchasers' price columns.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection to write.
+    id_values : list of str or int
+        Id values to write, one per output file. Must all be present in the
+        targets.
+    paths : list of str or Path
+        Output file paths, in the same order as ``id_values``.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the id, transaction, and category
+        columns.
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the paths being written before writing. Defaults to
+        ``False``.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If any value in ``id_values`` is not present in the targets.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    cols = columns_metadata
+    id_col = cols.id
+    sort_cols = [cols.transaction, cols.category]
+    combined = _combine_balancing_targets(targets, columns_metadata)
+    available = list(combined[id_col].unique())
+    missing = [v for v in id_values if v not in available]
+    if missing:
+        raise ValueError(
+            f"id_values not found in balancing targets: {missing}. Available: {available}"
+        )
+
+    paths = [Path(p) for p in paths]
+
+    if print_paths:
+        n = len(id_values)
+        print(f"Writing balancing targets ({n} member{'s' if n != 1 else ''}):")
+        for id_value, output_path in zip(id_values, paths):
+            print(f"  {id_value}: {output_path}")
+
+    for id_value, output_path in zip(id_values, paths):
+        member = (
+            combined[combined[id_col] == id_value]
+            .drop(columns=[id_col])
+            .sort_values(sort_cols)
+            .reset_index(drop=True)
+        )
+        member.to_csv(output_path, index=False, sep=sep, encoding=encoding)
+
+
+def write_balancing_targets_to_combined_csv(
+    targets: BalancingTargets,
+    path: str | Path,
+    columns_metadata: SUTColumns,
+    *,
+    sep: str = ",",
+    encoding: str | None = None,
+    print_paths: bool = False,
+) -> None:
+    """
+    Write a balancing targets collection to a single combined CSV file.
+
+    The file contains supply and use target rows for all collection members,
+    with the id column present. Supply rows have NaN in the price layer and
+    purchasers' price columns. Rows are sorted by id, transaction, category
+    before writing.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection to write.
+    path : str or Path
+        Output file path.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the id, transaction, and category
+        columns.
+    sep : str, optional
+        Column separator. Defaults to ``','``.
+    encoding : str or None, optional
+        File encoding. Defaults to ``None`` (pandas default).
+    print_paths : bool, optional
+        If ``True``, print the path being written before writing. Defaults to
+        ``False``.
+    """
+    output_path = Path(path)
+
+    if print_paths:
+        print(f"Writing balancing targets to: {output_path}")
+
+    combined = _combine_balancing_targets(targets, columns_metadata)
+    combined.to_csv(output_path, index=False, sep=sep, encoding=encoding)
+
+
+def write_balancing_targets_to_separated_excel(
+    targets: BalancingTargets,
+    id_values: list[str | int],
+    paths: list[str | Path],
+    columns_metadata: SUTColumns,
+    *,
+    print_paths: bool = False,
+) -> None:
+    """
+    Write selected balancing targets members to separate per-member Excel files.
+
+    One file is written per entry in ``id_values``. Each file contains the
+    combined supply and use target rows for that member, without the id column.
+    Supply rows have NaN in the price layer and purchasers' price columns.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection to write.
+    id_values : list of str or int
+        Id values to write, one per output file. Must all be present in the
+        targets.
+    paths : list of str or Path
+        Output file paths, in the same order as ``id_values``.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the id, transaction, and category
+        columns.
+    print_paths : bool, optional
+        If ``True``, print the paths being written before writing. Defaults to
+        ``False``.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If any value in ``id_values`` is not present in the targets.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    cols = columns_metadata
+    id_col = cols.id
+    sort_cols = [cols.transaction, cols.category]
+    combined = _combine_balancing_targets(targets, columns_metadata)
+    available = list(combined[id_col].unique())
+    missing = [v for v in id_values if v not in available]
+    if missing:
+        raise ValueError(
+            f"id_values not found in balancing targets: {missing}. Available: {available}"
+        )
+
+    paths = [Path(p) for p in paths]
+
+    if print_paths:
+        n = len(id_values)
+        print(f"Writing balancing targets ({n} member{'s' if n != 1 else ''}):")
+        for id_value, output_path in zip(id_values, paths):
+            print(f"  {id_value}: {output_path}")
+
+    for id_value, output_path in zip(id_values, paths):
+        member = (
+            combined[combined[id_col] == id_value]
+            .drop(columns=[id_col])
+            .sort_values(sort_cols)
+            .reset_index(drop=True)
+        )
+        member.to_excel(output_path, index=False)
+
+
+def write_balancing_targets_to_combined_excel(
+    targets: BalancingTargets,
+    path: str | Path,
+    columns_metadata: SUTColumns,
+    *,
+    print_paths: bool = False,
+) -> None:
+    """
+    Write a balancing targets collection to a single combined Excel file.
+
+    The file contains supply and use target rows for all collection members,
+    with the id column present. Supply rows have NaN in the price layer and
+    purchasers' price columns. Rows are sorted by id, transaction, category
+    before writing.
+
+    Parameters
+    ----------
+    targets : BalancingTargets
+        The balancing targets collection to write.
+    path : str or Path
+        Output file path.
+    columns_metadata : SUTColumns
+        Column name mapping used to identify the id, transaction, and category
+        columns.
+    print_paths : bool, optional
+        If ``True``, print the path being written before writing. Defaults to
+        ``False``.
+    """
+    output_path = Path(path)
+
+    if print_paths:
+        print(f"Writing balancing targets to: {output_path}")
+
+    combined = _combine_balancing_targets(targets, columns_metadata)
+    combined.to_excel(output_path, index=False)
 
 
 def _load_balancing_config_tolerances_from_excel(

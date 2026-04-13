@@ -302,6 +302,79 @@ class BalancingTargets:
     supply: pd.DataFrame
     use: pd.DataFrame
 
+    def write_to_separated_parquet(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_separated_parquet`."""
+        from sutlab.io import write_balancing_targets_to_separated_parquet
+        write_balancing_targets_to_separated_parquet(self, id_values, paths, columns_metadata, print_paths=print_paths)
+
+    def write_to_combined_parquet(
+        self,
+        path: str | Path,
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_combined_parquet`."""
+        from sutlab.io import write_balancing_targets_to_combined_parquet
+        write_balancing_targets_to_combined_parquet(self, path, columns_metadata, print_paths=print_paths)
+
+    def write_to_separated_csv(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        columns_metadata: SUTColumns,
+        *,
+        sep: str = ",",
+        encoding: str | None = None,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_separated_csv`."""
+        from sutlab.io import write_balancing_targets_to_separated_csv
+        write_balancing_targets_to_separated_csv(self, id_values, paths, columns_metadata, sep=sep, encoding=encoding, print_paths=print_paths)
+
+    def write_to_combined_csv(
+        self,
+        path: str | Path,
+        columns_metadata: SUTColumns,
+        *,
+        sep: str = ",",
+        encoding: str | None = None,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_combined_csv`."""
+        from sutlab.io import write_balancing_targets_to_combined_csv
+        write_balancing_targets_to_combined_csv(self, path, columns_metadata, sep=sep, encoding=encoding, print_paths=print_paths)
+
+    def write_to_separated_excel(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_separated_excel`."""
+        from sutlab.io import write_balancing_targets_to_separated_excel
+        write_balancing_targets_to_separated_excel(self, id_values, paths, columns_metadata, print_paths=print_paths)
+
+    def write_to_combined_excel(
+        self,
+        path: str | Path,
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_combined_excel`."""
+        from sutlab.io import write_balancing_targets_to_combined_excel
+        write_balancing_targets_to_combined_excel(self, path, columns_metadata, print_paths=print_paths)
+
 
 @dataclass
 class SUT:
@@ -377,6 +450,10 @@ class SUT:
     def set_balancing_config(self, config: BalancingConfig) -> SUT:
         """Delegates to :func:`set_balancing_config`."""
         return set_balancing_config(self, config)
+
+    def set_metadata(self, metadata: SUTMetadata) -> SUT:
+        """Delegates to :func:`set_metadata`."""
+        return set_metadata(self, metadata)
 
     def get_rows(
         self,
@@ -548,15 +625,13 @@ class SUT:
 
     def write_to_combined_parquet(
         self,
-        folder: str,
-        prefix: str,
+        path: str | Path,
         *,
-        price_basis_code: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_parquet`."""
         from sutlab.io import write_sut_to_combined_parquet
-        write_sut_to_combined_parquet(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
+        write_sut_to_combined_parquet(self, path, print_paths=print_paths)
 
     def write_to_separated_csv(
         self,
@@ -573,17 +648,15 @@ class SUT:
 
     def write_to_combined_csv(
         self,
-        folder: str,
-        prefix: str,
+        path: str | Path,
         *,
-        price_basis_code: str | None = None,
         sep: str = ",",
         encoding: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_csv`."""
         from sutlab.io import write_sut_to_combined_csv
-        write_sut_to_combined_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding, print_paths=print_paths)
+        write_sut_to_combined_csv(self, path, sep=sep, encoding=encoding, print_paths=print_paths)
 
     def write_to_separated_excel(
         self,
@@ -598,15 +671,13 @@ class SUT:
 
     def write_to_combined_excel(
         self,
-        folder: str,
-        prefix: str,
+        path: str | Path,
         *,
-        price_basis_code: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_excel`."""
         from sutlab.io import write_sut_to_combined_excel
-        write_sut_to_combined_excel(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
+        write_sut_to_combined_excel(self, path, print_paths=print_paths)
 
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
@@ -759,6 +830,39 @@ def set_balancing_config(sut: SUT, config: BalancingConfig) -> SUT:
         )
 
     return replace(sut, balancing_config=config)
+
+
+def set_metadata(sut: SUT, metadata: SUTMetadata) -> SUT:
+    """
+    Return a new SUT with ``metadata`` set to the given value.
+
+    The original SUT is not modified.
+
+    Parameters
+    ----------
+    sut : SUT
+        The SUT collection to update.
+    metadata : SUTMetadata
+        Metadata to attach, containing column name mappings and optional
+        classification tables.
+
+    Returns
+    -------
+    SUT
+        A new SUT with ``metadata`` set. The underlying data is shared with
+        the original (not copied).
+
+    Raises
+    ------
+    TypeError
+        If ``metadata`` is not a ``SUTMetadata`` instance.
+    """
+    if not isinstance(metadata, SUTMetadata):
+        raise TypeError(
+            f"metadata must be a SUTMetadata instance, got {type(metadata).__name__}."
+        )
+
+    return replace(sut, metadata=metadata)
 
 
 # ---------------------------------------------------------------------------
