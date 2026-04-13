@@ -773,3 +773,20 @@ Append-only. Each entry: date, decision, brief rationale.
   `sut.set_metadata(metadata)` delegate method. Same immutable pattern as
   `set_balancing_id/targets/config`. Raises `TypeError` if argument is not `SUTMetadata`.
 
+- **2026-04-13**: Added `write_to_excel(path)` method to all six inspection result
+  classes (ProductInspection, IndustryInspection, FinalUseInspection,
+  UnbalancedProductsInspection, BalancingTargetsInspection, SUTComparisonInspection).
+  Implemented via shared generic helper `_write_inspection_to_excel` in
+  `sutlab/inspect/_shared.py` using `dataclasses.fields(obj.data)`.
+  Design decisions:
+  - Skip None fields; write empty DataFrames as empty sheets.
+  - Use `Styler.to_excel()` where a styled property exists (carries colours etc.);
+    silent fallback to raw `df.to_excel()` if styling raises (e.g. mismatched columns).
+  - Post-processing via openpyxl: bold headers (copy(cell.font) to preserve existing
+    properties), index column widths fit to content, value column widths fixed at 13,
+    number formats (#,##0.0 for monetary; 0.0% for _distribution/_rates/_growth tables
+    and rel_* columns in mixed tables).
+  - Sheet name truncation: if field name >31 chars, truncate each _-separated segment
+    to 3 chars. Currently only two field names exceed the limit
+    (balancing_targets_use_purchasers, balancing_targets_use_price_layers).
+
