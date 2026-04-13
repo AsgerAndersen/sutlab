@@ -235,6 +235,8 @@ def inspect_sut_comparison(
 
     Raises
     ------
+    TypeError
+        If ``before`` is not a ``SUT`` instance.
     ValueError
         If ``before.metadata`` or ``after.metadata`` is ``None``.
     ValueError
@@ -249,6 +251,11 @@ def inspect_sut_comparison(
     >>> result.data.supply
     >>> result.data.use_purchasers
     """
+    if not isinstance(before, SUT):
+        raise TypeError(
+            f"before must be a SUT instance, got {type(before).__name__}."
+        )
+
     _validate_column_structures(before, after)
 
     cols = before.metadata.columns
