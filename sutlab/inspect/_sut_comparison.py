@@ -216,7 +216,7 @@ def inspect_sut_comparison(
         The SUT after the operation.
     ids : str, int, iterable of str or int, or None, optional
         Filter by collection member id. Accepts the same pattern syntax as
-        :func:`~sutlab.sut.get_rows`. Applied to both SUTs before comparing.
+        :func:`~sutlab.sut.filter_rows`. Applied to both SUTs before comparing.
         ``None`` (the default) includes all ids.
     products : str, list of str, or None, optional
         Filter by product code. Same pattern syntax as ``ids``.

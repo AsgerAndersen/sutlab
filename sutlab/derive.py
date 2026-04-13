@@ -74,7 +74,7 @@ def compute_price_layer_rates(
     sum of basic prices plus all preceding layers in the chain, as
     specified in ``_DEFAULT_DENOMINATORS``.
 
-    Use :func:`~sutlab.sut.get_rows` to filter the SUT to specific products,
+    Use :func:`~sutlab.sut.filter_rows` to filter the SUT to specific products,
     years, or transactions before calling this function.
 
     Parameters

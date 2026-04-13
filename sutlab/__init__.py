@@ -35,7 +35,7 @@ from sutlab.sut import (
     set_balancing_targets,
     set_balancing_config,
     set_metadata,
-    get_rows,
+    filter_rows,
     get_product_codes,
     get_transaction_codes,
     get_industry_codes,

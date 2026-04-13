@@ -110,7 +110,7 @@ def inspect_unbalanced_products(
         The SUT collection. Must have ``balancing_id`` and ``metadata`` set.
     products : str, list of str, or None, optional
         Product codes to check. Accepts the same pattern syntax as
-        :func:`~sutlab.sut.get_rows`: exact codes, wildcards (``*``),
+        :func:`~sutlab.sut.filter_rows`: exact codes, wildcards (``*``),
         ranges (``:``), and negation (``~``). ``None`` (the default) checks
         all products present in the balancing member.
     sort : bool, optional

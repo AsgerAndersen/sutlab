@@ -174,7 +174,7 @@ def balance_products_use(
         The SUT collection. Must have ``balancing_id`` and ``metadata`` set.
     products : str, list of str, or None
         Product codes to balance. Each entry supports the same pattern syntax
-        as :func:`~sutlab.sut.get_rows`: exact (``"A"``), wildcard (``"A*"``),
+        as :func:`~sutlab.sut.filter_rows`: exact (``"A"``), wildcard (``"A*"``),
         range (``"A:C"``), or negation (``"~T"``). Only products present in
         both supply and use for the balancing member are eligible. If ``None``,
         all such products are included, excluding any covered by a product lock.

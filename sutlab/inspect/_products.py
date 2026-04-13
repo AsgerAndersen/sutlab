@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 from pandas.io.formats.style import Styler
 
-from sutlab.sut import SUT, _match_codes, _natural_sort_key, get_rows
+from sutlab.sut import SUT, _match_codes, _natural_sort_key, filter_rows
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._shared import _sort_by_id_value, _write_inspection_to_excel
 from sutlab.inspect._style import (
@@ -275,7 +275,7 @@ def inspect_products(
         The SUT collection to inspect.
     products : str or list of str
         Product codes to include. Accepts the same pattern syntax as
-        :func:`get_rows`: exact codes, wildcards (``*``), ranges (``:``),
+        :func:`filter_rows`: exact codes, wildcards (``*``), ranges (``:``),
         and negation (``~``).
     ids : value, list of values, or range, optional
         Id values (e.g. years) to include as columns. When ``None`` (the
@@ -438,7 +438,7 @@ def inspect_products(
 
     # Compute filtered SUT and price layer rates.
     if not price_layers.empty:
-        filtered_sut = get_rows(sut, products=matched_products)
+        filtered_sut = filter_rows(sut, products=matched_products)
         trans_rates = compute_price_layer_rates(filtered_sut, ["product", "transaction"])
     else:
         trans_rates = pd.DataFrame()

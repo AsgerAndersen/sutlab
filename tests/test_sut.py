@@ -18,7 +18,7 @@ from sutlab.sut import (
     get_individual_consumption_codes,
     get_industry_codes,
     get_product_codes,
-    get_rows,
+    filter_rows,
     get_transaction_codes,
     set_balancing_id,
     set_balancing_targets,
@@ -417,7 +417,7 @@ class TestMatchProductCodes:
 
 
 # ---------------------------------------------------------------------------
-# Tests for get_rows
+# Tests for filter_rows
 # ---------------------------------------------------------------------------
 #
 # sut_multi:       single year (2019), five products, trans "0100" (supply)
@@ -426,53 +426,53 @@ class TestMatchProductCodes:
 #                  and category — used for id filtering tests
 
 
-class TestGetRows:
+class TestFilterRows:
 
     # --- products ---
 
     def test_products_exact_match(self, sut_multi):
-        result = get_rows(sut_multi, products="V10100")
+        result = filter_rows(sut_multi, products="V10100")
         assert set(result.supply["nrnr"]) == {"V10100"}
         assert set(result.use["nrnr"]) == {"V10100"}
 
     def test_products_wildcard(self, sut_multi):
-        result = get_rows(sut_multi, products="V10*")
+        result = filter_rows(sut_multi, products="V10*")
         assert set(result.supply["nrnr"]) == {"V10100", "V10200"}
 
     def test_products_range(self, sut_multi):
-        result = get_rows(sut_multi, products="V10100:V20200")
+        result = filter_rows(sut_multi, products="V10100:V20200")
         assert set(result.supply["nrnr"]) == {"V10100", "V10200", "V20100", "V20200"}
 
     def test_products_mixed_patterns(self, sut_multi):
-        result = get_rows(sut_multi, products=["V10*", "V90100"])
+        result = filter_rows(sut_multi, products=["V10*", "V90100"])
         assert set(result.supply["nrnr"]) == {"V10100", "V10200", "V90100"}
 
     # --- transactions ---
 
     def test_transactions_supply_code_leaves_use_empty(self, sut_multi):
-        result = get_rows(sut_multi, transactions="0100")
+        result = filter_rows(sut_multi, transactions="0100")
         assert len(result.supply) == 5
         assert len(result.use) == 0
 
     def test_transactions_use_code_leaves_supply_empty(self, sut_multi):
-        result = get_rows(sut_multi, transactions="2000")
+        result = filter_rows(sut_multi, transactions="2000")
         assert len(result.supply) == 0
         assert len(result.use) == 5
 
     def test_transactions_wildcard(self, sut_multi):
-        result = get_rows(sut_multi, transactions="0*")
+        result = filter_rows(sut_multi, transactions="0*")
         assert len(result.supply) == 5
         assert len(result.use) == 0
 
     # --- categories ---
 
     def test_categories_exact_match(self, sut_multi):
-        result = get_rows(sut_multi, categories="I1")
+        result = filter_rows(sut_multi, categories="I1")
         assert len(result.supply) == len(sut_multi.supply)
         assert len(result.use) == len(sut_multi.use)
 
     def test_categories_no_match_returns_empty(self, sut_multi):
-        result = get_rows(sut_multi, categories="I2")
+        result = filter_rows(sut_multi, categories="I2")
         assert len(result.supply) == 0
         assert len(result.use) == 0
 
@@ -481,48 +481,48 @@ class TestGetRows:
         supply_with_nan = sut_multi.supply.copy()
         supply_with_nan.loc[0, "brch"] = float("nan")
         sut_with_nan = dataclasses.replace(sut_multi, supply=supply_with_nan)
-        result = get_rows(sut_with_nan, categories="I*")
+        result = filter_rows(sut_with_nan, categories="I*")
         assert len(result.supply) == len(sut_multi.supply) - 1
 
     # --- ids ---
 
     def test_ids_integer(self, sut_multi_years):
-        result = get_rows(sut_multi_years, ids=2019)
+        result = filter_rows(sut_multi_years, ids=2019)
         assert set(result.supply["year"]) == {2019}
 
     def test_ids_string_matches_integer_column(self, sut_multi_years):
-        result = get_rows(sut_multi_years, ids="2019")
+        result = filter_rows(sut_multi_years, ids="2019")
         assert set(result.supply["year"]) == {2019}
 
     def test_ids_range_builtin(self, sut_multi_years):
-        result = get_rows(sut_multi_years, ids=range(2017, 2019))
+        result = filter_rows(sut_multi_years, ids=range(2017, 2019))
         assert set(result.supply["year"]) == {2017, 2018}
 
     def test_ids_pattern_range(self, sut_multi_years):
-        result = get_rows(sut_multi_years, ids="2017:2018")
+        result = filter_rows(sut_multi_years, ids="2017:2018")
         assert set(result.supply["year"]) == {2017, 2018}
 
     def test_ids_wildcard(self, sut_multi_years):
-        result = get_rows(sut_multi_years, ids="201*")
+        result = filter_rows(sut_multi_years, ids="201*")
         assert set(result.supply["year"]) == {2017, 2018, 2019}
 
     # --- AND logic across dimensions ---
 
     def test_and_logic_products_and_transactions(self, sut_multi):
         # V10* products in supply only (trans "0100")
-        result = get_rows(sut_multi, products="V10*", transactions="0100")
+        result = filter_rows(sut_multi, products="V10*", transactions="0100")
         assert set(result.supply["nrnr"]) == {"V10100", "V10200"}
         assert len(result.use) == 0
 
     def test_and_logic_ids_and_products(self, sut_multi_years):
-        result = get_rows(sut_multi_years, ids=2019, products="V10100")
+        result = filter_rows(sut_multi_years, ids=2019, products="V10100")
         assert set(result.supply["year"]) == {2019}
         assert set(result.supply["nrnr"]) == {"V10100"}
 
     # --- empty result ---
 
     def test_no_match_returns_empty_dataframes(self, sut_multi):
-        result = get_rows(sut_multi, products="V99999")
+        result = filter_rows(sut_multi, products="V99999")
         assert len(result.supply) == 0
         assert len(result.use) == 0
 
@@ -530,45 +530,69 @@ class TestGetRows:
 
     def test_balancing_id_is_dropped(self, sut_multi):
         sut_with_balancing = set_balancing_id(sut_multi, 2019)
-        result = get_rows(sut_with_balancing, products="V10*")
+        result = filter_rows(sut_with_balancing, products="V10*")
         assert result.balancing_id is None
 
     def test_price_basis_preserved(self, sut_multi):
-        result = get_rows(sut_multi, products="V10*")
+        result = filter_rows(sut_multi, products="V10*")
         assert result.price_basis == sut_multi.price_basis
 
     def test_metadata_preserved(self, sut_multi):
-        result = get_rows(sut_multi, products="V10*")
+        result = filter_rows(sut_multi, products="V10*")
         assert result.metadata is sut_multi.metadata
 
     def test_does_not_mutate_original(self, sut_multi):
         original_len = len(sut_multi.supply)
-        get_rows(sut_multi, products="V10*")
+        filter_rows(sut_multi, products="V10*")
         assert len(sut_multi.supply) == original_len
 
     # --- error cases ---
 
     def test_raises_when_all_arguments_none(self, sut_multi):
         with pytest.raises(ValueError, match="At least one"):
-            get_rows(sut_multi)
+            filter_rows(sut_multi)
 
     def test_raises_when_metadata_is_none(self, supply_multi, use_multi):
         sut_no_meta = SUT(price_basis="current_year", supply=supply_multi, use=use_multi)
         with pytest.raises(ValueError, match="metadata"):
-            get_rows(sut_no_meta, products="V10*")
+            filter_rows(sut_no_meta, products="V10*")
 
     # --- negation ---
 
     def test_negation_only_excludes_from_all_codes(self, sut_multi):
-        result = get_rows(sut_multi, products="~V10*")
+        result = filter_rows(sut_multi, products="~V10*")
         assert "V10100" not in set(result.supply["nrnr"])
         assert "V10200" not in set(result.supply["nrnr"])
         assert "V20100" in set(result.supply["nrnr"])
 
     def test_negation_combined_with_positive(self, sut_multi):
         # V10* minus V10100
-        result = get_rows(sut_multi, products=["V10*", "~V10100"])
+        result = filter_rows(sut_multi, products=["V10*", "~V10100"])
         assert set(result.supply["nrnr"]) == {"V10200"}
+
+    # --- table argument ---
+
+    def test_table_supply_only_filters_supply(self, sut_multi):
+        result = filter_rows(sut_multi, products="V10*", table="supply")
+        assert set(result.supply["nrnr"]) == {"V10100", "V10200"}
+        # use is unchanged
+        pd.testing.assert_frame_equal(result.use, sut_multi.use)
+
+    def test_table_use_only_filters_use(self, sut_multi):
+        # trans "2000" is a use-side transaction
+        result = filter_rows(sut_multi, transactions="2000", table="use")
+        assert len(result.use) == 5
+        # supply is unchanged
+        pd.testing.assert_frame_equal(result.supply, sut_multi.supply)
+
+    def test_table_none_filters_both(self, sut_multi):
+        result = filter_rows(sut_multi, products="V10*", table=None)
+        assert set(result.supply["nrnr"]) == {"V10100", "V10200"}
+        assert set(result.use["nrnr"]) == {"V10100", "V10200"}
+
+    def test_table_invalid_raises(self, sut_multi):
+        with pytest.raises(ValueError, match="table"):
+            filter_rows(sut_multi, products="V10*", table="both")
 
 
 # ---------------------------------------------------------------------------
