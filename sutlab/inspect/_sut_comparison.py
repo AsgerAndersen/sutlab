@@ -198,6 +198,7 @@ def inspect_sut_comparison(
     rel_tolerance: float = 0,
     filter_nan_as_zero: bool = False,
     sort: bool = False,
+    compare_dimensions: str | list[str] | None = None,
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -242,6 +243,17 @@ def inspect_sut_comparison(
         each id (for ``supply``, ``use_basic``, ``use_purchasers``) or
         within each ``(id, price_layer)`` group (for ``use_price_layers``).
         Default ``False`` preserves natural sort order.
+    compare_dimensions : str, list of str, or None, optional
+        When specified, both SUTs are aggregated over the dimensions not
+        listed here before comparing. Accepted values: ``"product"``,
+        ``"transaction"``, ``"category"`` — one or more. For example,
+        ``["transaction", "category"]`` sums over products so that each
+        row in the output represents a transaction/category total.
+        Filtering (``ids``, ``products``, ``transactions``, ``categories``)
+        is applied first; aggregation follows. ``None`` (the default)
+        performs no aggregation and compares at the full row level.
+        For balancing targets (which have no product dimension),
+        ``"product"`` has no effect.
 
     Returns
     -------
@@ -281,7 +293,6 @@ def inspect_sut_comparison(
     cat_col = cols.category
     price_basic_col = cols.price_basic
     price_purchasers_col = cols.price_purchasers
-    key_cols = [id_col, prod_col, trans_col, cat_col]
 
     # Apply filters to both SUTs independently before comparing.
     filtered_before = _apply_filters(before, cols, ids, products, transactions, categories)
@@ -290,17 +301,45 @@ def inspect_sut_comparison(
     # Collect price layer columns present in either SUT's use DataFrame.
     layer_cols = _get_union_price_layer_columns(cols, filtered_before.use, filtered_after.use)
 
+    # Resolve compare_dimensions to actual column names and build key_cols.
+    # None means keep all three dimensions (product, transaction, category).
+    dimension_cols = _resolve_dimension_cols(compare_dimensions, prod_col, trans_col, cat_col)
+    key_cols = [id_col] + dimension_cols
+
+    # Aggregate supply and use DataFrames when compare_dimensions is specified.
+    supply_price_cols = [price_basic_col]
+    use_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
+
+    if compare_dimensions is not None:
+        before_supply = _aggregate_to_dimensions(
+            filtered_before.supply, key_cols, supply_price_cols
+        )
+        after_supply = _aggregate_to_dimensions(
+            filtered_after.supply, key_cols, supply_price_cols
+        )
+        before_use = _aggregate_to_dimensions(
+            filtered_before.use, key_cols, use_price_cols
+        )
+        after_use = _aggregate_to_dimensions(
+            filtered_after.use, key_cols, use_price_cols
+        )
+    else:
+        before_supply = filtered_before.supply
+        after_supply = filtered_after.supply
+        before_use = filtered_before.use
+        after_use = filtered_after.use
+
     # Build label lookup dicts from classifications (empty dicts when unavailable).
     classifications = before.metadata.classifications
     prod_names = _build_product_names(classifications, prod_col)
     trans_names = _build_transaction_names(classifications, trans_col)
     cat_names = _build_combined_category_names(classifications, cat_col)
-    has_labels = bool(prod_names or trans_names or cat_names)
+    names_by_col = {prod_col: prod_names, trans_col: trans_names, cat_col: cat_names}
 
     # Build supply comparison: one merge of the supply sides.
     supply_table = _build_single_price_comparison(
-        before_df=filtered_before.supply,
-        after_df=filtered_after.supply,
+        before_df=before_supply,
+        after_df=after_supply,
         key_cols=key_cols,
         price_col=price_basic_col,
         diff_tolerance=diff_tolerance,
@@ -309,17 +348,14 @@ def inspect_sut_comparison(
         sort=sort,
         id_col=id_col,
     )
-    supply_table = _set_key_index(
-        supply_table, key_cols, prod_col, trans_col, cat_col,
-        prod_names, trans_names, cat_names, has_labels,
-    )
+    supply_table = _set_key_index(supply_table, key_cols, names_by_col)
 
     # Build all three use tables from a single merge of the use sides.
     # Merging once on key_cols and reusing the result avoids repeating the
     # same expensive join for use_basic, use_purchasers, and each price layer.
     all_use_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
     merged_use = _merge_sides(
-        filtered_before.use, filtered_after.use, key_cols, all_use_price_cols
+        before_use, after_use, key_cols, all_use_price_cols
     )
 
     use_basic_table = _extract_price_comparison(
@@ -332,10 +368,7 @@ def inspect_sut_comparison(
         sort=sort,
         id_col=id_col,
     )
-    use_basic_table = _set_key_index(
-        use_basic_table, key_cols, prod_col, trans_col, cat_col,
-        prod_names, trans_names, cat_names, has_labels,
-    )
+    use_basic_table = _set_key_index(use_basic_table, key_cols, names_by_col)
 
     use_purchasers_table = _extract_price_comparison(
         merged_use=merged_use,
@@ -347,10 +380,7 @@ def inspect_sut_comparison(
         sort=sort,
         id_col=id_col,
     )
-    use_purchasers_table = _set_key_index(
-        use_purchasers_table, key_cols, prod_col, trans_col, cat_col,
-        prod_names, trans_names, cat_names, has_labels,
-    )
+    use_purchasers_table = _set_key_index(use_purchasers_table, key_cols, names_by_col)
 
     use_price_layers_table = _extract_layers_comparison(
         merged_use=merged_use,
@@ -362,10 +392,7 @@ def inspect_sut_comparison(
         sort=sort,
         id_col=id_col,
     )
-    use_price_layers_table = _set_layers_index(
-        use_price_layers_table, key_cols, prod_col, trans_col, cat_col,
-        prod_names, trans_names, cat_names, has_labels,
-    )
+    use_price_layers_table = _set_layers_index(use_price_layers_table, key_cols, names_by_col)
 
     # Build balancing targets comparison when both SUTs have targets.
     if before.balancing_targets is not None and after.balancing_targets is not None:
@@ -387,6 +414,7 @@ def inspect_sut_comparison(
             sort=sort,
             trans_names=trans_names,
             cat_names=cat_names,
+            dimension_cols=dimension_cols,
         )
     else:
         targets_supply = None
@@ -429,6 +457,83 @@ def inspect_sut_comparison(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+
+def _resolve_dimension_cols(
+    compare_dimensions: str | list[str] | None,
+    prod_col: str,
+    trans_col: str,
+    cat_col: str,
+) -> list[str]:
+    """Map compare_dimensions role strings to actual column names in canonical order.
+
+    Parameters
+    ----------
+    compare_dimensions : str, list of str, or None
+        Role name(s) to keep. ``None`` returns all three columns.
+    prod_col, trans_col, cat_col : str
+        Actual column names from SUTColumns.
+
+    Returns
+    -------
+    list of str
+        Column names corresponding to the requested dimensions, in the
+        canonical order product → transaction → category.
+
+    Raises
+    ------
+    ValueError
+        If any role string is not one of ``"product"``, ``"transaction"``,
+        ``"category"``.
+    """
+    if compare_dimensions is None:
+        return [prod_col, trans_col, cat_col]
+    if isinstance(compare_dimensions, str):
+        compare_dimensions = [compare_dimensions]
+    valid = {"product", "transaction", "category"}
+    invalid = set(compare_dimensions) - valid
+    if invalid:
+        raise ValueError(
+            f"Invalid compare_dimensions value(s): {sorted(invalid)!r}. "
+            f"Valid dimensions: {sorted(valid)}."
+        )
+    role_to_col = {"product": prod_col, "transaction": trans_col, "category": cat_col}
+    # Canonical order: product, transaction, category.
+    return [
+        role_to_col[role]
+        for role in ["product", "transaction", "category"]
+        if role in compare_dimensions
+    ]
+
+
+def _aggregate_to_dimensions(
+    df: pd.DataFrame,
+    key_cols: list[str],
+    price_cols: list[str],
+) -> pd.DataFrame:
+    """Sum price columns, keeping only key_cols as group keys.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Source DataFrame containing key_cols and price_cols.
+    key_cols : list of str
+        Columns to group by (id + kept dimensions).
+    price_cols : list of str
+        Price columns to sum. Columns absent from df are skipped.
+
+    Returns
+    -------
+    pd.DataFrame
+        Aggregated DataFrame with key_cols and available price columns.
+        All-NaN groups produce NaN in the output (``min_count=1``).
+    """
+    available_price_cols = [c for c in price_cols if c in df.columns]
+    return (
+        df.groupby(key_cols, dropna=False)[available_price_cols]
+        .sum(min_count=1)
+        .reset_index()
+    )
 
 
 def _validate_column_structures(before: SUT, after: SUT) -> None:
@@ -673,98 +778,89 @@ def _extract_layers_comparison(
 def _set_key_index(
     df: pd.DataFrame,
     key_cols: list[str],
-    prod_col: str,
-    trans_col: str,
-    cat_col: str,
-    prod_names: dict[str, str],
-    trans_names: dict[str, str],
-    cat_names: dict[str, str],
-    has_labels: bool,
+    names_by_col: dict[str, dict[str, str]],
 ) -> pd.DataFrame:
-    """Set key_cols as the index, adding _txt companion levels when available."""
-    id_col = key_cols[0]
+    """Set key_cols as the index, adding _txt companion levels when available.
+
+    For each column in key_cols, a ``{col}_txt`` companion level is added when
+    ``names_by_col`` contains a non-empty mapping for that column. The id
+    column (first entry in key_cols) never has a text companion because it is
+    absent from ``names_by_col``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing key_cols as regular columns.
+    key_cols : list of str
+        Columns to set as the index. First entry is always the id column.
+    names_by_col : dict
+        Maps column name to a ``{code: label}`` lookup dict. Columns absent
+        from this dict, or mapped to an empty dict, get no text companion.
+    """
     df = df.set_index(key_cols)
 
-    if not has_labels:
+    has_any_labels = any(names_by_col.get(col) for col in key_cols)
+    if not has_any_labels:
         return df
 
-    id_vals = df.index.get_level_values(id_col)
-    prod_vals = df.index.get_level_values(prod_col)
-    trans_vals = df.index.get_level_values(trans_col)
-    cat_vals = df.index.get_level_values(cat_col)
+    arrays = []
+    names = []
+    for col in key_cols:
+        col_vals = df.index.get_level_values(col)
+        arrays.append(col_vals)
+        names.append(col)
+        col_names = names_by_col.get(col, {})
+        if col_names:
+            arrays.append([col_names.get(str(v), "") for v in col_vals])
+            names.append(f"{col}_txt")
 
-    prod_txt_col = f"{prod_col}_txt"
-    trans_txt_col = f"{trans_col}_txt"
-    cat_txt_col = f"{cat_col}_txt"
-
-    df.index = pd.MultiIndex.from_arrays(
-        [
-            id_vals,
-            prod_vals,
-            [prod_names.get(str(p), "") for p in prod_vals],
-            trans_vals,
-            [trans_names.get(str(t), "") for t in trans_vals],
-            cat_vals,
-            [cat_names.get(str(c), "") for c in cat_vals],
-        ],
-        names=[id_col, prod_col, prod_txt_col, trans_col, trans_txt_col, cat_col, cat_txt_col],
-    )
-
+    df.index = pd.MultiIndex.from_arrays(arrays, names=names)
     return df
 
 
 def _set_layers_index(
     df: pd.DataFrame,
     key_cols: list[str],
-    prod_col: str,
-    trans_col: str,
-    cat_col: str,
-    prod_names: dict[str, str],
-    trans_names: dict[str, str],
-    cat_names: dict[str, str],
-    has_labels: bool,
+    names_by_col: dict[str, dict[str, str]],
 ) -> pd.DataFrame:
-    """Set (key_cols + price_layer) as the index for the price layers table.
+    """Set (key_cols + price_layer) as the index for a price layers table.
 
-    Text companion levels are added for product, transaction, and category
-    when available. The ``price_layer`` level has no text companion.
+    Text companion levels are added for each column in key_cols that has a
+    non-empty mapping in ``names_by_col``. The ``price_layer`` level is
+    appended last and has no text companion.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing key_cols and ``price_layer`` as regular columns.
+    key_cols : list of str
+        Columns to use as the leading index levels (before ``price_layer``).
+    names_by_col : dict
+        Maps column name to a ``{code: label}`` lookup dict.
     """
-    id_col = key_cols[0]
     index_cols = key_cols + ["price_layer"]
     df = df.set_index(index_cols)
 
-    if not has_labels:
+    has_any_labels = any(names_by_col.get(col) for col in key_cols)
+    if not has_any_labels:
         return df
 
-    id_vals = df.index.get_level_values(id_col)
-    prod_vals = df.index.get_level_values(prod_col)
-    trans_vals = df.index.get_level_values(trans_col)
-    cat_vals = df.index.get_level_values(cat_col)
+    arrays = []
+    names = []
+    for col in key_cols:
+        col_vals = df.index.get_level_values(col)
+        arrays.append(col_vals)
+        names.append(col)
+        col_names = names_by_col.get(col, {})
+        if col_names:
+            arrays.append([col_names.get(str(v), "") for v in col_vals])
+            names.append(f"{col}_txt")
+
     layer_vals = df.index.get_level_values("price_layer")
+    arrays.append(layer_vals)
+    names.append("price_layer")
 
-    prod_txt_col = f"{prod_col}_txt"
-    trans_txt_col = f"{trans_col}_txt"
-    cat_txt_col = f"{cat_col}_txt"
-
-    df.index = pd.MultiIndex.from_arrays(
-        [
-            id_vals,
-            prod_vals,
-            [prod_names.get(str(p), "") for p in prod_vals],
-            trans_vals,
-            [trans_names.get(str(t), "") for t in trans_vals],
-            cat_vals,
-            [cat_names.get(str(c), "") for c in cat_vals],
-            layer_vals,
-        ],
-        names=[
-            id_col, prod_col, prod_txt_col,
-            trans_col, trans_txt_col,
-            cat_col, cat_txt_col,
-            "price_layer",
-        ],
-    )
-
+    df.index = pd.MultiIndex.from_arrays(arrays, names=names)
     return df
 
 
@@ -781,21 +877,28 @@ def _build_targets_comparison(
     sort: bool,
     trans_names: dict[str, str],
     cat_names: dict[str, str],
+    dimension_cols: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build the four balancing targets comparison tables.
 
     Returns (targets_supply, targets_use_basic, targets_use_purchasers,
     targets_use_price_layers). Reuses the same merge and extraction helpers
-    as the SUT data comparison, with (id, transaction, category) as key_cols.
+    as the SUT data comparison. Targets have no product dimension, so
+    ``dimension_cols`` is filtered to exclude the product column before
+    building ``targets_key_cols``.
     """
     id_col = cols.id
+    prod_col = cols.product
     trans_col = cols.transaction
     cat_col = cols.category
     price_basic_col = cols.price_basic
     price_purchasers_col = cols.price_purchasers
-    targets_key_cols = [id_col, trans_col, cat_col]
 
-    has_labels = bool(trans_names or cat_names)
+    # Targets have no product dimension; exclude it from the key columns.
+    targets_dimension_cols = [col for col in dimension_cols if col != prod_col]
+    targets_key_cols = [id_col] + targets_dimension_cols
+
+    names_by_col = {trans_col: trans_names, cat_col: cat_names}
 
     # Apply filters to both targets DataFrames independently.
     before_targets_supply = before.balancing_targets.supply
@@ -822,7 +925,26 @@ def _build_targets_comparison(
     # Collect price layer columns present in either use targets DataFrame.
     layer_cols = _get_union_price_layer_columns(cols, before_targets_use, after_targets_use)
 
-    # Supply: one merge on (id, transaction, category) for price_basic only.
+    # Aggregate targets when compare_dimensions excludes transaction or category.
+    # When targets_dimension_cols already covers [trans_col, cat_col] the
+    # groupby is effectively a no-op (rows are unique on those keys).
+    if targets_dimension_cols != [trans_col, cat_col]:
+        supply_target_price_cols = [price_basic_col]
+        use_target_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
+        before_targets_supply = _aggregate_to_dimensions(
+            before_targets_supply, targets_key_cols, supply_target_price_cols
+        )
+        after_targets_supply = _aggregate_to_dimensions(
+            after_targets_supply, targets_key_cols, supply_target_price_cols
+        )
+        before_targets_use = _aggregate_to_dimensions(
+            before_targets_use, targets_key_cols, use_target_price_cols
+        )
+        after_targets_use = _aggregate_to_dimensions(
+            after_targets_use, targets_key_cols, use_target_price_cols
+        )
+
+    # Supply: one merge on targets_key_cols for price_basic only.
     targets_supply = _build_single_price_comparison(
         before_df=before_targets_supply,
         after_df=after_targets_supply,
@@ -834,10 +956,7 @@ def _build_targets_comparison(
         sort=sort,
         id_col=id_col,
     )
-    targets_supply = _set_targets_index(
-        targets_supply, targets_key_cols, trans_col, cat_col,
-        trans_names, cat_names, has_labels,
-    )
+    targets_supply = _set_key_index(targets_supply, targets_key_cols, names_by_col)
 
     # Use: one merge covering all price columns.
     all_use_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
@@ -855,10 +974,7 @@ def _build_targets_comparison(
         sort=sort,
         id_col=id_col,
     )
-    targets_use_basic = _set_targets_index(
-        targets_use_basic, targets_key_cols, trans_col, cat_col,
-        trans_names, cat_names, has_labels,
-    )
+    targets_use_basic = _set_key_index(targets_use_basic, targets_key_cols, names_by_col)
 
     targets_use_purchasers = _extract_price_comparison(
         merged_use=merged_targets_use,
@@ -870,10 +986,7 @@ def _build_targets_comparison(
         sort=sort,
         id_col=id_col,
     )
-    targets_use_purchasers = _set_targets_index(
-        targets_use_purchasers, targets_key_cols, trans_col, cat_col,
-        trans_names, cat_names, has_labels,
-    )
+    targets_use_purchasers = _set_key_index(targets_use_purchasers, targets_key_cols, names_by_col)
 
     targets_use_price_layers = _extract_layers_comparison(
         merged_use=merged_targets_use,
@@ -885,9 +998,8 @@ def _build_targets_comparison(
         sort=sort,
         id_col=id_col,
     )
-    targets_use_price_layers = _set_targets_layers_index(
-        targets_use_price_layers, targets_key_cols, trans_col, cat_col,
-        trans_names, cat_names, has_labels,
+    targets_use_price_layers = _set_layers_index(
+        targets_use_price_layers, targets_key_cols, names_by_col
     )
 
     return targets_supply, targets_use_basic, targets_use_purchasers, targets_use_price_layers
@@ -914,83 +1026,6 @@ def _filter_targets_by_column(df: pd.DataFrame, col: str, patterns: str | list[s
     all_codes = df[col].dropna().unique().tolist()
     matched = _match_codes(all_codes, patterns)
     return df[df[col].isin(matched)]
-
-
-def _set_targets_index(
-    df: pd.DataFrame,
-    key_cols: list[str],
-    trans_col: str,
-    cat_col: str,
-    trans_names: dict[str, str],
-    cat_names: dict[str, str],
-    has_labels: bool,
-) -> pd.DataFrame:
-    """Set (id, transaction, category) as the index, adding _txt companions when available."""
-    id_col = key_cols[0]
-    df = df.set_index(key_cols)
-
-    if not has_labels:
-        return df
-
-    id_vals = df.index.get_level_values(id_col)
-    trans_vals = df.index.get_level_values(trans_col)
-    cat_vals = df.index.get_level_values(cat_col)
-
-    trans_txt_col = f"{trans_col}_txt"
-    cat_txt_col = f"{cat_col}_txt"
-
-    df.index = pd.MultiIndex.from_arrays(
-        [
-            id_vals,
-            trans_vals,
-            [trans_names.get(str(t), "") for t in trans_vals],
-            cat_vals,
-            [cat_names.get(str(c), "") for c in cat_vals],
-        ],
-        names=[id_col, trans_col, trans_txt_col, cat_col, cat_txt_col],
-    )
-
-    return df
-
-
-def _set_targets_layers_index(
-    df: pd.DataFrame,
-    key_cols: list[str],
-    trans_col: str,
-    cat_col: str,
-    trans_names: dict[str, str],
-    cat_names: dict[str, str],
-    has_labels: bool,
-) -> pd.DataFrame:
-    """Set (id, transaction, category, price_layer) as the index for the targets layers table."""
-    id_col = key_cols[0]
-    index_cols = key_cols + ["price_layer"]
-    df = df.set_index(index_cols)
-
-    if not has_labels:
-        return df
-
-    id_vals = df.index.get_level_values(id_col)
-    trans_vals = df.index.get_level_values(trans_col)
-    cat_vals = df.index.get_level_values(cat_col)
-    layer_vals = df.index.get_level_values("price_layer")
-
-    trans_txt_col = f"{trans_col}_txt"
-    cat_txt_col = f"{cat_col}_txt"
-
-    df.index = pd.MultiIndex.from_arrays(
-        [
-            id_vals,
-            trans_vals,
-            [trans_names.get(str(t), "") for t in trans_vals],
-            cat_vals,
-            [cat_names.get(str(c), "") for c in cat_vals],
-            layer_vals,
-        ],
-        names=[id_col, trans_col, trans_txt_col, cat_col, cat_txt_col, "price_layer"],
-    )
-
-    return df
 
 
 def _build_product_names(classifications, prod_col: str) -> dict[str, str]:
