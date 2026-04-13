@@ -302,6 +302,79 @@ class BalancingTargets:
     supply: pd.DataFrame
     use: pd.DataFrame
 
+    def write_to_separated_parquet(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_separated_parquet`."""
+        from sutlab.io import write_balancing_targets_to_separated_parquet
+        write_balancing_targets_to_separated_parquet(self, id_values, paths, columns_metadata, print_paths=print_paths)
+
+    def write_to_combined_parquet(
+        self,
+        path: str | Path,
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_combined_parquet`."""
+        from sutlab.io import write_balancing_targets_to_combined_parquet
+        write_balancing_targets_to_combined_parquet(self, path, columns_metadata, print_paths=print_paths)
+
+    def write_to_separated_csv(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        columns_metadata: SUTColumns,
+        *,
+        sep: str = ",",
+        encoding: str | None = None,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_separated_csv`."""
+        from sutlab.io import write_balancing_targets_to_separated_csv
+        write_balancing_targets_to_separated_csv(self, id_values, paths, columns_metadata, sep=sep, encoding=encoding, print_paths=print_paths)
+
+    def write_to_combined_csv(
+        self,
+        path: str | Path,
+        columns_metadata: SUTColumns,
+        *,
+        sep: str = ",",
+        encoding: str | None = None,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_combined_csv`."""
+        from sutlab.io import write_balancing_targets_to_combined_csv
+        write_balancing_targets_to_combined_csv(self, path, columns_metadata, sep=sep, encoding=encoding, print_paths=print_paths)
+
+    def write_to_separated_excel(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_separated_excel`."""
+        from sutlab.io import write_balancing_targets_to_separated_excel
+        write_balancing_targets_to_separated_excel(self, id_values, paths, columns_metadata, print_paths=print_paths)
+
+    def write_to_combined_excel(
+        self,
+        path: str | Path,
+        columns_metadata: SUTColumns,
+        *,
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_balancing_targets_to_combined_excel`."""
+        from sutlab.io import write_balancing_targets_to_combined_excel
+        write_balancing_targets_to_combined_excel(self, path, columns_metadata, print_paths=print_paths)
+
 
 @dataclass
 class SUT:
@@ -548,15 +621,13 @@ class SUT:
 
     def write_to_combined_parquet(
         self,
-        folder: str,
-        prefix: str,
+        path: str | Path,
         *,
-        price_basis_code: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_parquet`."""
         from sutlab.io import write_sut_to_combined_parquet
-        write_sut_to_combined_parquet(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
+        write_sut_to_combined_parquet(self, path, print_paths=print_paths)
 
     def write_to_separated_csv(
         self,
@@ -573,17 +644,15 @@ class SUT:
 
     def write_to_combined_csv(
         self,
-        folder: str,
-        prefix: str,
+        path: str | Path,
         *,
-        price_basis_code: str | None = None,
         sep: str = ",",
         encoding: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_csv`."""
         from sutlab.io import write_sut_to_combined_csv
-        write_sut_to_combined_csv(self, folder, prefix, price_basis_code=price_basis_code, sep=sep, encoding=encoding, print_paths=print_paths)
+        write_sut_to_combined_csv(self, path, sep=sep, encoding=encoding, print_paths=print_paths)
 
     def write_to_separated_excel(
         self,
@@ -598,15 +667,13 @@ class SUT:
 
     def write_to_combined_excel(
         self,
-        folder: str,
-        prefix: str,
+        path: str | Path,
         *,
-        price_basis_code: str | None = None,
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.io.write_sut_to_combined_excel`."""
         from sutlab.io import write_sut_to_combined_excel
-        write_sut_to_combined_excel(self, folder, prefix, price_basis_code=price_basis_code, print_paths=print_paths)
+        write_sut_to_combined_excel(self, path, print_paths=print_paths)
 
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
