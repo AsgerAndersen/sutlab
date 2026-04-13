@@ -86,6 +86,8 @@ def adjust_add_sut(sut: SUT, adjustments: SUT) -> SUT:
 
     Raises
     ------
+    TypeError
+        If ``sut`` or ``adjustments`` is not a ``SUT`` instance.
     ValueError
         If ``sut.metadata`` is ``None``.
     ValueError
@@ -94,6 +96,15 @@ def adjust_add_sut(sut: SUT, adjustments: SUT) -> SUT:
         If both ``sut`` and ``adjustments`` have metadata but their
         ``SUTColumns`` differ.
     """
+    if not isinstance(sut, SUT):
+        raise TypeError(
+            f"sut must be a SUT instance, got {type(sut).__name__}."
+        )
+    if not isinstance(adjustments, SUT):
+        raise TypeError(
+            f"adjustments must be a SUT instance, got {type(adjustments).__name__}."
+        )
+
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call adjust_add_sut. "

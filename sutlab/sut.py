@@ -683,6 +683,8 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
 
     Raises
     ------
+    TypeError
+        If ``targets`` is not a ``BalancingTargets`` instance.
     ValueError
         If ``sut.metadata`` is ``None``.
     ValueError
@@ -692,6 +694,11 @@ def set_balancing_targets(sut: SUT, targets: BalancingTargets) -> SUT:
         If ``targets.use`` is missing any of: id, transaction, category,
         price_purchasers columns.
     """
+    if not isinstance(targets, BalancingTargets):
+        raise TypeError(
+            f"targets must be a BalancingTargets instance, got {type(targets).__name__}."
+        )
+
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call set_balancing_targets. "
@@ -742,7 +749,17 @@ def set_balancing_config(sut: SUT, config: BalancingConfig) -> SUT:
     SUT
         A new SUT with ``balancing_config`` set. The underlying data is
         shared with the original (not copied).
+
+    Raises
+    ------
+    TypeError
+        If ``config`` is not a ``BalancingConfig`` instance.
     """
+    if not isinstance(config, BalancingConfig):
+        raise TypeError(
+            f"config must be a BalancingConfig instance, got {type(config).__name__}."
+        )
+
     return replace(sut, balancing_config=config)
 
 

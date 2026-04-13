@@ -1100,12 +1100,19 @@ def load_sut_from_dataframe(
 
     Raises
     ------
+    TypeError
+        If ``df`` is not a pandas DataFrame.
     ValueError
         If ``metadata.classifications.transactions`` is absent.
     ValueError
         If any transaction code in the data is not found in
         ``metadata.classifications.transactions``.
     """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(
+            f"df must be a pandas DataFrame, got {type(df).__name__}."
+        )
+
     if metadata.classifications is None or metadata.classifications.transactions is None:
         raise ValueError(
             "metadata.classifications.transactions is required to split supply "
@@ -1855,6 +1862,8 @@ def load_balancing_targets_from_dataframe(
 
     Raises
     ------
+    TypeError
+        If ``df`` is not a pandas DataFrame.
     ValueError
         If ``metadata.classifications.transactions`` is absent.
     ValueError
@@ -1863,6 +1872,11 @@ def load_balancing_targets_from_dataframe(
         If any transaction code is not found in
         ``metadata.classifications.transactions``.
     """
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(
+            f"df must be a pandas DataFrame, got {type(df).__name__}."
+        )
+
     if metadata.classifications is None or metadata.classifications.transactions is None:
         raise ValueError(
             "metadata.classifications.transactions is required to split supply "
