@@ -797,3 +797,16 @@ Append-only. Each entry: date, decision, brief rationale.
   locked ones. Both functions gained a `table: str | None = None` keyword argument:
   `"supply"` or `"use"` limits filtering to that table; `None` (default) filters both.
   `_remove_locked.py` renamed to `_filter_free.py`.
+
+- **2026-04-14**: `compare_dimensions: str | list[str] | None = None` added to
+  `inspect_sut_comparison` (and the SUT delegate method). Accepted values: `"product"`,
+  `"transaction"`, `"category"` — one or more. When set, both SUTs are aggregated via
+  groupby+sum (min_count=1) over the dimensions not listed, after filtering and before
+  comparing. Canonical column order (product → transaction → category) is preserved
+  regardless of the order the user specifies. For balancing targets (no product dimension),
+  `"product"` has no effect; transaction/category dimensions are aggregated as expected.
+  `_set_key_index` and `_set_layers_index` refactored to be fully dynamic: they now take
+  a `names_by_col: dict[str, dict[str, str]]` argument instead of separate col/names
+  arguments, and add `_txt` companions only for columns present in the dict. This allowed
+  `_set_targets_index` and `_set_targets_layers_index` to be removed (targets now use the
+  same generic helpers).
