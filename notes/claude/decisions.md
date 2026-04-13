@@ -790,3 +790,10 @@ Append-only. Each entry: date, decision, brief rationale.
     to 3 chars. Currently only two field names exceed the limit
     (balancing_targets_use_purchasers, balancing_targets_use_price_layers).
 
+
+- **2026-04-13**: Renamed `get_rows` → `filter_rows` and `remove_locked_cells` →
+  `filter_free_cells`. Rationale: "filter" is consistent with pandas conventions (keep
+  matching rows); "free" is accurate — the function retains unlocked (free) rows, not
+  locked ones. Both functions gained a `table: str | None = None` keyword argument:
+  `"supply"` or `"use"` limits filtering to that table; `None` (default) filters both.
+  `_remove_locked.py` renamed to `_filter_free.py`.
