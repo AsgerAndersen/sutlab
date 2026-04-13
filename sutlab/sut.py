@@ -455,16 +455,17 @@ class SUT:
         """Delegates to :func:`set_metadata`."""
         return set_metadata(self, metadata)
 
-    def get_rows(
+    def filter_rows(
         self,
         *,
         ids: str | int | Iterable[str | int] | None = None,
         products: str | list[str] | None = None,
         transactions: str | list[str] | None = None,
         categories: str | list[str] | None = None,
+        table: str | None = None,
     ) -> SUT:
-        """Delegates to :func:`get_rows`."""
-        return get_rows(self, ids=ids, products=products, transactions=transactions, categories=categories)
+        """Delegates to :func:`filter_rows`."""
+        return filter_rows(self, ids=ids, products=products, transactions=transactions, categories=categories, table=table)
 
     def get_ids(self) -> pd.DataFrame:
         """Delegates to :func:`get_ids`."""
@@ -570,10 +571,10 @@ class SUT:
         from sutlab.balancing import balance_products_use
         return balance_products_use(self, products=products, adjust_transactions=adjust_transactions, adjust_categories=adjust_categories)
 
-    def remove_locked_cells(self) -> SUT:
-        """Delegates to :func:`~sutlab.balancing.remove_locked_cells`."""
-        from sutlab.balancing import remove_locked_cells
-        return remove_locked_cells(self)
+    def filter_free_cells(self, *, table: str | None = None) -> SUT:
+        """Delegates to :func:`~sutlab.balancing.filter_free_cells`."""
+        from sutlab.balancing import filter_free_cells
+        return filter_free_cells(self, table=table)
 
     def resolve_target_tolerances(self) -> SUT:
         """Delegates to :func:`~sutlab.balancing.resolve_target_tolerances`."""
@@ -1029,19 +1030,21 @@ def _filter_sut_by_ids(sut: SUT, ids: str | int | Iterable[str | int]) -> SUT:
     return replace(sut, supply=filtered_supply, use=filtered_use)
 
 
-def get_rows(
+def filter_rows(
     sut: SUT,
     *,
     ids: str | int | Iterable[str | int] | None = None,
     products: str | list[str] | None = None,
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
+    table: str | None = None,
 ) -> SUT:
     """Return a new SUT containing only the rows matching the given criteria.
 
-    All arguments except ``sut`` are optional, but at least one must be
-    provided. Filters are applied with AND logic — each argument narrows the
-    result further.
+    All arguments except ``sut`` are optional, but at least one of ``ids``,
+    ``products``, ``transactions``, or ``categories`` must be provided.
+    Filters are applied with AND logic — each argument narrows the result
+    further.
 
     Parameters
     ----------
@@ -1080,11 +1083,14 @@ def get_rows(
 
         Rows with no category (imports, exports, investment) have a NaN
         category value and are excluded when filtering by category.
+    table : str or None, optional
+        Which table to filter. ``"supply"`` filters only ``sut.supply``;
+        ``"use"`` filters only ``sut.use``; ``None`` (default) filters both.
 
     Returns
     -------
     SUT
-        A new SUT with ``supply`` and ``use`` filtered to matching rows.
+        A new SUT with the selected table(s) filtered to matching rows.
         ``balancing_id`` is set to ``None`` — balancing a sub-SUT is not
         supported. ``price_basis`` and ``metadata`` are carried over
         unchanged. If no rows match, the result contains empty DataFrames.
@@ -1095,6 +1101,8 @@ def get_rows(
         If all of ``ids``, ``products``, ``transactions``, and ``categories``
         are ``None``.
     ValueError
+        If ``table`` is not ``None``, ``"supply"``, or ``"use"``.
+    ValueError
         If ``sut.metadata`` is ``None`` — it is needed to identify the
         relevant columns.
     """
@@ -1103,11 +1111,19 @@ def get_rows(
             "At least one of ids, products, transactions, or categories must be provided."
         )
 
+    if table is not None and table not in ("supply", "use"):
+        raise ValueError(
+            f"table must be 'supply', 'use', or None. Got: {repr(table)}"
+        )
+
     if sut.metadata is None:
         raise ValueError(
-            "sut.metadata is required to call get_rows. "
+            "sut.metadata is required to call filter_rows. "
             "Provide a SUTMetadata with column name mappings."
         )
+
+    original_supply = sut.supply
+    original_use = sut.use
 
     cols = sut.metadata.columns
     result = sut
@@ -1120,6 +1136,11 @@ def get_rows(
         result = _filter_sut_by_column(result, cols.transaction, transactions)
     if categories is not None:
         result = _filter_sut_by_column(result, cols.category, categories)
+
+    if table == "supply":
+        result = replace(result, use=original_use)
+    elif table == "use":
+        result = replace(result, supply=original_supply)
 
     return replace(result, balancing_id=None)
 
@@ -1452,7 +1473,7 @@ def get_ids(sut: SUT) -> pd.DataFrame:
 SUT.set_balancing_id.__doc__ = set_balancing_id.__doc__
 SUT.set_balancing_targets.__doc__ = set_balancing_targets.__doc__
 SUT.set_balancing_config.__doc__ = set_balancing_config.__doc__
-SUT.get_rows.__doc__ = get_rows.__doc__
+SUT.filter_rows.__doc__ = filter_rows.__doc__
 SUT.get_ids.__doc__ = get_ids.__doc__
 SUT.get_product_codes.__doc__ = get_product_codes.__doc__
 SUT.get_transaction_codes.__doc__ = get_transaction_codes.__doc__

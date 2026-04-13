@@ -152,7 +152,7 @@ def inspect_balancing_targets(
         ``balancing_targets`` set.
     transactions : str, list of str, or None, optional
         Transaction codes to include. Accepts the same pattern syntax as
-        :func:`~sutlab.sut.get_rows`: exact codes, wildcards (``*``),
+        :func:`~sutlab.sut.filter_rows`: exact codes, wildcards (``*``),
         ranges (``:``), and negation (``~``). ``None`` (the default) includes
         all transactions present in the targets.
     categories : str, list of str, or None, optional

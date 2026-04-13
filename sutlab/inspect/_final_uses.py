@@ -227,7 +227,7 @@ def inspect_final_uses(
         The SUT collection to inspect.
     transactions : str or list of str
         Final use transaction codes to include. Accepts the same pattern
-        syntax as :func:`get_rows`: exact codes, wildcards (``*``), ranges
+        syntax as :func:`filter_rows`: exact codes, wildcards (``*``), ranges
         (``:``), and negation (``~``). Matched against use-side transaction
         codes with ESA codes other than P2 (intermediate consumption).
     categories : str or list of str, optional

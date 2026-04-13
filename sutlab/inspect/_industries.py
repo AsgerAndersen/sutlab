@@ -360,7 +360,7 @@ def inspect_industries(
         The SUT collection to inspect.
     industries : str or list of str
         Industry codes to include. Accepts the same pattern syntax as
-        :func:`get_rows`: exact codes, wildcards (``*``), ranges (``:``),
+        :func:`filter_rows`: exact codes, wildcards (``*``), ranges (``:``),
         and negation (``~``).
     ids : value, list of values, or range, optional
         Id values (e.g. years) to include as columns. When ``None`` (the

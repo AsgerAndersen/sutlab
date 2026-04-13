@@ -207,7 +207,7 @@ def balance_columns(
         and ``metadata`` set.
     transactions : str, list of str, or None
         Transaction codes identifying which columns to balance. Each entry
-        supports the same pattern syntax as :func:`~sutlab.sut.get_rows`:
+        supports the same pattern syntax as :func:`~sutlab.sut.filter_rows`:
         exact (``"0100"``), wildcard (``"01*"``), range (``"0100:0700"``),
         or negation (``"~0700"``). If ``None``, all transactions that have
         targets in ``sut.balancing_targets`` are balanced.
