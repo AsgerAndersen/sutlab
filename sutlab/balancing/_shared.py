@@ -52,21 +52,14 @@ def _evaluate_locks(df: pd.DataFrame, locks: Locks | None, cols: SUTColumns) -> 
         locked |= df[cols.transaction].isin(locked_trans)
 
     if locks.categories is not None:
-        lock_pairs = set(zip(
-            locks.categories[cols.transaction],
-            locks.categories[cols.category],
-        ))
-        df_pairs = list(zip(df[cols.transaction], df[cols.category]))
-        locked |= pd.Series(df_pairs, index=df.index).isin(lock_pairs)
+        lock_df = locks.categories[[cols.transaction, cols.category]].drop_duplicates()
+        matched = df[[cols.transaction, cols.category]].merge(lock_df, how="left", indicator=True)
+        locked |= (matched["_merge"] == "both").to_numpy()
 
     if locks.cells is not None:
-        lock_triples = set(zip(
-            locks.cells[cols.product],
-            locks.cells[cols.transaction],
-            locks.cells[cols.category],
-        ))
-        df_triples = list(zip(df[cols.product], df[cols.transaction], df[cols.category]))
-        locked |= pd.Series(df_triples, index=df.index).isin(lock_triples)
+        lock_df = locks.cells[[cols.product, cols.transaction, cols.category]].drop_duplicates()
+        matched = df[[cols.product, cols.transaction, cols.category]].merge(lock_df, how="left", indicator=True)
+        locked |= (matched["_merge"] == "both").to_numpy()
 
     return locked
 
