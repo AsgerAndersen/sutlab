@@ -746,3 +746,30 @@ Append-only. Each entry: date, decision, brief rationale.
   paths; auto-naming logic removed. Validates that all provided id values are present in
   the SUT (informative error listing available ids); also validates equal lengths of
   `id_values` and `paths`. `Path` import added to `sut.py`.
+
+- **2026-04-13**: Added balancing targets loaders for parquet and CSV:
+  `load_balancing_targets_from_separated_parquet`, `load_balancing_targets_from_combined_parquet`,
+  `load_balancing_targets_from_separated_csv`, `load_balancing_targets_from_combined_csv`.
+  All delegate to `_assemble_balancing_targets`; parquet stores price columns as numeric
+  so no conversion needed; CSV reads transaction/category as str and converts price columns.
+
+- **2026-04-13**: Added six balancing targets writer functions:
+  `write_balancing_targets_to_separated/combined_parquet/csv/excel`. Take
+  `columns_metadata: SUTColumns` (not full `SUTMetadata` — no classifications needed for
+  writing). Private `_combine_balancing_targets(targets, columns_metadata)` helper
+  concatenates supply+use and sorts by id/transaction/category. `BalancingTargets` exposes
+  matching `write_to_*` delegate methods. Combined writers take a single `path` argument
+  (same pattern established for SUT combined writers this session).
+
+- **2026-04-13**: `write_sut_to_combined_parquet/csv/excel` changed to take a single
+  `path: str | Path` argument instead of `folder + prefix + price_basis_code`. Caller
+  controls the full output path. `_resolve_price_basis_code` and `_DEFAULT_PRICE_BASIS_CODES`
+  removed as dead code.
+
+- **2026-04-13**: Rule added to CLAUDE.md: never rely on column or row ordering — always
+  identify columns by name via `SUTColumns` and select rows by value, not position.
+
+- **2026-04-13**: Added `set_metadata(sut, metadata) -> SUT` free function and
+  `sut.set_metadata(metadata)` delegate method. Same immutable pattern as
+  `set_balancing_id/targets/config`. Raises `TypeError` if argument is not `SUTMetadata`.
+
