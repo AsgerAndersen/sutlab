@@ -36,7 +36,7 @@ class SUTComparisonData:
         either SUT. Columns: ``before_{price_basic}``,
         ``after_{price_basic}``, ``diff_{price_basic}``,
         ``rel_{price_basic}``. Only rows where ``abs(diff) > diff_tolerance``
-        or ``abs(rel) > rel_tolerance`` are included; rows that appear in
+        and ``abs(rel) > rel_tolerance`` are included; rows that appear in
         only one SUT are always included unless ``filter_nan_as_zero=True``
         suppresses the NaN-vs-zero cases.
     use_basic : pd.DataFrame
@@ -198,7 +198,6 @@ def inspect_sut_comparison(
     rel_tolerance: float = float("inf"),
     filter_nan_as_zero: bool = False,
     sort: bool = False,
-    compare_dimensions: str | list[str] | None = None,
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -226,12 +225,13 @@ def inspect_sut_comparison(
     categories : str, list of str, or None, optional
         Filter by category code. Same pattern syntax as ``ids``.
     diff_tolerance : float, optional
-        Absolute tolerance. A row is included when
-        ``abs(diff) > diff_tolerance``. Default ``1``.
+        Absolute tolerance. Default ``1``.
     rel_tolerance : float, optional
-        Relative tolerance. A row is included when
-        ``abs(rel) > rel_tolerance``. Default ``float("inf")`` (disabled —
-        only ``diff_tolerance`` applies).
+        Relative tolerance. Default ``float("inf")`` (disabled — only
+        ``diff_tolerance`` applies). A row is included when both
+        ``abs(diff) > diff_tolerance`` and ``abs(rel) > rel_tolerance``.
+        Rows present in only one SUT are always included regardless of
+        tolerances.
     filter_nan_as_zero : bool, optional
         When ``True``, rows where one side is ``NaN`` and the other is ``0``
         are excluded from all tables. This suppresses the noise that arises
@@ -243,17 +243,6 @@ def inspect_sut_comparison(
         each id (for ``supply``, ``use_basic``, ``use_purchasers``) or
         within each ``(id, price_layer)`` group (for ``use_price_layers``).
         Default ``False`` preserves natural sort order.
-    compare_dimensions : str, list of str, or None, optional
-        When specified, both SUTs are aggregated over the dimensions not
-        listed here before comparing. Accepted values: ``"product"``,
-        ``"transaction"``, ``"category"`` — one or more. For example,
-        ``["transaction", "category"]`` sums over products so that each
-        row in the output represents a transaction/category total.
-        Filtering (``ids``, ``products``, ``transactions``, ``categories``)
-        is applied first; aggregation follows. ``None`` (the default)
-        performs no aggregation and compares at the full row level.
-        For balancing targets (which have no product dimension),
-        ``"product"`` has no effect.
 
     Returns
     -------
@@ -301,33 +290,12 @@ def inspect_sut_comparison(
     # Collect price layer columns present in either SUT's use DataFrame.
     layer_cols = _get_union_price_layer_columns(cols, filtered_before.use, filtered_after.use)
 
-    # Resolve compare_dimensions to actual column names and build key_cols.
-    # None means keep all three dimensions (product, transaction, category).
-    dimension_cols = _resolve_dimension_cols(compare_dimensions, prod_col, trans_col, cat_col)
-    key_cols = [id_col] + dimension_cols
+    key_cols = [id_col, prod_col, trans_col, cat_col]
 
-    # Aggregate supply and use DataFrames when compare_dimensions is specified.
-    supply_price_cols = [price_basic_col]
-    use_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
-
-    if compare_dimensions is not None:
-        before_supply = _aggregate_to_dimensions(
-            filtered_before.supply, key_cols, supply_price_cols
-        )
-        after_supply = _aggregate_to_dimensions(
-            filtered_after.supply, key_cols, supply_price_cols
-        )
-        before_use = _aggregate_to_dimensions(
-            filtered_before.use, key_cols, use_price_cols
-        )
-        after_use = _aggregate_to_dimensions(
-            filtered_after.use, key_cols, use_price_cols
-        )
-    else:
-        before_supply = filtered_before.supply
-        after_supply = filtered_after.supply
-        before_use = filtered_before.use
-        after_use = filtered_after.use
+    before_supply = filtered_before.supply
+    after_supply = filtered_after.supply
+    before_use = filtered_before.use
+    after_use = filtered_after.use
 
     # Build label lookup dicts from classifications (empty dicts when unavailable).
     classifications = before.metadata.classifications
@@ -414,7 +382,6 @@ def inspect_sut_comparison(
             sort=sort,
             trans_names=trans_names,
             cat_names=cat_names,
-            dimension_cols=dimension_cols,
         )
     else:
         targets_supply = None
@@ -457,83 +424,6 @@ def inspect_sut_comparison(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _resolve_dimension_cols(
-    compare_dimensions: str | list[str] | None,
-    prod_col: str,
-    trans_col: str,
-    cat_col: str,
-) -> list[str]:
-    """Map compare_dimensions role strings to actual column names in canonical order.
-
-    Parameters
-    ----------
-    compare_dimensions : str, list of str, or None
-        Role name(s) to keep. ``None`` returns all three columns.
-    prod_col, trans_col, cat_col : str
-        Actual column names from SUTColumns.
-
-    Returns
-    -------
-    list of str
-        Column names corresponding to the requested dimensions, in the
-        canonical order product → transaction → category.
-
-    Raises
-    ------
-    ValueError
-        If any role string is not one of ``"product"``, ``"transaction"``,
-        ``"category"``.
-    """
-    if compare_dimensions is None:
-        return [prod_col, trans_col, cat_col]
-    if isinstance(compare_dimensions, str):
-        compare_dimensions = [compare_dimensions]
-    valid = {"product", "transaction", "category"}
-    invalid = set(compare_dimensions) - valid
-    if invalid:
-        raise ValueError(
-            f"Invalid compare_dimensions value(s): {sorted(invalid)!r}. "
-            f"Valid dimensions: {sorted(valid)}."
-        )
-    role_to_col = {"product": prod_col, "transaction": trans_col, "category": cat_col}
-    # Canonical order: product, transaction, category.
-    return [
-        role_to_col[role]
-        for role in ["product", "transaction", "category"]
-        if role in compare_dimensions
-    ]
-
-
-def _aggregate_to_dimensions(
-    df: pd.DataFrame,
-    key_cols: list[str],
-    price_cols: list[str],
-) -> pd.DataFrame:
-    """Sum price columns, keeping only key_cols as group keys.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Source DataFrame containing key_cols and price_cols.
-    key_cols : list of str
-        Columns to group by (id + kept dimensions).
-    price_cols : list of str
-        Price columns to sum. Columns absent from df are skipped.
-
-    Returns
-    -------
-    pd.DataFrame
-        Aggregated DataFrame with key_cols and available price columns.
-        All-NaN groups produce NaN in the output (``min_count=1``).
-    """
-    available_price_cols = [c for c in price_cols if c in df.columns]
-    return (
-        df.groupby(key_cols, dropna=False)[available_price_cols]
-        .sum(min_count=1)
-        .reset_index()
-    )
 
 
 def _validate_column_structures(before: SUT, after: SUT) -> None:
@@ -690,7 +580,11 @@ def _extract_price_comparison(
     rel = merged_use[src_after] / safe_before - 1
 
     is_one_sided = merged_use["_merge"] != "both"
-    keep = is_one_sided | (diff.abs() > diff_tolerance) | (rel.abs() > rel_tolerance)
+    exceeds_diff = diff.abs() > diff_tolerance
+    if rel_tolerance < float("inf"):
+        keep = is_one_sided | (exceeds_diff & (rel.abs() > rel_tolerance))
+    else:
+        keep = is_one_sided | exceeds_diff
 
     if filter_nan_as_zero:
         nan_vs_zero = (
@@ -744,7 +638,11 @@ def _extract_layers_comparison(
         safe_before = before_vals.replace(0, float("nan"))
         rel = after_vals / safe_before - 1
 
-        keep = is_one_sided | (diff.abs() > diff_tolerance) | (rel.abs() > rel_tolerance)
+        exceeds_diff = diff.abs() > diff_tolerance
+        if rel_tolerance < float("inf"):
+            keep = is_one_sided | (exceeds_diff & (rel.abs() > rel_tolerance))
+        else:
+            keep = is_one_sided | exceeds_diff
 
         if filter_nan_as_zero:
             nan_vs_zero = (
@@ -877,26 +775,20 @@ def _build_targets_comparison(
     sort: bool,
     trans_names: dict[str, str],
     cat_names: dict[str, str],
-    dimension_cols: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build the four balancing targets comparison tables.
 
     Returns (targets_supply, targets_use_basic, targets_use_purchasers,
     targets_use_price_layers). Reuses the same merge and extraction helpers
-    as the SUT data comparison. Targets have no product dimension, so
-    ``dimension_cols`` is filtered to exclude the product column before
-    building ``targets_key_cols``.
+    as the SUT data comparison.
     """
     id_col = cols.id
-    prod_col = cols.product
     trans_col = cols.transaction
     cat_col = cols.category
     price_basic_col = cols.price_basic
     price_purchasers_col = cols.price_purchasers
 
-    # Targets have no product dimension; exclude it from the key columns.
-    targets_dimension_cols = [col for col in dimension_cols if col != prod_col]
-    targets_key_cols = [id_col] + targets_dimension_cols
+    targets_key_cols = [id_col, trans_col, cat_col]
 
     names_by_col = {trans_col: trans_names, cat_col: cat_names}
 
@@ -924,25 +816,6 @@ def _build_targets_comparison(
 
     # Collect price layer columns present in either use targets DataFrame.
     layer_cols = _get_union_price_layer_columns(cols, before_targets_use, after_targets_use)
-
-    # Aggregate targets when compare_dimensions excludes transaction or category.
-    # When targets_dimension_cols already covers [trans_col, cat_col] the
-    # groupby is effectively a no-op (rows are unique on those keys).
-    if targets_dimension_cols != [trans_col, cat_col]:
-        supply_target_price_cols = [price_basic_col]
-        use_target_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
-        before_targets_supply = _aggregate_to_dimensions(
-            before_targets_supply, targets_key_cols, supply_target_price_cols
-        )
-        after_targets_supply = _aggregate_to_dimensions(
-            after_targets_supply, targets_key_cols, supply_target_price_cols
-        )
-        before_targets_use = _aggregate_to_dimensions(
-            before_targets_use, targets_key_cols, use_target_price_cols
-        )
-        after_targets_use = _aggregate_to_dimensions(
-            after_targets_use, targets_key_cols, use_target_price_cols
-        )
 
     # Supply: one merge on targets_key_cols for price_basic only.
     targets_supply = _build_single_price_comparison(

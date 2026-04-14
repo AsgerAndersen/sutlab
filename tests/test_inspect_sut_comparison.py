@@ -211,22 +211,27 @@ def test_diff_tolerance_keeps_large_diffs(before_sut, after_sut):
 
 
 def test_rel_tolerance_filters_small_rel(before_sut, after_sut):
-    # rel for A in supply is ~0.10; rel_tolerance=0.15 is clearly above it — row excluded.
-    # diff_tolerance=999 ensures diff does not trigger either.
+    # diff=10 < diff_tolerance=999 → AND condition fails → row excluded.
     result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=0.15)
     assert len(result.data.supply) == 0
 
 
-def test_rel_tolerance_keeps_large_rel(before_sut, after_sut):
-    # rel_tolerance=0.05 is clearly below rel~0.10 — row kept.
-    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=0.05)
+def test_both_tolerances_exceeded_keeps_row(before_sut, after_sut):
+    # diff=10 > diff_tolerance=5 and rel~0.10 > rel_tolerance=0.05 — both exceeded, row kept.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=5, rel_tolerance=0.05)
     assert len(result.data.supply) == 1
 
 
-def test_either_tolerance_violated_keeps_row(before_sut, after_sut):
-    # diff=10 exceeds diff_tolerance=9 even if rel_tolerance=0.20 is not exceeded.
+def test_only_diff_exceeded_excludes_row(before_sut, after_sut):
+    # diff=10 > diff_tolerance=9 but rel~0.10 < rel_tolerance=0.20 — AND fails, row excluded.
     result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=9, rel_tolerance=0.20)
-    assert len(result.data.supply) == 1
+    assert len(result.data.supply) == 0
+
+
+def test_only_rel_exceeded_excludes_row(before_sut, after_sut):
+    # rel~0.10 > rel_tolerance=0.05 but diff=10 < diff_tolerance=999 — AND fails, row excluded.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=0.05)
+    assert len(result.data.supply) == 0
 
 
 # ---------------------------------------------------------------------------
