@@ -459,16 +459,16 @@ def inspect_sut_comparison(
     # Build the four summary tables from the already-filtered supply and
     # use_purchasers comparison tables.
     supply_products_summary = _build_comparison_summary(
-        supply_table, group_cols=[id_col, prod_col], percentiles=percentiles
+        supply_table, group_cols=[id_col, prod_col], percentiles=percentiles, sort=sort
     )
     supply_columns_summary = _build_comparison_summary(
-        supply_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles
+        supply_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
     )
     use_products_summary = _build_comparison_summary(
-        use_purchasers_table, group_cols=[id_col, prod_col], percentiles=percentiles
+        use_purchasers_table, group_cols=[id_col, prod_col], percentiles=percentiles, sort=sort
     )
     use_columns_summary = _build_comparison_summary(
-        use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles
+        use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
     )
 
     return SUTComparisonInspection(
@@ -1017,6 +1017,7 @@ def _build_comparison_summary(
     df: pd.DataFrame,
     group_cols: list[str],
     percentiles: list[float],
+    sort: bool = False,
 ) -> pd.DataFrame:
     """Build a summary table by grouping a comparison table on ``group_cols``.
 
@@ -1039,6 +1040,9 @@ def _build_comparison_summary(
         Actual column names to group by (e.g. ``[id_col, prod_col]``).
     percentiles : list of float
         Quantile values to compute. Each in ``[0, 1]``.
+    sort : bool, optional
+        When ``True``, rows are sorted by ``diff_norm`` descending.
+        Default ``False``.
 
     Returns
     -------
@@ -1117,7 +1121,12 @@ def _build_comparison_summary(
         if txt_col in txt_companions:
             index_cols.append(txt_col)
 
-    return result.set_index(index_cols)
+    result = result.set_index(index_cols)
+
+    if sort and "diff_norm" in result.columns:
+        result = result.sort_values("diff_norm", ascending=False)
+
+    return result
 
 
 def _build_combined_category_names(classifications, cat_col: str) -> dict[str, str]:

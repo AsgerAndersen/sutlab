@@ -1141,3 +1141,43 @@ def test_summary_tables_styled_properties_return_styler(before_sut, after_sut):
     assert isinstance(result.supply_columns_summary, Styler)
     assert isinstance(result.use_products_summary, Styler)
     assert isinstance(result.use_columns_summary, Styler)
+
+
+def test_summary_tables_sorted_by_diff_norm_when_sort_true(before_sut, after_sut, cols, metadata):
+    # Create an after_sut where A/2021 changes by 10 and B/2021 changes by 5
+    # so that with sort=True, A comes first (larger diff_norm).
+    after_supply_two_changes = pd.DataFrame({
+        "year":  [2021, 2021, 2021, 2022, 2022, 2022],
+        "nrnr":  ["A",  "B",  "C",  "A",  "B",  "C"],
+        "trans": ["P1", "P1", "P1", "P1", "P1", "P1"],
+        "brch":  ["X",  "X",  "X",  "X",  "X",  "X"],
+        "bas":   [110., 55.,  80.,  100., 50.,  80.],  # A+10, B+5
+        "koeb":  [110., 55.,  80.,  100., 50.,  80.],
+    })
+    after_use_two_changes = pd.DataFrame({
+        "year":  [2021, 2021, 2021, 2022, 2022, 2022],
+        "nrnr":  ["A",  "B",  "C",  "A",  "B",  "C"],
+        "trans": ["P2", "P2", "P2", "P2", "P2", "P2"],
+        "brch":  ["X",  "X",  "X",  "X",  "X",  "X"],
+        "bas":   [100., 55.,  70.,  90.,  50.,  70.],
+        "ava":   [5.,   3.,   4.,   5.,   3.,   4.],
+        "moms":  [10.,  6.,   8.,   9.,   6.,   8.],
+        "koeb":  [115., 64.,  82.,  104., 59.,  82.],  # A+11, B+5
+    })
+    after_two = SUT(
+        price_basis="current_year",
+        supply=after_supply_two_changes,
+        use=after_use_two_changes,
+        metadata=metadata,
+    )
+    result_sorted = inspect_sut_comparison(before_sut, after_two, sort=True)
+    prod_summary = result_sorted.data.supply_products_summary
+    # With sort=True, A (diff_norm=10) should come before B (diff_norm=5).
+    assert prod_summary.index.get_level_values("nrnr")[0] == "A"
+    assert prod_summary.index.get_level_values("nrnr")[1] == "B"
+    # Without sort, natural groupby order applies (not guaranteed to be A first,
+    # but diff_norm values should still be correct).
+    result_unsorted = inspect_sut_comparison(before_sut, after_two, sort=False)
+    norms = sorted(result_unsorted.data.supply_products_summary["diff_norm"].tolist(), reverse=True)
+    assert pytest.approx(norms[0]) == 10.0
+    assert pytest.approx(norms[1]) == 5.0
