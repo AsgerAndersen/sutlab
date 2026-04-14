@@ -122,16 +122,16 @@ Append-only. Each entry: date, decision, brief rationale.
   - `balance` — wide table, ids as columns, 4-level MultiIndex
     `(product, product_txt, transaction, transaction_txt)`. Supply transactions → Total
     supply → use transactions → Total use → Balance. Basic prices only.
-  - `supply_detail` / `use_detail` — category breakdown for transactions with non-empty
+  - `supply_products` / `use_products` — category breakdown for transactions with non-empty
     category column. 6-level MultiIndex `(product, product_txt, transaction,
     transaction_txt, category, category_txt)`. Sorted MultiIndex. Supply/use split from
     `sut.supply` / `sut.use` directly.
   - `balance_distribution` — same structure as `balance` minus the Balance row. Supply
     rows normalised by Total supply per year; use rows by Total use per year.
-  - `supply_detail_distribution` / `use_detail_distribution` — same structure as detail
+  - `supply_products_distribution` / `use_products_distribution` — same structure as detail
     tables. Each value divided by the product's total across all transactions/categories
     per year (column-wise normalisation within each product block).
-  - `balance_growth` / `supply_detail_growth` / `use_detail_growth` — year-on-year
+  - `balance_growth` / `supply_products_growth` / `use_products_growth` — year-on-year
     change: `(value[t] - value[t-1]) / value[t-1]`, stored as a fraction (0.05 = 5%
     growth). First year is NaN. Division by zero yields NaN (inf replaced). Balance row
     excluded from balance_growth.
@@ -155,7 +155,7 @@ Append-only. Each entry: date, decision, brief rationale.
   `transaction_txt` index levels (accounting for pandas sparse MultiIndex rendering —
   borders/CSS placed on first row of merged spans). Product separator: `2px solid #999`.
 
-- **2026-03-24**: Detail table Styler: supply_detail all green, use_detail all blue.
+- **2026-03-24**: Detail table Styler: supply_products all green, use_products all blue.
   Alternating shades within each `(product, transaction)` block. Transaction header
   colour (slightly more saturated) applied to `transaction`/`transaction_txt` index
   levels. Separator between transaction blocks: `1px solid #ccc`; between product
@@ -196,11 +196,11 @@ Append-only. Each entry: date, decision, brief rationale.
   tables. Default `None` = all ids. Unknown ids raise a `ValueError` with available
   ids listed. Ordering follows the original collection order, not the request order.
 
-- **2026-03-25**: `use_detail` values are now at purchasers' prices (previously basic
-  prices). `_build_detail_df` takes a `price_col` parameter; supply_detail passes
-  `price_basic`, use_detail passes `price_purchasers`.
+- **2026-03-25**: `use_products` values are now at purchasers' prices (previously basic
+  prices). `_build_detail_df` takes a `price_col` parameter; supply_products passes
+  `price_basic`, use_products passes `price_purchasers`.
 
-- **2026-03-25**: Detail tables (`supply_detail`, `use_detail`) gain a per-product
+- **2026-03-25**: Detail tables (`supply_products`, `use_products`) gain a per-product
   summary row at the bottom of each product block: "Total supply" and "Total use"
   respectively. MultiIndex: `(product, product_txt, "", total_label, "", "")`. Summary
   rows are appended after `sort_index()` so they always appear last. Styled bold with
@@ -455,9 +455,9 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-04-01**: `inspect_industries(sut, industries, ids=None, sort_id=None)` implemented
   in `sutlab/inspect/_industries.py`. Returns `IndustryInspection` with 12 tables (data +
-  styled): `balance`, `balance_growth`, `supply_detail`, `supply_detail_distribution`,
-  `supply_detail_growth`, `use_detail`, `use_detail_distribution`,
-  `use_detail_coefficients`, `use_detail_growth`, `price_layers`, `price_layers_rates`,
+  styled): `balance`, `balance_growth`, `supply_products`, `supply_products_distribution`,
+  `supply_products_growth`, `use_products`, `use_products_distribution`,
+  `use_products_coefficients`, `use_products_growth`, `price_layers`, `price_layers_rates`,
   `price_layers_distribution`, `price_layers_growth`.
 
 - **2026-04-01**: `inspect_industries` balance table structure: MultiIndex
@@ -467,14 +467,14 @@ Append-only. Each entry: date, decision, brief rationale.
   input coefficient `("", "Input coefficient")`. Total rows determined from
   `classifications.transactions` metadata, not from data.
 
-- **2026-04-01**: `inspect_industries` supply_detail / use_detail: MultiIndex
+- **2026-04-01**: `inspect_industries` supply_products / use_products: MultiIndex
   `(industry, industry_txt, transaction, transaction_txt, product, product_txt)`. One
   "Total supply" / "Total use" row per industry block (summed across all transactions).
   P1 (supply) from `sut.supply` at basic prices; P2 (use) from `sut.use` at purchasers'
   prices. Zero-supply or zero-use products excluded. `sort_id` sorts non-total rows
   descending within `["industry"]` groups.
 
-- **2026-04-01**: `use_detail_coefficients`: same structure as `use_detail`. Each value
+- **2026-04-01**: `use_products_coefficients`: same structure as `use_products`. Each value
   divided by the industry's total P1 output at basic prices (recomputed from `sut.supply`).
   Expresses each product's contribution to the input coefficient. Total use row equals the
   overall input coefficient.

@@ -58,11 +58,11 @@ The result contains 17 tables, grouped below by topic.
 
 #### Supply and use detail
 
-`supply_detail` / `use_detail` — category breakdown (by industry or consumption function) for all transactions. Transactions with category breakdowns show one row per category; transactions with no categories appear as a single row with an empty category code. Rows have a six-level index: product, product label, transaction, transaction label, category, category label. Each product block ends with a *Total supply* (or *Total use*) row summing all transactions and categories for that product and year. Supply values are at basic prices; use values are at purchasers' prices.
+`supply_products` / `use_products` — category breakdown (by industry or consumption function) for all transactions. Transactions with category breakdowns show one row per category; transactions with no categories appear as a single row with an empty category code. Rows have a six-level index: product, product label, transaction, transaction label, category, category label. Each product block ends with a *Total supply* (or *Total use*) row summing all transactions and categories for that product and year. Supply values are at basic prices; use values are at purchasers' prices.
 
-`supply_detail_distribution` / `use_detail_distribution` — each category row expressed as a share of the product's total supply (or use) in that year. The Total supply/use row is 1.0.
+`supply_products_distribution` / `use_products_distribution` — each category row expressed as a share of the product's total supply (or use) in that year. The Total supply/use row is 1.0.
 
-`supply_detail_growth` / `use_detail_growth` — year-on-year change within each row.
+`supply_products_growth` / `use_products_growth` — year-on-year change within each row.
 
 ---
 
