@@ -226,7 +226,7 @@ def _style_detail_table(
     Parameters
     ----------
     df : pd.DataFrame
-        A detail DataFrame (supply_detail or use_detail).
+        A detail DataFrame (supply_products or use_products).
     format_func : callable
         Applied to all data cells (e.g. ``_format_number``).
     color_key : str
@@ -348,6 +348,144 @@ def _style_detail_table(
     styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
     styler = styler.apply_index(lambda s, css=outer_css: css, level=outer_level, axis=0)
     styler = styler.apply_index(lambda s, css=outer_txt_css: css, level=outer_txt_level, axis=0)
+    return styler
+
+
+def _summary_row_format_func(summary_label: str):
+    """Return the appropriate format function for a summary row label.
+
+    - ``total_*`` → number
+    - ``n_products`` or ``n_products_*`` → integer (no decimal)
+    - ``value_*`` → number
+    - ``share_*`` → percentage
+    """
+    if summary_label.startswith("n_products"):
+        return lambda v: "" if pd.isna(v) else str(int(v))
+    if summary_label.startswith("share_"):
+        return _format_percentage
+    return _format_number
+
+
+def _style_products_summary_table(
+    df: pd.DataFrame,
+    color_key: str,
+) -> Styler:
+    """Apply per-row formatting, colours, and separators to a products_summary table.
+
+    Index levels: ``(industry, industry_txt, transaction, transaction_txt,
+    summary)``.
+
+    Formatting is determined by the ``summary`` label of each row:
+
+    - ``total_*`` → number format
+    - ``n_products`` / ``n_products_*`` → integer (no decimal point)
+    - ``value_*`` → number format
+    - ``share_*`` → percentage format
+
+    Colours: ``total_*`` rows use the total-shade of the supply/use palette;
+    all other rows alternate between the two lighter shades. No bold on any
+    row. Thick border (``2px``) between industry blocks; thin border
+    (``1px``) between transaction blocks within an industry.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary table produced by :func:`_build_products_summary`.
+    color_key : str
+        ``"supply"`` or ``"use"`` — selects the colour set from
+        ``_DATA_COLORS`` / ``_INDEX_COLORS``.
+    """
+    # Apply per-row formatting based on the summary label.
+    summary_vals = df.index.get_level_values("summary")
+    unique_labels = list(dict.fromkeys(summary_vals))
+    styler = df.style.format(na_rep="")
+    for label in unique_labels:
+        mask = summary_vals == label
+        row_positions = [i for i, m in enumerate(mask) if m]
+        fmt = _summary_row_format_func(label)
+        styler = styler.format(fmt, na_rep="", subset=(df.index[row_positions], df.columns))
+
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS[color_key]
+    idx_row_colors = _INDEX_COLORS[color_key]
+    idx_hdr_color = _INDEX_COLORS[f"{color_key}_total"]
+
+    industry_vals = df.index.get_level_values("industry")
+    transaction_vals = df.index.get_level_values("transaction")
+    industries = list(dict.fromkeys(industry_vals))
+    n = len(df)
+
+    data_css = [""] * n
+    summary_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+    industry_css = [""] * n
+    industry_txt_css = [""] * n
+
+    for ind_idx, industry in enumerate(industries):
+        is_last_industry = (ind_idx == len(industries) - 1)
+        industry_positions = [i for i, v in enumerate(industry_vals) if v == industry]
+
+        if not is_last_industry:
+            industry_css[industry_positions[0]] = "border-bottom: 2px solid #999"
+            industry_txt_css[industry_positions[0]] = "border-bottom: 2px solid #999"
+
+        trans_row_counter = {}
+        prev_trans = None
+        run_start_i_abs = None
+
+        for pos_idx, i_abs in enumerate(industry_positions):
+            trans = transaction_vals[i_abs]
+            summary = summary_vals[i_abs]
+            is_last_pos = (pos_idx == len(industry_positions) - 1)
+            next_trans = (
+                transaction_vals[industry_positions[pos_idx + 1]]
+                if not is_last_pos
+                else None
+            )
+
+            if is_last_pos:
+                sep = "; border-bottom: 2px solid #999" if not is_last_industry else ""
+            elif next_trans != trans:
+                sep = "; border-bottom: 1px solid #ccc"
+            else:
+                sep = ""
+
+            if trans != prev_trans:
+                run_start_i_abs = i_abs
+                prev_trans = trans
+
+            # Write transaction CSS on the run's first row when the run ends.
+            if next_trans != trans:
+                trans_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
+                trans_txt_css[run_start_i_abs] = (
+                    f"background-color: {idx_hdr_color}{sep}"
+                )
+
+            row_pos = trans_row_counter.get(trans, 0)
+            trans_row_counter[trans] = row_pos + 1
+            data_css[i_abs] = f"background-color: {data_row_colors[row_pos % 2]}{sep}"
+            summary_css[i_abs] = (
+                f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+            )
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=summary_css: css, level="summary", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(
+        lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0
+    )
+    styler = styler.apply_index(
+        lambda s, css=industry_css: css, level="industry", axis=0
+    )
+    styler = styler.apply_index(
+        lambda s, css=industry_txt_css: css, level="industry_txt", axis=0
+    )
     return styler
 
 

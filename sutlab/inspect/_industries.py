@@ -20,6 +20,7 @@ from sutlab.inspect._style import (
     _style_detail_table,
     _style_industry_balance_table,
     _style_price_layers_table,
+    _style_products_summary_table,
 )
 from sutlab.inspect._products import _get_price_layer_columns
 
@@ -35,13 +36,15 @@ class IndustryInspectionData:
 
     balance: pd.DataFrame
     balance_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_detail_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_detail_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail_coefficients: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_detail_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_products: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_products_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_products: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_products_coefficients: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_products_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -98,7 +101,7 @@ class IndustryInspection:
         previous``. Same MultiIndex structure as ``balance``. The first id
         column is ``NaN`` throughout (no prior year). Division by zero also
         yields ``NaN``. Values are fractions (e.g. ``0.05`` for 5% growth).
-    supply_detail : pd.DataFrame
+    supply_products : pd.DataFrame
         Wide-format product breakdown for P1 (output) transactions. Rows
         have a six-level MultiIndex with names ``industry``,
         ``industry_txt``, ``transaction``, ``transaction_txt``, ``product``,
@@ -122,38 +125,65 @@ class IndustryInspection:
         non-total rows within each industry block are sorted by that id
         value, descending — transactions and products are ordered together
         by value.
-    supply_detail_distribution : pd.DataFrame
-        Same structure as ``supply_detail``. For each industry and year,
+    supply_products_distribution : pd.DataFrame
+        Same structure as ``supply_products``. For each industry and year,
         every value is divided by the sum across all transactions and
         products for that industry in that year. Values therefore express
         each product's share of total output. Division by zero yields
         ``NaN``.
-    supply_detail_growth : pd.DataFrame
-        Same structure as ``supply_detail``, with year-on-year growth:
+    supply_products_growth : pd.DataFrame
+        Same structure as ``supply_products``, with year-on-year growth:
         ``(current − previous) / previous``. The first id column is
         ``NaN`` throughout. Division by zero also yields ``NaN``.
-    use_detail : pd.DataFrame
+    supply_products_summary : pd.DataFrame
+        Per-transaction summary statistics for P1 supply, aggregated over
+        products. Five-level MultiIndex:
+        ``(industry, industry_txt, transaction, transaction_txt, summary)``.
+        One block per ``(industry, P1 transaction)`` combination. The
+        ``summary`` level contains the following rows in order:
+
+        - ``"total"`` — sum of all product values for that transaction and
+          year.
+        - ``"n_products"`` — count of products with non-zero values.
+        - ``"value_{label}"`` — one row per requested percentile of the
+          absolute product values (non-zero products only).
+        - ``"share_{label}"`` — one row per requested percentile of each
+          product's share of the transaction total (non-zero products only).
+          ``NaN`` when the total is zero.
+        - ``"n_products_{label}"`` — one row per coverage threshold: the
+          minimum number of products (sorted by value descending, per year)
+          needed to account for that fraction of the total. ``NaN`` when
+          the total is zero or there are no non-zero products.
+
+        Percentile labels: ``0.0`` → ``"min"``, ``0.5`` → ``"median"``,
+        ``1.0`` → ``"max"``, others → ``"p{int(p*100)}"``.
+        Coverage threshold labels follow the same convention.
+    use_products : pd.DataFrame
         Wide-format product breakdown for P2 (input) transactions. Same
-        six-level MultiIndex structure as ``supply_detail``. Within each
+        six-level MultiIndex structure as ``supply_products``. Within each
         industry block, rows appear ordered by (P2 transaction, product) —
         one row per combination present in the data, followed by a single
         ``"Total use"`` row. Values are at purchasers' prices. ``sort_id``
-        applies the same descending sort as for ``supply_detail``.
-    use_detail_distribution : pd.DataFrame
-        Same structure as ``use_detail``. For each industry and year,
+        applies the same descending sort as for ``supply_products``.
+    use_products_distribution : pd.DataFrame
+        Same structure as ``use_products``. For each industry and year,
         every value is divided by the sum across all transactions and
         products for that industry in that year. Division by zero yields
         ``NaN``.
-    use_detail_coefficients : pd.DataFrame
-        Same structure as ``use_detail``. For each industry and year,
+    use_products_coefficients : pd.DataFrame
+        Same structure as ``use_products``. For each industry and year,
         every value is divided by the industry's total output (sum of P1
         transactions at basic prices). Values therefore express each
         product's contribution to the input coefficient. Division by zero
         yields ``NaN``.
-    use_detail_growth : pd.DataFrame
-        Same structure as ``use_detail``, with year-on-year growth:
+    use_products_growth : pd.DataFrame
+        Same structure as ``use_products``, with year-on-year growth:
         ``(current − previous) / previous``. The first id column is
         ``NaN`` throughout. Division by zero also yields ``NaN``.
+    use_products_summary : pd.DataFrame
+        Per-transaction summary statistics for P2 use, aggregated over
+        products. Same structure as ``supply_products_summary`` but for P2
+        transactions. Values are at purchasers' prices.
     price_layers : pd.DataFrame
         Five-level MultiIndex: ``(industry, industry_txt, price_layer,
         transaction, transaction_txt)``. One block per ``(industry,
@@ -189,10 +219,10 @@ class IndustryInspection:
         return _style_industry_balance_table(self.data.balance, self._p1_trans)
 
     @property
-    def supply_detail(self) -> Styler:
+    def supply_products(self) -> Styler:
         """Styled product breakdown of industry output for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.supply_detail,
+            self.data.supply_products,
             _format_number,
             "supply",
             outer_level="industry",
@@ -202,10 +232,10 @@ class IndustryInspection:
         )
 
     @property
-    def supply_detail_distribution(self) -> Styler:
+    def supply_products_distribution(self) -> Styler:
         """Styled product-share distribution of industry output for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.supply_detail_distribution,
+            self.data.supply_products_distribution,
             _format_percentage,
             "supply",
             outer_level="industry",
@@ -215,10 +245,10 @@ class IndustryInspection:
         )
 
     @property
-    def supply_detail_growth(self) -> Styler:
+    def supply_products_growth(self) -> Styler:
         """Styled year-on-year growth of industry output detail for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.supply_detail_growth,
+            self.data.supply_products_growth,
             _format_percentage,
             "supply",
             outer_level="industry",
@@ -228,10 +258,18 @@ class IndustryInspection:
         )
 
     @property
-    def use_detail(self) -> Styler:
+    def supply_products_summary(self) -> Styler:
+        """Styled per-transaction supply summary statistics for display in a Jupyter notebook."""
+        return _style_products_summary_table(
+            self.data.supply_products_summary,
+            "supply",
+        )
+
+    @property
+    def use_products(self) -> Styler:
         """Styled product breakdown of industry input for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.use_detail,
+            self.data.use_products,
             _format_number,
             "use",
             outer_level="industry",
@@ -241,10 +279,10 @@ class IndustryInspection:
         )
 
     @property
-    def use_detail_distribution(self) -> Styler:
+    def use_products_distribution(self) -> Styler:
         """Styled product-share distribution of industry input for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.use_detail_distribution,
+            self.data.use_products_distribution,
             _format_percentage,
             "use",
             outer_level="industry",
@@ -254,10 +292,10 @@ class IndustryInspection:
         )
 
     @property
-    def use_detail_coefficients(self) -> Styler:
+    def use_products_coefficients(self) -> Styler:
         """Styled input coefficients by product for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.use_detail_coefficients,
+            self.data.use_products_coefficients,
             _format_percentage,
             "use",
             outer_level="industry",
@@ -267,16 +305,24 @@ class IndustryInspection:
         )
 
     @property
-    def use_detail_growth(self) -> Styler:
+    def use_products_growth(self) -> Styler:
         """Styled year-on-year growth of industry input detail for display in a Jupyter notebook."""
         return _style_detail_table(
-            self.data.use_detail_growth,
+            self.data.use_products_growth,
             _format_percentage,
             "use",
             outer_level="industry",
             outer_txt_level="industry_txt",
             inner_level="product",
             inner_txt_level="product_txt",
+        )
+
+    @property
+    def use_products_summary(self) -> Styler:
+        """Styled per-transaction use summary statistics for display in a Jupyter notebook."""
+        return _style_products_summary_table(
+            self.data.use_products_summary,
+            "use",
         )
 
     @property
@@ -329,6 +375,81 @@ class IndustryInspection:
             self.data.balance_growth, self._p1_trans, format_func=_format_percentage
         )
 
+    def display_products_n_largest(self, n: int, id) -> "IndustryInspection":
+        """Return a copy with supply/use product tables filtered to the n largest products.
+
+        Within each ``(industry, transaction)`` block, keeps the ``n`` products
+        with the largest values in the ``id`` year column. Total/derived rows
+        (``transaction == ""``) are always kept. All non-products tables
+        (``balance``, ``price_layers``, etc.) and summary tables are copied
+        unchanged without recomputation.
+
+        Parameters
+        ----------
+        n : int
+            Number of largest products to keep per ``(industry, transaction)`` block.
+        id : value
+            Id value (e.g. year) whose column is used for ranking.
+
+        Returns
+        -------
+        IndustryInspection
+            New inspection with filtered products tables.
+        """
+        return _display_products_n_largest(self, n, id)
+
+    def display_products_threshold_value(
+        self, threshold: float, id
+    ) -> "IndustryInspection":
+        """Return a copy with supply/use product tables filtered by an absolute value threshold.
+
+        Within each ``(industry, transaction)`` block, keeps products whose
+        value in the ``id`` year column is greater than or equal to
+        ``threshold``. Total/derived rows (``transaction == ""``) are always
+        kept. All non-products tables and summary tables are copied unchanged.
+
+        Parameters
+        ----------
+        threshold : float
+            Minimum value (inclusive) in the ``id`` column for a product to
+            be kept.
+        id : value
+            Id value (e.g. year) whose column is used for filtering.
+
+        Returns
+        -------
+        IndustryInspection
+            New inspection with filtered products tables.
+        """
+        return _display_products_threshold_value(self, threshold, id)
+
+    def display_products_threshold_share(
+        self, threshold: float, id
+    ) -> "IndustryInspection":
+        """Return a copy with supply/use product tables filtered by a share threshold.
+
+        Within each ``(industry, transaction)`` block, keeps products whose
+        share of the transaction total in the ``id`` year column is greater
+        than or equal to ``threshold``. Shares are taken from
+        ``supply_products_distribution`` / ``use_products_distribution``.
+        Total/derived rows (``transaction == ""``) are always kept. All
+        non-products tables and summary tables are copied unchanged.
+
+        Parameters
+        ----------
+        threshold : float
+            Minimum share (inclusive, in [0, 1]) in the ``id`` column for a
+            product to be kept.
+        id : value
+            Id value (e.g. year) whose column is used for filtering.
+
+        Returns
+        -------
+        IndustryInspection
+            New inspection with filtered products tables.
+        """
+        return _display_products_threshold_share(self, threshold, id)
+
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
 
@@ -345,11 +466,230 @@ class IndustryInspection:
         _write_inspection_to_excel(self, path)
 
 
+def _keep_products_by_index(
+    table: pd.DataFrame,
+    keep_index: pd.Index,
+) -> pd.DataFrame:
+    """Return ``table`` keeping all total/derived rows plus product rows in ``keep_index``.
+
+    Total/derived rows are identified by an empty ``transaction`` level value.
+    ``keep_index`` should contain only product-row index tuples (i.e. those
+    with non-empty ``transaction``).
+
+    Parameters
+    ----------
+    table : pd.DataFrame
+        A products table (``supply_products``, ``use_products``, or a
+        derived variant) with a six-level MultiIndex whose ``transaction``
+        level is ``""`` for total/derived rows and non-empty for product rows.
+    keep_index : pd.Index
+        MultiIndex of product rows to retain. Rows not in this index and not
+        total rows are dropped.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered table preserving original row order.
+    """
+    if table.empty:
+        return table
+    total_mask = table.index.get_level_values("transaction") == ""
+    product_keep_mask = table.index.isin(keep_index)
+    return table[total_mask | product_keep_mask]
+
+
+def _apply_products_filter(
+    inspection: IndustryInspection,
+    supply_keep_index: pd.Index,
+    use_keep_index: pd.Index,
+) -> IndustryInspection:
+    """Build a new IndustryInspection with filtered products tables.
+
+    Applies ``supply_keep_index`` to all ``supply_products*`` tables and
+    ``use_keep_index`` to all ``use_products*`` tables (except the summary
+    tables, which have no product dimension and are copied unchanged).
+    All other tables are copied as-is.
+
+    Parameters
+    ----------
+    inspection : IndustryInspection
+        Source inspection result.
+    supply_keep_index : pd.Index
+        Product-row index values to keep in supply tables.
+    use_keep_index : pd.Index
+        Product-row index values to keep in use tables.
+
+    Returns
+    -------
+    IndustryInspection
+        New inspection with filtered products tables.
+    """
+    d = inspection.data
+    new_data = IndustryInspectionData(
+        balance=d.balance,
+        balance_growth=d.balance_growth,
+        supply_products=_keep_products_by_index(d.supply_products, supply_keep_index),
+        supply_products_distribution=_keep_products_by_index(
+            d.supply_products_distribution, supply_keep_index
+        ),
+        supply_products_growth=_keep_products_by_index(
+            d.supply_products_growth, supply_keep_index
+        ),
+        supply_products_summary=d.supply_products_summary,
+        use_products=_keep_products_by_index(d.use_products, use_keep_index),
+        use_products_distribution=_keep_products_by_index(
+            d.use_products_distribution, use_keep_index
+        ),
+        use_products_coefficients=_keep_products_by_index(
+            d.use_products_coefficients, use_keep_index
+        ),
+        use_products_growth=_keep_products_by_index(
+            d.use_products_growth, use_keep_index
+        ),
+        use_products_summary=d.use_products_summary,
+        price_layers=d.price_layers,
+        price_layers_rates=d.price_layers_rates,
+        price_layers_distribution=d.price_layers_distribution,
+        price_layers_growth=d.price_layers_growth,
+    )
+    return IndustryInspection(data=new_data, _p1_trans=inspection._p1_trans)
+
+
+def _n_largest_keep_index(products_table: pd.DataFrame, n: int, id_val) -> pd.Index:
+    """Return the index of the n largest product rows per (industry, transaction) block.
+
+    Rows with empty ``transaction`` (total/derived rows) are excluded from
+    consideration — only product rows participate in ranking. Ties are broken
+    arbitrarily (``method="first"``). NaN values rank last.
+
+    Parameters
+    ----------
+    products_table : pd.DataFrame
+        A products table with a six-level MultiIndex.
+    n : int
+        Number of largest products to keep per block.
+    id_val
+        Column label to rank by.
+
+    Returns
+    -------
+    pd.Index
+        MultiIndex containing the index tuples of product rows to keep.
+    """
+    if products_table.empty:
+        return products_table.index[:0]
+    product_mask = products_table.index.get_level_values("transaction") != ""
+    product_rows = products_table[product_mask]
+    if product_rows.empty:
+        return product_rows.index[:0]
+    ranks = product_rows.groupby(
+        level=["industry", "transaction"], dropna=False
+    )[id_val].rank(method="first", ascending=False, na_option="bottom")
+    return product_rows.index[ranks <= n]
+
+
+def _threshold_value_keep_index(
+    products_table: pd.DataFrame, threshold: float, id_val
+) -> pd.Index:
+    """Return the index of product rows whose value in ``id_val`` >= ``threshold``.
+
+    Parameters
+    ----------
+    products_table : pd.DataFrame
+        A products table with a six-level MultiIndex.
+    threshold : float
+        Minimum value (inclusive).
+    id_val
+        Column label to filter by.
+
+    Returns
+    -------
+    pd.Index
+        MultiIndex containing the index tuples of product rows to keep.
+    """
+    if products_table.empty:
+        return products_table.index[:0]
+    product_mask = products_table.index.get_level_values("transaction") != ""
+    product_rows = products_table[product_mask]
+    if product_rows.empty:
+        return product_rows.index[:0]
+    return product_rows.index[product_rows[id_val] >= threshold]
+
+
+def _threshold_share_keep_index(
+    dist_table: pd.DataFrame, threshold: float, id_val
+) -> pd.Index:
+    """Return the index of product rows whose share in ``id_val`` >= ``threshold``.
+
+    Shares are read from the distribution table (``supply_products_distribution``
+    or ``use_products_distribution``).
+
+    Parameters
+    ----------
+    dist_table : pd.DataFrame
+        A products distribution table with a six-level MultiIndex.
+    threshold : float
+        Minimum share (inclusive, in [0, 1]).
+    id_val
+        Column label to filter by.
+
+    Returns
+    -------
+    pd.Index
+        MultiIndex containing the index tuples of product rows to keep.
+    """
+    if dist_table.empty:
+        return dist_table.index[:0]
+    product_mask = dist_table.index.get_level_values("transaction") != ""
+    product_rows = dist_table[product_mask]
+    if product_rows.empty:
+        return product_rows.index[:0]
+    return product_rows.index[product_rows[id_val] >= threshold]
+
+
+def _display_products_n_largest(
+    inspection: IndustryInspection, n: int, id_val
+) -> IndustryInspection:
+    """Filter supply/use products tables to the n largest products per block."""
+    supply_keep = _n_largest_keep_index(inspection.data.supply_products, n, id_val)
+    use_keep = _n_largest_keep_index(inspection.data.use_products, n, id_val)
+    return _apply_products_filter(inspection, supply_keep, use_keep)
+
+
+def _display_products_threshold_value(
+    inspection: IndustryInspection, threshold: float, id_val
+) -> IndustryInspection:
+    """Filter supply/use products tables to products with value >= threshold."""
+    supply_keep = _threshold_value_keep_index(
+        inspection.data.supply_products, threshold, id_val
+    )
+    use_keep = _threshold_value_keep_index(
+        inspection.data.use_products, threshold, id_val
+    )
+    return _apply_products_filter(inspection, supply_keep, use_keep)
+
+
+def _display_products_threshold_share(
+    inspection: IndustryInspection, threshold: float, id_val
+) -> IndustryInspection:
+    """Filter supply/use products tables to products with share >= threshold."""
+    supply_keep = _threshold_share_keep_index(
+        inspection.data.supply_products_distribution, threshold, id_val
+    )
+    use_keep = _threshold_share_keep_index(
+        inspection.data.use_products_distribution, threshold, id_val
+    )
+    return _apply_products_filter(inspection, supply_keep, use_keep)
+
+
 def inspect_industries(
     sut: SUT,
     industries: str | list[str],
     ids=None,
     sort_id=None,
+    *,
+    percentiles: list[float] = None,
+    coverage_thresholds: list[float] = None,
 ) -> IndustryInspection:
     """
     Return inspection tables for one or more industries.
@@ -370,6 +710,18 @@ def inspect_industries(
         order of the full collection.
     sort_id : value, optional
         Reserved for future use. Balance tables are not sorted.
+    percentiles : list of float, optional
+        Percentiles to include in ``supply_products_summary`` and
+        ``use_products_summary``. Each value must be between 0.0 and 1.0.
+        Special labels: ``0.0`` → ``"min"``, ``0.5`` → ``"median"``,
+        ``1.0`` → ``"max"``; others → ``"p{int(p*100)}"``.
+        Default: ``[0.5, 1.0]`` (median and max).
+    coverage_thresholds : list of float, optional
+        Coverage thresholds for the ``n_products_*`` rows in the summary
+        tables. Each value must be between 0.0 and 1.0. A threshold of
+        ``0.8`` produces an ``"n_products_p80"`` row containing the minimum
+        number of products (sorted by value descending, per year) needed to
+        account for 80% of the transaction total. Default: ``[0.8, 0.95]``.
 
     Returns
     -------
@@ -393,6 +745,11 @@ def inspect_industries(
         If ``sort_id`` is not found in the collection ids (after applying
         the ``ids`` filter).
     """
+    if percentiles is None:
+        percentiles = [0.5, 1.0]
+    if coverage_thresholds is None:
+        coverage_thresholds = [0.5, 0.8, 0.95]
+
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call inspect_industries. "
@@ -520,7 +877,7 @@ def inspect_industries(
 
     balance_growth = _build_growth_table(balance)
 
-    supply_detail = _build_industry_supply_detail(
+    supply_products = _build_industry_supply_products(
         sut=sut,
         matched_industries=matched_industries,
         p1_trans=p1_trans,
@@ -529,12 +886,15 @@ def inspect_industries(
         product_names=product_names,
         all_ids=all_ids,
     )
-    if sort_id is not None and not supply_detail.empty:
-        supply_detail = _sort_by_id_value(supply_detail, ["industry"], sort_id)
-    supply_detail_distribution = _build_supply_detail_distribution(supply_detail)
-    supply_detail_growth = _build_growth_table(supply_detail)
+    if sort_id is not None and not supply_products.empty:
+        supply_products = _sort_by_id_value(supply_products, ["industry"], sort_id)
+    supply_products_distribution = _build_supply_products_distribution(supply_products)
+    supply_products_growth = _build_growth_table(supply_products)
+    supply_products_summary = _build_products_summary(
+        supply_products, percentiles, coverage_thresholds, total_label="total_supply"
+    )
 
-    use_detail = _build_industry_use_detail(
+    use_products = _build_industry_use_products(
         sut=sut,
         matched_industries=matched_industries,
         p2_trans=p2_trans,
@@ -543,17 +903,20 @@ def inspect_industries(
         product_names=product_names,
         all_ids=all_ids,
     )
-    if sort_id is not None and not use_detail.empty:
-        use_detail = _sort_by_id_value(use_detail, ["industry"], sort_id)
-    use_detail_distribution = _build_use_detail_distribution(use_detail)
-    use_detail_coefficients = _build_use_detail_coefficients(
+    if sort_id is not None and not use_products.empty:
+        use_products = _sort_by_id_value(use_products, ["industry"], sort_id)
+    use_products_distribution = _build_use_products_distribution(use_products)
+    use_products_summary = _build_products_summary(
+        use_products, percentiles, coverage_thresholds, total_label="total_use"
+    )
+    use_products_coefficients = _build_use_products_coefficients(
         sut=sut,
-        use_detail=use_detail,
+        use_products=use_products,
         matched_industries=matched_industries,
         p1_trans=p1_trans,
         all_ids=all_ids,
     )
-    use_detail_growth = _build_growth_table(use_detail)
+    use_products_growth = _build_growth_table(use_products)
 
     price_layers = _build_industry_price_layers_table(
         sut=sut,
@@ -583,13 +946,15 @@ def inspect_industries(
     data = IndustryInspectionData(
         balance=balance,
         balance_growth=balance_growth,
-        supply_detail=supply_detail,
-        supply_detail_distribution=supply_detail_distribution,
-        supply_detail_growth=supply_detail_growth,
-        use_detail=use_detail,
-        use_detail_distribution=use_detail_distribution,
-        use_detail_coefficients=use_detail_coefficients,
-        use_detail_growth=use_detail_growth,
+        supply_products=supply_products,
+        supply_products_distribution=supply_products_distribution,
+        supply_products_growth=supply_products_growth,
+        supply_products_summary=supply_products_summary,
+        use_products=use_products,
+        use_products_distribution=use_products_distribution,
+        use_products_coefficients=use_products_coefficients,
+        use_products_growth=use_products_growth,
+        use_products_summary=use_products_summary,
         price_layers=price_layers,
         price_layers_rates=price_layers_rates,
         price_layers_distribution=price_layers_distribution,
@@ -786,7 +1151,7 @@ def _build_industry_balance_table(
     return pd.concat(blocks)
 
 
-def _build_industry_supply_detail(
+def _build_industry_supply_products(
     sut: SUT,
     matched_industries: list[str],
     p1_trans: list[str],
@@ -922,7 +1287,7 @@ def _build_industry_supply_detail(
     return pd.concat(blocks)
 
 
-def _build_industry_use_detail(
+def _build_industry_use_products(
     sut: SUT,
     matched_industries: list[str],
     p2_trans: list[str],
@@ -1058,16 +1423,16 @@ def _build_industry_use_detail(
     return pd.concat(blocks)
 
 
-def _build_use_detail_coefficients(
+def _build_use_products_coefficients(
     sut: SUT,
-    use_detail: pd.DataFrame,
+    use_products: pd.DataFrame,
     matched_industries: list[str],
     p1_trans: list[str],
     all_ids: list,
 ) -> pd.DataFrame:
     """Build input-coefficient breakdown by product for the given industries.
 
-    Each value in ``use_detail`` is divided by the industry's total output
+    Each value in ``use_products`` is divided by the industry's total output
     (sum of all P1 transactions at basic prices) for that year. The result
     expresses each product's contribution to the industry's overall input
     coefficient. Division by zero yields ``NaN``.
@@ -1076,8 +1441,8 @@ def _build_use_detail_coefficients(
     ----------
     sut : SUT
         The SUT collection (used to recompute total output per industry).
-    use_detail : pd.DataFrame
-        Use detail table as produced by :func:`_build_industry_use_detail`.
+    use_products : pd.DataFrame
+        Use detail table as produced by :func:`_build_industry_use_products`.
     matched_industries : list of str
         Industry codes in display order.
     p1_trans : list of str
@@ -1085,7 +1450,7 @@ def _build_use_detail_coefficients(
     all_ids : list
         Collection ids (years) — used as columns.
     """
-    if use_detail.empty:
+    if use_products.empty:
         return pd.DataFrame()
 
     cols = sut.metadata.columns
@@ -1114,32 +1479,32 @@ def _build_use_detail_coefficients(
     # Replace zero totals with NaN so division yields NaN rather than inf.
     safe_totals = output_totals.replace(0, float("nan"))
 
-    # Align denominators to every row of use_detail.
-    industry_vals = use_detail.index.get_level_values("industry")
+    # Align denominators to every row of use_products.
+    industry_vals = use_products.index.get_level_values("industry")
     # Industries missing from supply get NaN denominators, which propagates to NaN.
     denominators = safe_totals.reindex(industry_vals).values
 
     return pd.DataFrame(
-        use_detail.astype(float).values / denominators,
-        index=use_detail.index,
-        columns=use_detail.columns,
+        use_products.astype(float).values / denominators,
+        index=use_products.index,
+        columns=use_products.columns,
     )
 
 
-def _build_use_detail_distribution(use_detail: pd.DataFrame) -> pd.DataFrame:
+def _build_use_products_distribution(use_products: pd.DataFrame) -> pd.DataFrame:
     """Build column-wise normalised version of the industry use detail table.
 
     For each industry and year, every value is divided by the sum across all
     transactions and products for that industry in that year (the
     ``"Total use"`` denominator). Division by zero yields ``NaN``.
     """
-    if use_detail.empty:
+    if use_products.empty:
         return pd.DataFrame()
 
-    detail_float = use_detail.astype(float)
-    industry_vals = use_detail.index.get_level_values("industry")
+    detail_float = use_products.astype(float)
+    industry_vals = use_products.index.get_level_values("industry")
 
-    non_summary_mask = use_detail.index.get_level_values("transaction") != ""
+    non_summary_mask = use_products.index.get_level_values("transaction") != ""
     industry_totals = (
         detail_float[non_summary_mask]
         .groupby(level="industry", dropna=False)
@@ -1150,26 +1515,26 @@ def _build_use_detail_distribution(use_detail: pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(
         detail_float.values / denominators,
-        index=use_detail.index,
-        columns=use_detail.columns,
+        index=use_products.index,
+        columns=use_products.columns,
     )
 
 
-def _build_supply_detail_distribution(supply_detail: pd.DataFrame) -> pd.DataFrame:
+def _build_supply_products_distribution(supply_products: pd.DataFrame) -> pd.DataFrame:
     """Build column-wise normalised version of the industry supply detail table.
 
     For each industry and year, every value is divided by the sum across all
     transactions and products for that industry in that year (i.e. the
     "Total supply" denominator). Division by zero yields ``NaN``.
     """
-    if supply_detail.empty:
+    if supply_products.empty:
         return pd.DataFrame()
 
-    detail_float = supply_detail.astype(float)
-    industry_vals = supply_detail.index.get_level_values("industry")
+    detail_float = supply_products.astype(float)
+    industry_vals = supply_products.index.get_level_values("industry")
 
     # Sum non-summary rows per industry in one groupby, then align to every row.
-    non_summary_mask = supply_detail.index.get_level_values("transaction") != ""
+    non_summary_mask = supply_products.index.get_level_values("transaction") != ""
     industry_totals = (
         detail_float[non_summary_mask]
         .groupby(level="industry", dropna=False)
@@ -1177,13 +1542,13 @@ def _build_supply_detail_distribution(supply_detail: pd.DataFrame) -> pd.DataFra
     )
     # Replace zero totals with NaN so division yields NaN rather than inf.
     safe_totals = industry_totals.replace(0, float("nan"))
-    # Build a denominator array aligned to every row of supply_detail.
+    # Build a denominator array aligned to every row of supply_products.
     denominators = safe_totals.loc[industry_vals].values
 
     return pd.DataFrame(
         detail_float.values / denominators,
-        index=supply_detail.index,
-        columns=supply_detail.columns,
+        index=supply_products.index,
+        columns=supply_products.columns,
     )
 
 
@@ -1483,3 +1848,225 @@ def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
     growth = (floats - previous).div(previous)
     growth = growth.replace([float("inf"), float("-inf")], float("nan"))
     return growth
+
+
+def _percentile_label(p: float) -> str:
+    """Return the canonical display name for a percentile value.
+
+    Parameters
+    ----------
+    p : float
+        Percentile in [0, 1].
+
+    Returns
+    -------
+    str
+        ``"min"`` for 0.0, ``"median"`` for 0.5, ``"max"`` for 1.0,
+        ``"p{int(p*100)}"`` for all other values.
+    """
+    if p == 0.0:
+        return "min"
+    if p == 0.5:
+        return "median"
+    if p == 1.0:
+        return "max"
+    return f"p{int(p * 100)}"
+
+
+def _build_products_summary(
+    products_table: pd.DataFrame,
+    percentiles: list[float],
+    coverage_thresholds: list[float],
+    total_label: str = "total_supply",
+) -> pd.DataFrame:
+    """Build per-transaction summary statistics from a supply_products or use_products table.
+
+    Aggregates over the product dimension within each
+    ``(industry, transaction)`` group. Only non-zero product values
+    contribute to n_products, percentiles, shares, and coverage counts.
+
+    Parameters
+    ----------
+    products_table : pd.DataFrame
+        Wide-format DataFrame with a six-level MultiIndex:
+        ``(industry, industry_txt, transaction, transaction_txt, product,
+        product_txt)``. Non-total rows have ``transaction != ""``.
+    percentiles : list of float
+        Percentile values in [0, 1] to compute for absolute values and
+        shares. Labels follow :func:`_percentile_label`. Value and share
+        rows appear in descending percentile order.
+    coverage_thresholds : list of float
+        Fraction-of-total thresholds in [0, 1]. For each threshold ``t``,
+        the result contains an ``"n_products_{label}"`` row with the minimum
+        number of products (sorted by value descending, per year) needed to
+        reach ``t * total``. Coverage rows appear in ascending threshold order.
+    total_label : str
+        Label for the total row in the ``summary`` index level. Default
+        ``"total_supply"``; pass ``"total_use"`` for use tables.
+
+    Returns
+    -------
+    pd.DataFrame
+        Wide-format summary table with a five-level MultiIndex:
+        ``(industry, industry_txt, transaction, transaction_txt, summary)``.
+        Columns match ``products_table.columns``. Empty when
+        ``products_table`` is empty or contains no non-total rows.
+
+        Row order within each ``(industry, transaction)`` block:
+
+        1. ``total_label`` — sum of all products.
+        2. ``n_products`` — count of non-zero products.
+        3. ``n_products_{label}`` — one row per coverage threshold, ascending.
+        4. ``value_{label}`` — one row per percentile, descending.
+        5. ``share_{label}`` — one row per percentile, descending.
+    """
+    if products_table.empty:
+        return pd.DataFrame()
+
+    group_levels = ["industry", "industry_txt", "transaction", "transaction_txt"]
+    id_cols = list(products_table.columns)
+
+    # Non-total rows: transaction code is non-empty.
+    product_mask = products_table.index.get_level_values("transaction") != ""
+    product_rows = products_table[product_mask].astype(float)
+
+    if product_rows.empty:
+        return pd.DataFrame()
+
+    # --- Vectorized aggregation ---
+
+    # Group totals: sum of all product values per (group, year).
+    totals_wide = product_rows.groupby(level=group_levels, dropna=False).sum()
+
+    # n_products: count of non-zero values per (group, year).
+    n_products_wide = (product_rows != 0).groupby(level=group_levels, dropna=False).sum()
+
+    # Replace zeros with NaN so groupby quantile skips them.
+    nonzero_values = product_rows.where(product_rows != 0)
+
+    # Value percentiles over non-zero products.
+    value_quantiles = {
+        p: nonzero_values.groupby(level=group_levels, dropna=False).quantile(p)
+        for p in percentiles
+    }
+
+    # Shares = value / group total. Align group totals to every product row.
+    safe_totals = totals_wide.replace(0, float("nan"))
+    group_keys = list(
+        zip(*[product_rows.index.get_level_values(lv) for lv in group_levels])
+    )
+    denominators = safe_totals.loc[group_keys].values
+    shares = pd.DataFrame(
+        product_rows.values / denominators,
+        index=product_rows.index,
+        columns=id_cols,
+    )
+    nonzero_shares = shares.where(product_rows != 0)
+
+    # Share percentiles over non-zero products.
+    share_quantiles = {
+        p: nonzero_shares.groupby(level=group_levels, dropna=False).quantile(p)
+        for p in percentiles
+    }
+
+    # Coverage counts: for each threshold t, find the minimum number of
+    # products (sorted by value descending, per year) whose cumulative sum
+    # reaches >= t * total. Computed in a single melt+sort+cumsum pass.
+    coverage_wide: dict[float, pd.DataFrame] = {}
+    if coverage_thresholds:
+        # Flatten to long format: (group, product, year) → value.
+        flat = product_rows.reset_index()
+        long = flat.melt(
+            id_vars=group_levels + [products_table.index.names[4]],  # product col
+            value_vars=id_cols,
+            var_name="_year",
+            value_name="_value",
+        )
+        # Drop product_txt by not including it — it was not in id_vars.
+        long = long[long["_value"].notna() & (long["_value"] != 0)].copy()
+
+        if not long.empty:
+            group_key = group_levels + ["_year"]
+            long = long.sort_values(
+                group_key + ["_value"],
+                ascending=[True] * len(group_key) + [False],
+            )
+            long["_cumsum"] = long.groupby(group_key, sort=False)["_value"].cumsum()
+            long["_total"] = long.groupby(group_key, sort=False)["_value"].transform("sum")
+            long["_rank"] = long.groupby(group_key, sort=False).cumcount() + 1
+
+            for t in coverage_thresholds:
+                covered = long[long["_cumsum"] >= t * long["_total"]]
+                first = (
+                    covered.groupby(group_key, sort=False)["_rank"]
+                    .first()
+                    .reset_index()
+                )
+                first.columns = group_levels + ["_year", "_count"]
+                wide = first.pivot_table(
+                    index=group_levels,
+                    columns="_year",
+                    values="_count",
+                    aggfunc="first",
+                )
+                wide.columns.name = None
+                for id_val in id_cols:
+                    if id_val not in wide.columns:
+                        wide[id_val] = float("nan")
+                coverage_wide[t] = wide[id_cols]
+
+    # --- Ordered assembly ---
+    # Determine distinct (industry, transaction) groups in appearance order.
+    seen: set = set()
+    ordered_groups: list = []
+    for idx_tuple in product_rows.index:
+        key = (idx_tuple[0], idx_tuple[1], idx_tuple[2], idx_tuple[3])
+        if key not in seen:
+            seen.add(key)
+            ordered_groups.append(key)
+
+    # Summary row labels in the desired display order:
+    # total, n_products, coverage (asc), value (desc), share (desc).
+    sorted_thresholds = sorted(coverage_thresholds)
+    sorted_percentiles_desc = sorted(percentiles, reverse=True)
+    summary_labels = (
+        [total_label, "n_products"]
+        + [f"n_products_p{int(t * 100)}" for t in sorted_thresholds]
+        + [f"value_{_percentile_label(p)}" for p in sorted_percentiles_desc]
+        + [f"share_{_percentile_label(p)}" for p in sorted_percentiles_desc]
+    )
+
+    blocks = []
+    for group in ordered_groups:
+        industry, industry_txt, transaction, transaction_txt = group
+        row_data = [
+            totals_wide.loc[group].tolist(),
+            n_products_wide.loc[group].tolist(),
+        ]
+        for t in sorted_thresholds:
+            if t in coverage_wide and group in coverage_wide[t].index:
+                row_data.append(coverage_wide[t].loc[group].tolist())
+            else:
+                row_data.append([float("nan")] * len(id_cols))
+        for p in sorted_percentiles_desc:
+            row_data.append(value_quantiles[p].loc[group].tolist())
+        for p in sorted_percentiles_desc:
+            row_data.append(share_quantiles[p].loc[group].tolist())
+
+        row_labels = [
+            (industry, industry_txt, transaction, transaction_txt, label)
+            for label in summary_labels
+        ]
+        block = pd.DataFrame(
+            row_data,
+            index=pd.MultiIndex.from_tuples(
+                row_labels, names=group_levels + ["summary"]
+            ),
+            columns=id_cols,
+        )
+        blocks.append(block)
+
+    if not blocks:
+        return pd.DataFrame()
+
+    return pd.concat(blocks)

@@ -536,31 +536,31 @@ def test_balance_property_p1_row_formatted_as_number(sut):
 
 
 # ---------------------------------------------------------------------------
-# supply_detail data
+# supply_products data
 # ---------------------------------------------------------------------------
 
 
-def test_supply_detail_in_data(sut):
+def test_supply_products_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.supply_detail, pd.DataFrame)
+    assert isinstance(result.data.supply_products, pd.DataFrame)
 
 
-def test_supply_detail_index_names(sut):
+def test_supply_products_index_names(sut):
     result = inspect_industries(sut, ["X", "Y"])
-    idx = result.data.supply_detail.index
+    idx = result.data.supply_products.index
     assert idx.names == [
         "industry", "industry_txt", "transaction", "transaction_txt", "product", "product_txt"
     ]
 
 
-def test_supply_detail_columns_are_ids(sut):
+def test_supply_products_columns_are_ids(sut):
     result = inspect_industries(sut, "X")
-    assert list(result.data.supply_detail.columns) == [2020, 2021]
+    assert list(result.data.supply_products.columns) == [2020, 2021]
 
 
-def test_supply_detail_contains_product_rows_and_total(sut):
+def test_supply_products_contains_product_rows_and_total(sut):
     """Industry X has products A and B — two data rows + one Total supply row."""
-    sd = inspect_industries(sut, "X").data.supply_detail
+    sd = inspect_industries(sut, "X").data.supply_products
     idx = sd.index
     product_vals = idx.get_level_values("product").tolist()
     trans_txt_vals = idx.get_level_values("transaction_txt").tolist()
@@ -569,9 +569,9 @@ def test_supply_detail_contains_product_rows_and_total(sut):
     assert "Total supply" in trans_txt_vals
 
 
-def test_supply_detail_total_row_sums_products(sut):
+def test_supply_products_total_row_sums_products(sut):
     """Total supply for industry X = A(60) + B(40) = 100 in 2020."""
-    sd = inspect_industries(sut, "X").data.supply_detail
+    sd = inspect_industries(sut, "X").data.supply_products
     idx = sd.index
     total_mask = idx.get_level_values("transaction_txt") == "Total supply"
     total_row = sd[total_mask].iloc[0]
@@ -579,9 +579,9 @@ def test_supply_detail_total_row_sums_products(sut):
     assert total_row[2021] == pytest.approx(110.0)
 
 
-def test_supply_detail_total_row_has_empty_transaction_and_product(sut):
+def test_supply_products_total_row_has_empty_transaction_and_product(sut):
     """Total supply row has transaction='' and product=''."""
-    sd = inspect_industries(sut, "X").data.supply_detail
+    sd = inspect_industries(sut, "X").data.supply_products
     idx = sd.index
     total_mask = idx.get_level_values("transaction_txt") == "Total supply"
     total_row_idx = idx[total_mask][0]
@@ -589,9 +589,9 @@ def test_supply_detail_total_row_has_empty_transaction_and_product(sut):
     assert total_row_idx[idx.names.index("product")] == ""
 
 
-def test_supply_detail_data_rows_at_basic_prices(sut):
+def test_supply_products_data_rows_at_basic_prices(sut):
     """Product A in industry X: basic price = 60 in 2020."""
-    sd = inspect_industries(sut, "X").data.supply_detail
+    sd = inspect_industries(sut, "X").data.supply_products
     idx = sd.index
     mask = (
         (idx.get_level_values("industry") == "X")
@@ -601,43 +601,43 @@ def test_supply_detail_data_rows_at_basic_prices(sut):
     assert row[2020] == pytest.approx(60.0)
 
 
-def test_supply_detail_excludes_products_not_in_supply_for_industry(sut):
+def test_supply_products_excludes_products_not_in_supply_for_industry(sut):
     """Product C supplies industry Y only — should not appear in industry X's detail."""
-    sd = inspect_industries(sut, "X").data.supply_detail
+    sd = inspect_industries(sut, "X").data.supply_products
     idx = sd.index
     product_vals = idx.get_level_values("product").tolist()
     assert "C" not in product_vals
 
 
-def test_supply_detail_multiple_industries(sut):
-    """Both industries X and Y appear in supply_detail."""
-    sd = inspect_industries(sut, ["X", "Y"]).data.supply_detail
+def test_supply_products_multiple_industries(sut):
+    """Both industries X and Y appear in supply_products."""
+    sd = inspect_industries(sut, ["X", "Y"]).data.supply_products
     idx = sd.index
     industry_vals = idx.get_level_values("industry").unique().tolist()
     assert "X" in industry_vals
     assert "Y" in industry_vals
 
 
-def test_supply_detail_industry_order(sut):
+def test_supply_products_industry_order(sut):
     """Industry X rows appear before Y rows (natural sort order)."""
-    sd = inspect_industries(sut, ["Y", "X"]).data.supply_detail
+    sd = inspect_industries(sut, ["Y", "X"]).data.supply_products
     idx = sd.index
     ind_vals = idx.get_level_values("industry").tolist()
     assert ind_vals.index("X") < ind_vals.index("Y")
 
 
-def test_supply_detail_one_total_per_industry(sut):
+def test_supply_products_one_total_per_industry(sut):
     """Each industry block has exactly one Total supply row."""
-    sd = inspect_industries(sut, ["X", "Y"]).data.supply_detail
+    sd = inspect_industries(sut, ["X", "Y"]).data.supply_products
     idx = sd.index
     total_mask = idx.get_level_values("transaction_txt") == "Total supply"
     assert total_mask.sum() == 2
 
 
-def test_supply_detail_sort_id(sut):
+def test_supply_products_sort_id(sut):
     """With sort_id=2020, rows within industry X are sorted descending by 2020 value."""
     result = inspect_industries(sut, "X", sort_id=2020)
-    sd = result.data.supply_detail
+    sd = result.data.supply_products
     idx = sd.index
     data_mask = idx.get_level_values("transaction_txt") != "Total supply"
     data_rows = sd[data_mask]
@@ -645,18 +645,18 @@ def test_supply_detail_sort_id(sut):
     assert values == sorted(values, reverse=True)
 
 
-def test_supply_detail_industry_txt_populated(sut_with_industry_labels):
+def test_supply_products_industry_txt_populated(sut_with_industry_labels):
     result = inspect_industries(sut_with_industry_labels, "X")
-    sd = result.data.supply_detail
+    sd = result.data.supply_products
     idx = sd.index
     data_mask = idx.get_level_values("product") != ""
     ind_txt_vals = idx[data_mask].get_level_values("industry_txt").unique().tolist()
     assert "Agriculture" in ind_txt_vals
 
 
-def test_supply_detail_product_txt_empty_when_no_classification(sut):
+def test_supply_products_product_txt_empty_when_no_classification(sut):
     result = inspect_industries(sut, "X")
-    sd = result.data.supply_detail
+    sd = result.data.supply_products
     idx = sd.index
     data_mask = idx.get_level_values("product") != ""
     prod_txt_vals = idx[data_mask].get_level_values("product_txt").unique().tolist()
@@ -664,48 +664,48 @@ def test_supply_detail_product_txt_empty_when_no_classification(sut):
 
 
 # ---------------------------------------------------------------------------
-# supply_detail styled property
+# supply_products styled property
 # ---------------------------------------------------------------------------
 
 
-def test_supply_detail_property_returns_styler(sut):
+def test_supply_products_property_returns_styler(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.supply_detail, Styler)
+    assert isinstance(result.supply_products, Styler)
 
 
-def test_supply_detail_property_data_matches_raw(sut):
+def test_supply_products_property_data_matches_raw(sut):
     result = inspect_industries(sut, ["X", "Y"])
-    assert result.supply_detail.data.shape == result.data.supply_detail.shape
+    assert result.supply_products.data.shape == result.data.supply_products.shape
 
 
-def test_supply_detail_property_numbers_formatted(sut):
+def test_supply_products_property_numbers_formatted(sut):
     """Data rows should use European number format."""
     result = inspect_industries(sut, "X")
-    rendered = result.supply_detail.to_html()
+    rendered = result.supply_products.to_html()
     # Product A in X: 60.0 in 2020 → "60,0"
     assert "60,0" in rendered
 
 
 # ---------------------------------------------------------------------------
-# supply_detail_distribution data
+# supply_products_distribution data
 # ---------------------------------------------------------------------------
 
 
-def test_supply_detail_distribution_in_data(sut):
+def test_supply_products_distribution_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.supply_detail_distribution, pd.DataFrame)
+    assert isinstance(result.data.supply_products_distribution, pd.DataFrame)
 
 
-def test_supply_detail_distribution_same_index_as_supply_detail(sut):
+def test_supply_products_distribution_same_index_as_supply_products(sut):
     result = inspect_industries(sut, "X")
-    assert list(result.data.supply_detail_distribution.index) == list(
-        result.data.supply_detail.index
+    assert list(result.data.supply_products_distribution.index) == list(
+        result.data.supply_products.index
     )
 
 
-def test_supply_detail_distribution_total_row_is_one(sut):
+def test_supply_products_distribution_total_row_is_one(sut):
     """Total supply row should have distribution value 1.0 (100% of itself)."""
-    dist = inspect_industries(sut, "X").data.supply_detail_distribution
+    dist = inspect_industries(sut, "X").data.supply_products_distribution
     idx = dist.index
     total_mask = idx.get_level_values("transaction_txt") == "Total supply"
     total_row = dist[total_mask].iloc[0]
@@ -713,9 +713,9 @@ def test_supply_detail_distribution_total_row_is_one(sut):
     assert total_row[2021] == pytest.approx(1.0)
 
 
-def test_supply_detail_distribution_product_shares_sum_to_one(sut):
+def test_supply_products_distribution_product_shares_sum_to_one(sut):
     """Data rows for industry X should sum to 1.0 per year."""
-    dist = inspect_industries(sut, "X").data.supply_detail_distribution
+    dist = inspect_industries(sut, "X").data.supply_products_distribution
     idx = dist.index
     data_mask = idx.get_level_values("transaction") != ""
     data_sum = dist[data_mask].sum()
@@ -723,9 +723,9 @@ def test_supply_detail_distribution_product_shares_sum_to_one(sut):
     assert data_sum[2021] == pytest.approx(1.0)
 
 
-def test_supply_detail_distribution_values_correct(sut):
+def test_supply_products_distribution_values_correct(sut):
     """Product A in industry X: 60 / 100 = 0.6 in 2020."""
-    dist = inspect_industries(sut, "X").data.supply_detail_distribution
+    dist = inspect_industries(sut, "X").data.supply_products_distribution
     idx = dist.index
     mask = (
         (idx.get_level_values("industry") == "X")
@@ -735,43 +735,43 @@ def test_supply_detail_distribution_values_correct(sut):
     assert row[2020] == pytest.approx(0.6)
 
 
-def test_supply_detail_distribution_property_returns_styler(sut):
+def test_supply_products_distribution_property_returns_styler(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.supply_detail_distribution, Styler)
+    assert isinstance(result.supply_products_distribution, Styler)
 
 
-def test_supply_detail_distribution_formatted_as_percentage(sut):
+def test_supply_products_distribution_formatted_as_percentage(sut):
     """Total supply row = 1.0 → formatted as '100,0%'."""
     result = inspect_industries(sut, "X")
-    rendered = result.supply_detail_distribution.to_html()
+    rendered = result.supply_products_distribution.to_html()
     assert "100,0%" in rendered
 
 
 # ---------------------------------------------------------------------------
-# supply_detail_growth data
+# supply_products_growth data
 # ---------------------------------------------------------------------------
 
 
-def test_supply_detail_growth_in_data(sut):
+def test_supply_products_growth_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.supply_detail_growth, pd.DataFrame)
+    assert isinstance(result.data.supply_products_growth, pd.DataFrame)
 
 
-def test_supply_detail_growth_same_index_as_supply_detail(sut):
+def test_supply_products_growth_same_index_as_supply_products(sut):
     result = inspect_industries(sut, "X")
-    assert list(result.data.supply_detail_growth.index) == list(
-        result.data.supply_detail.index
+    assert list(result.data.supply_products_growth.index) == list(
+        result.data.supply_products.index
     )
 
 
-def test_supply_detail_growth_first_year_is_nan(sut):
+def test_supply_products_growth_first_year_is_nan(sut):
     result = inspect_industries(sut, "X")
-    assert result.data.supply_detail_growth[2020].isna().all()
+    assert result.data.supply_products_growth[2020].isna().all()
 
 
-def test_supply_detail_growth_values_correct(sut):
+def test_supply_products_growth_values_correct(sut):
     """Product A in industry X: 60 → 66, growth = (66-60)/60 = 0.1."""
-    growth = inspect_industries(sut, "X").data.supply_detail_growth
+    growth = inspect_industries(sut, "X").data.supply_products_growth
     idx = growth.index
     mask = (
         (idx.get_level_values("industry") == "X")
@@ -781,39 +781,39 @@ def test_supply_detail_growth_values_correct(sut):
     assert row[2021] == pytest.approx(0.1)
 
 
-def test_supply_detail_growth_property_returns_styler(sut):
+def test_supply_products_growth_property_returns_styler(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.supply_detail_growth, Styler)
+    assert isinstance(result.supply_products_growth, Styler)
 
 
-def test_supply_detail_growth_formatted_as_percentage(sut):
+def test_supply_products_growth_formatted_as_percentage(sut):
     """Growth of 10% → formatted as '10,0%'."""
     result = inspect_industries(sut, "X")
-    rendered = result.supply_detail_growth.to_html()
+    rendered = result.supply_products_growth.to_html()
     assert "10,0%" in rendered
 
 
 # ---------------------------------------------------------------------------
-# use_detail data
+# use_products data
 # ---------------------------------------------------------------------------
 
 
-def test_use_detail_in_data(sut):
+def test_use_products_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.use_detail, pd.DataFrame)
+    assert isinstance(result.data.use_products, pd.DataFrame)
 
 
-def test_use_detail_index_names(sut):
+def test_use_products_index_names(sut):
     result = inspect_industries(sut, "X")
-    idx = result.data.use_detail.index
+    idx = result.data.use_products.index
     assert idx.names == [
         "industry", "industry_txt", "transaction", "transaction_txt", "product", "product_txt"
     ]
 
 
-def test_use_detail_contains_product_rows_and_total(sut):
+def test_use_products_contains_product_rows_and_total(sut):
     """Industry X uses product A — one data row + one Total use row."""
-    ud = inspect_industries(sut, "X").data.use_detail
+    ud = inspect_industries(sut, "X").data.use_products
     idx = ud.index
     product_vals = idx.get_level_values("product").tolist()
     trans_txt_vals = idx.get_level_values("transaction_txt").tolist()
@@ -821,9 +821,9 @@ def test_use_detail_contains_product_rows_and_total(sut):
     assert "Total use" in trans_txt_vals
 
 
-def test_use_detail_values_at_purchasers_prices(sut):
+def test_use_products_values_at_purchasers_prices(sut):
     """Product A in industry X: purchasers' price (koeb) = 60 in 2020."""
-    ud = inspect_industries(sut, "X").data.use_detail
+    ud = inspect_industries(sut, "X").data.use_products
     idx = ud.index
     mask = (
         (idx.get_level_values("industry") == "X")
@@ -833,9 +833,9 @@ def test_use_detail_values_at_purchasers_prices(sut):
     assert row[2020] == pytest.approx(60.0)
 
 
-def test_use_detail_total_row_sums_products(sut):
+def test_use_products_total_row_sums_products(sut):
     """Total use for industry X = koeb of product A = 60 in 2020."""
-    ud = inspect_industries(sut, "X").data.use_detail
+    ud = inspect_industries(sut, "X").data.use_products
     idx = ud.index
     total_mask = idx.get_level_values("transaction_txt") == "Total use"
     total_row = ud[total_mask].iloc[0]
@@ -843,8 +843,8 @@ def test_use_detail_total_row_sums_products(sut):
     assert total_row[2021] == pytest.approx(66.0)
 
 
-def test_use_detail_total_row_has_empty_transaction_and_product(sut):
-    ud = inspect_industries(sut, "X").data.use_detail
+def test_use_products_total_row_has_empty_transaction_and_product(sut):
+    ud = inspect_industries(sut, "X").data.use_products
     idx = ud.index
     total_mask = idx.get_level_values("transaction_txt") == "Total use"
     total_row_idx = idx[total_mask][0]
@@ -852,17 +852,17 @@ def test_use_detail_total_row_has_empty_transaction_and_product(sut):
     assert total_row_idx[idx.names.index("product")] == ""
 
 
-def test_use_detail_one_total_per_industry(sut):
-    ud = inspect_industries(sut, ["X", "Y"]).data.use_detail
+def test_use_products_one_total_per_industry(sut):
+    ud = inspect_industries(sut, ["X", "Y"]).data.use_products
     idx = ud.index
     total_mask = idx.get_level_values("transaction_txt") == "Total use"
     assert total_mask.sum() == 2
 
 
-def test_use_detail_sort_id(sut):
+def test_use_products_sort_id(sut):
     """With sort_id, data rows within each industry are sorted descending."""
     result = inspect_industries(sut, ["X", "Y"], sort_id=2020)
-    ud = result.data.use_detail
+    ud = result.data.use_products
     idx = ud.index
     for industry in ["X", "Y"]:
         ind_mask = (idx.get_level_values("industry") == industry) & (
@@ -872,71 +872,71 @@ def test_use_detail_sort_id(sut):
         assert values == sorted(values, reverse=True)
 
 
-def test_use_detail_property_returns_styler(sut):
+def test_use_products_property_returns_styler(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.use_detail, Styler)
+    assert isinstance(result.use_products, Styler)
 
 
-def test_use_detail_property_numbers_formatted(sut):
+def test_use_products_property_numbers_formatted(sut):
     result = inspect_industries(sut, "X")
-    rendered = result.use_detail.to_html()
+    rendered = result.use_products.to_html()
     assert "60,0" in rendered
 
 
 # ---------------------------------------------------------------------------
-# use_detail_distribution data
+# use_products_distribution data
 # ---------------------------------------------------------------------------
 
 
-def test_use_detail_distribution_in_data(sut):
+def test_use_products_distribution_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.use_detail_distribution, pd.DataFrame)
+    assert isinstance(result.data.use_products_distribution, pd.DataFrame)
 
 
-def test_use_detail_distribution_same_index_as_use_detail(sut):
+def test_use_products_distribution_same_index_as_use_products(sut):
     result = inspect_industries(sut, "X")
-    assert list(result.data.use_detail_distribution.index) == list(
-        result.data.use_detail.index
+    assert list(result.data.use_products_distribution.index) == list(
+        result.data.use_products.index
     )
 
 
-def test_use_detail_distribution_total_row_is_one(sut):
-    dist = inspect_industries(sut, "X").data.use_detail_distribution
+def test_use_products_distribution_total_row_is_one(sut):
+    dist = inspect_industries(sut, "X").data.use_products_distribution
     idx = dist.index
     total_mask = idx.get_level_values("transaction_txt") == "Total use"
     total_row = dist[total_mask].iloc[0]
     assert total_row[2020] == pytest.approx(1.0)
 
 
-def test_use_detail_distribution_property_returns_styler(sut):
-    assert isinstance(inspect_industries(sut, "X").use_detail_distribution, Styler)
+def test_use_products_distribution_property_returns_styler(sut):
+    assert isinstance(inspect_industries(sut, "X").use_products_distribution, Styler)
 
 
-def test_use_detail_distribution_formatted_as_percentage(sut):
-    rendered = inspect_industries(sut, "X").use_detail_distribution.to_html()
+def test_use_products_distribution_formatted_as_percentage(sut):
+    rendered = inspect_industries(sut, "X").use_products_distribution.to_html()
     assert "100,0%" in rendered
 
 
 # ---------------------------------------------------------------------------
-# use_detail_coefficients data
+# use_products_coefficients data
 # ---------------------------------------------------------------------------
 
 
-def test_use_detail_coefficients_in_data(sut):
+def test_use_products_coefficients_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.use_detail_coefficients, pd.DataFrame)
+    assert isinstance(result.data.use_products_coefficients, pd.DataFrame)
 
 
-def test_use_detail_coefficients_same_index_as_use_detail(sut):
+def test_use_products_coefficients_same_index_as_use_products(sut):
     result = inspect_industries(sut, "X")
-    assert list(result.data.use_detail_coefficients.index) == list(
-        result.data.use_detail.index
+    assert list(result.data.use_products_coefficients.index) == list(
+        result.data.use_products.index
     )
 
 
-def test_use_detail_coefficients_denominator_is_total_output(sut):
+def test_use_products_coefficients_denominator_is_total_output(sut):
     """Product A in X: koeb=60, total output=100 → coefficient = 0.6 in 2020."""
-    coeffs = inspect_industries(sut, "X").data.use_detail_coefficients
+    coeffs = inspect_industries(sut, "X").data.use_products_coefficients
     idx = coeffs.index
     mask = (
         (idx.get_level_values("industry") == "X")
@@ -947,9 +947,9 @@ def test_use_detail_coefficients_denominator_is_total_output(sut):
     assert row[2021] == pytest.approx(66.0 / 110.0)
 
 
-def test_use_detail_coefficients_total_row_equals_input_coefficient(sut):
+def test_use_products_coefficients_total_row_equals_input_coefficient(sut):
     """Total use row / total output = overall input coefficient."""
-    coeffs = inspect_industries(sut, "X").data.use_detail_coefficients
+    coeffs = inspect_industries(sut, "X").data.use_products_coefficients
     idx = coeffs.index
     total_mask = idx.get_level_values("transaction_txt") == "Total use"
     total_row = coeffs[total_mask].iloc[0]
@@ -958,56 +958,56 @@ def test_use_detail_coefficients_total_row_equals_input_coefficient(sut):
     assert total_row[2021] == pytest.approx(66.0 / 110.0)
 
 
-def test_use_detail_coefficients_differs_from_distribution(sut):
+def test_use_products_coefficients_differs_from_distribution(sut):
     """Coefficients use total output as denominator; distribution uses total use."""
     result = inspect_industries(sut, "X")
     # For industry X: total output=100, total use=60 → denominators differ
     # distribution total row = 1.0; coefficients total row = 60/100 = 0.6
-    coeffs = result.data.use_detail_coefficients
-    dist = result.data.use_detail_distribution
+    coeffs = result.data.use_products_coefficients
+    dist = result.data.use_products_distribution
     idx = coeffs.index
     total_mask = idx.get_level_values("transaction_txt") == "Total use"
     assert coeffs[total_mask].iloc[0][2020] == pytest.approx(0.6)
     assert dist[total_mask].iloc[0][2020] == pytest.approx(1.0)
 
 
-def test_use_detail_coefficients_property_returns_styler(sut):
+def test_use_products_coefficients_property_returns_styler(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.use_detail_coefficients, Styler)
+    assert isinstance(result.use_products_coefficients, Styler)
 
 
-def test_use_detail_coefficients_formatted_as_percentage(sut):
+def test_use_products_coefficients_formatted_as_percentage(sut):
     result = inspect_industries(sut, "X")
-    rendered = result.use_detail_coefficients.to_html()
+    rendered = result.use_products_coefficients.to_html()
     # 60/100 = 60.0% → "60,0%"
     assert "60,0%" in rendered
 
 
 # ---------------------------------------------------------------------------
-# use_detail_growth data
+# use_products_growth data
 # ---------------------------------------------------------------------------
 
 
-def test_use_detail_growth_in_data(sut):
+def test_use_products_growth_in_data(sut):
     result = inspect_industries(sut, "X")
-    assert isinstance(result.data.use_detail_growth, pd.DataFrame)
+    assert isinstance(result.data.use_products_growth, pd.DataFrame)
 
 
-def test_use_detail_growth_same_index_as_use_detail(sut):
+def test_use_products_growth_same_index_as_use_products(sut):
     result = inspect_industries(sut, "X")
-    assert list(result.data.use_detail_growth.index) == list(
-        result.data.use_detail.index
+    assert list(result.data.use_products_growth.index) == list(
+        result.data.use_products.index
     )
 
 
-def test_use_detail_growth_first_year_is_nan(sut):
+def test_use_products_growth_first_year_is_nan(sut):
     result = inspect_industries(sut, "X")
-    assert result.data.use_detail_growth[2020].isna().all()
+    assert result.data.use_products_growth[2020].isna().all()
 
 
-def test_use_detail_growth_values_correct(sut):
+def test_use_products_growth_values_correct(sut):
     """Product A in industry X: koeb 60 → 66, growth = 0.1."""
-    growth = inspect_industries(sut, "X").data.use_detail_growth
+    growth = inspect_industries(sut, "X").data.use_products_growth
     idx = growth.index
     mask = (
         (idx.get_level_values("industry") == "X")
@@ -1017,12 +1017,12 @@ def test_use_detail_growth_values_correct(sut):
     assert row[2021] == pytest.approx(0.1)
 
 
-def test_use_detail_growth_property_returns_styler(sut):
-    assert isinstance(inspect_industries(sut, "X").use_detail_growth, Styler)
+def test_use_products_growth_property_returns_styler(sut):
+    assert isinstance(inspect_industries(sut, "X").use_products_growth, Styler)
 
 
-def test_use_detail_growth_formatted_as_percentage(sut):
-    rendered = inspect_industries(sut, "X").use_detail_growth.to_html()
+def test_use_products_growth_formatted_as_percentage(sut):
+    rendered = inspect_industries(sut, "X").use_products_growth.to_html()
     assert "10,0%" in rendered
 
 
@@ -1094,3 +1094,380 @@ def test_sut_method_delegates(sut):
     pd.testing.assert_frame_equal(
         result_free.data.balance, result_method.data.balance
     )
+
+
+# ---------------------------------------------------------------------------
+# supply_products_summary data
+# ---------------------------------------------------------------------------
+#
+# Fixture data (supply, industry X, transaction 0100, basic prices):
+#   2020: product A = 60, product B = 40  → total=100, n_products=2
+#   2021: product A = 66, product B = 44  → total=110, n_products=2
+# Both products non-zero in both years.
+# ---------------------------------------------------------------------------
+
+
+def test_supply_products_summary_is_dataframe(sut):
+    result = inspect_industries(sut, "X")
+    assert isinstance(result.data.supply_products_summary, pd.DataFrame)
+
+
+def test_supply_products_summary_index_names(sut):
+    result = inspect_industries(sut, "X")
+    assert result.data.supply_products_summary.index.names == [
+        "industry", "industry_txt", "transaction", "transaction_txt", "summary"
+    ]
+
+
+def test_supply_products_summary_columns_are_ids(sut):
+    result = inspect_industries(sut, "X")
+    assert list(result.data.supply_products_summary.columns) == [2020, 2021]
+
+
+def test_supply_products_summary_default_row_labels(sut):
+    """Default percentiles=[0.5, 1.0] and coverage_thresholds=[0.5, 0.8, 0.95]:
+    total_supply, n_products, n_products_median, n_products_p80, n_products_p95,
+    value_max, value_median, share_max, share_median.
+    """
+    result = inspect_industries(sut, "X")
+    summary_vals = (
+        result.data.supply_products_summary.index
+        .get_level_values("summary").tolist()
+    )
+    assert summary_vals == [
+        "total_supply", "n_products",
+        "n_products_p50", "n_products_p80", "n_products_p95",
+        "value_max", "value_median",
+        "share_max", "share_median",
+    ]
+
+
+def test_supply_products_summary_total(sut):
+    """total_supply = sum of all product values = 100 in 2020, 110 in 2021."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("total_supply", level="summary")
+    assert row[2020].iloc[0] == pytest.approx(100.0)
+    assert row[2021].iloc[0] == pytest.approx(110.0)
+
+
+def test_supply_products_summary_n_products(sut):
+    """n_products = 2 for industry X (products A and B are non-zero)."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("n_products", level="summary")
+    assert row[2020].iloc[0] == 2
+    assert row[2021].iloc[0] == 2
+
+
+def test_supply_products_summary_value_max(sut):
+    """value_max = 60 in 2020 (product A), 66 in 2021."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("value_max", level="summary")
+    assert row[2020].iloc[0] == pytest.approx(60.0)
+    assert row[2021].iloc[0] == pytest.approx(66.0)
+
+
+def test_supply_products_summary_value_median(sut):
+    """value_median over [40, 60] = 50.0 in 2020."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("value_median", level="summary")
+    assert row[2020].iloc[0] == pytest.approx(50.0)
+
+
+def test_supply_products_summary_share_max(sut):
+    """share_max = 60/100 = 0.6 in 2020."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("share_max", level="summary")
+    assert row[2020].iloc[0] == pytest.approx(0.6)
+
+
+def test_supply_products_summary_coverage_both_products_needed(sut):
+    """For 80% coverage: product A alone gives 60/100=60% < 80%, so need both → 2."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("n_products_p80", level="summary")
+    assert row[2020].iloc[0] == 2
+
+
+def test_supply_products_summary_coverage_p95(sut):
+    """For 95% coverage: also need both products → 2."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("n_products_p95", level="summary")
+    assert row[2020].iloc[0] == 2
+
+
+def test_supply_products_summary_coverage_p50(sut):
+    """Default coverage_thresholds includes 0.5: product A alone = 60% >= 50% → 1."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    row = summary.xs("n_products_p50", level="summary")
+    assert row[2020].iloc[0] == 1
+
+
+def test_supply_products_summary_multiple_industries(sut):
+    """Both industries X and Y appear with their own summary blocks."""
+    summary = inspect_industries(sut, ["X", "Y"]).data.supply_products_summary
+    industry_vals = summary.index.get_level_values("industry").unique().tolist()
+    assert "X" in industry_vals
+    assert "Y" in industry_vals
+
+
+def test_supply_products_summary_custom_percentiles(sut):
+    """Custom percentiles=[0.0, 1.0] produce value_min and value_max rows."""
+    result = inspect_industries(sut, "X", percentiles=[0.0, 1.0])
+    summary_vals = (
+        result.data.supply_products_summary.index
+        .get_level_values("summary").tolist()
+    )
+    assert "value_min" in summary_vals
+    assert "value_max" in summary_vals
+    assert "value_median" not in summary_vals
+
+
+def test_supply_products_summary_custom_coverage(sut):
+    """Custom coverage_thresholds=[0.9] produces n_products_p90 row only."""
+    result = inspect_industries(sut, "X", coverage_thresholds=[0.9])
+    summary_vals = (
+        result.data.supply_products_summary.index
+        .get_level_values("summary").tolist()
+    )
+    assert "n_products_p90" in summary_vals
+    assert "n_products_p80" not in summary_vals
+    assert "n_products_p50" not in summary_vals
+
+
+def test_supply_products_summary_excludes_total_row_from_stats(sut):
+    """The Total supply row must not inflate n_products or skew percentiles."""
+    summary = inspect_industries(sut, "X").data.supply_products_summary
+    # n_products should be 2 (A and B), not 3 (A, B, Total supply row).
+    row = summary.xs("n_products", level="summary")
+    assert row[2020].iloc[0] == 2
+
+
+def test_supply_products_summary_total_not_bold(sut):
+    """total_supply row should not be bold."""
+    rendered = inspect_industries(sut, "X").supply_products_summary.to_html()
+    # Find the total_supply row and confirm font-weight: bold is not set on it.
+    # We check that bold does not appear anywhere in the rendered output.
+    assert "font-weight: bold" not in rendered
+
+
+def test_supply_products_summary_share_formatted_as_percentage(sut):
+    """share_max row should be rendered as a percentage string."""
+    rendered = inspect_industries(sut, "X").supply_products_summary.to_html()
+    # share_max for X in 2020 = 60/100 = 0.6 → "60,0%"
+    assert "60,0%" in rendered
+
+
+def test_supply_products_summary_n_products_formatted_as_int(sut):
+    """n_products row should render as an integer (no decimal point)."""
+    rendered = inspect_industries(sut, "X").supply_products_summary.to_html()
+    assert ">2<" in rendered
+
+
+def test_supply_products_summary_property_returns_styler(sut):
+    assert isinstance(inspect_industries(sut, "X").supply_products_summary, Styler)
+
+
+# ---------------------------------------------------------------------------
+# use_products_summary data
+# ---------------------------------------------------------------------------
+#
+# Fixture data (use, industry X, transaction 2000, purchasers' prices):
+#   2020: product A = 60   (only one non-zero product)
+#   2021: product A = 66
+# ---------------------------------------------------------------------------
+
+
+def test_use_products_summary_is_dataframe(sut):
+    result = inspect_industries(sut, "X")
+    assert isinstance(result.data.use_products_summary, pd.DataFrame)
+
+
+def test_use_products_summary_index_names(sut):
+    result = inspect_industries(sut, "X")
+    assert result.data.use_products_summary.index.names == [
+        "industry", "industry_txt", "transaction", "transaction_txt", "summary"
+    ]
+
+
+def test_use_products_summary_total(sut):
+    """total_use = purchasers' price sum = 60 in 2020."""
+    summary = inspect_industries(sut, "X").data.use_products_summary
+    row = summary.xs("total_use", level="summary")
+    assert row[2020].iloc[0] == pytest.approx(60.0)
+
+
+def test_use_products_summary_n_products_single(sut):
+    """Only one non-zero product for industry X use."""
+    summary = inspect_industries(sut, "X").data.use_products_summary
+    row = summary.xs("n_products", level="summary")
+    assert row[2020].iloc[0] == 1
+
+
+def test_use_products_summary_coverage_single_product(sut):
+    """With a single product, coverage is 1 for any threshold."""
+    summary = inspect_industries(sut, "X").data.use_products_summary
+    row80 = summary.xs("n_products_p80", level="summary")
+    row95 = summary.xs("n_products_p95", level="summary")
+    assert row80[2020].iloc[0] == 1
+    assert row95[2020].iloc[0] == 1
+
+
+def test_use_products_summary_property_returns_styler(sut):
+    assert isinstance(inspect_industries(sut, "X").use_products_summary, Styler)
+
+
+# ---------------------------------------------------------------------------
+# display_products_n_largest
+# ---------------------------------------------------------------------------
+#
+# Fixture data (supply, industry X, transaction 0100, basic prices, 2020):
+#   product A = 60, product B = 40  → A is largest
+# Fixture data (use, industry X, transaction 2000, purchasers' prices, 2020):
+#   product A = 60  (only product)
+# ---------------------------------------------------------------------------
+
+
+def test_n_largest_returns_industry_inspection(sut):
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    assert isinstance(result, IndustryInspection)
+
+
+def test_n_largest_supply_keeps_top_product(sut):
+    """n=1 for supply X in 2020 keeps product A (60) and drops B (40)."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" not in products
+
+
+def test_n_largest_supply_keeps_total_row(sut):
+    """Total supply row must always be kept regardless of n."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    trans_txts = result.data.supply_products.index.get_level_values("transaction_txt").tolist()
+    assert "Total supply" in trans_txts
+
+
+def test_n_largest_supply_keeps_all_when_n_gte_count(sut):
+    """n=10 keeps both products A and B."""
+    result = inspect_industries(sut, "X").display_products_n_largest(10, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" in products
+
+
+def test_n_largest_distribution_sliced_in_lockstep(sut):
+    """supply_products_distribution keeps the same product rows as supply_products."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    dist_products = result.data.supply_products_distribution.index.get_level_values("product").tolist()
+    assert sp_products == dist_products
+
+
+def test_n_largest_growth_sliced_in_lockstep(sut):
+    """supply_products_growth keeps the same product rows as supply_products."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    growth_products = result.data.supply_products_growth.index.get_level_values("product").tolist()
+    assert sp_products == growth_products
+
+
+def test_n_largest_summary_unchanged(sut):
+    """supply_products_summary is not affected by the filter."""
+    base = inspect_industries(sut, "X")
+    filtered = base.display_products_n_largest(1, 2020)
+    pd.testing.assert_frame_equal(
+        filtered.data.supply_products_summary, base.data.supply_products_summary
+    )
+
+
+def test_n_largest_balance_unchanged(sut):
+    """balance table is not affected by the filter."""
+    base = inspect_industries(sut, "X")
+    filtered = base.display_products_n_largest(1, 2020)
+    pd.testing.assert_frame_equal(filtered.data.balance, base.data.balance)
+
+
+def test_n_largest_use_filtered_independently(sut):
+    """use_products filtered independently; single product kept when n=1."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    products = result.data.use_products.index.get_level_values("product").tolist()
+    assert "A" in products
+
+
+# ---------------------------------------------------------------------------
+# display_products_threshold_value
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_value_keeps_above_threshold(sut):
+    """threshold=50: keeps A (60 >= 50) and drops B (40 < 50) in supply."""
+    result = inspect_industries(sut, "X").display_products_threshold_value(50.0, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" not in products
+
+
+def test_threshold_value_keeps_total_row(sut):
+    """Total supply row always kept."""
+    result = inspect_industries(sut, "X").display_products_threshold_value(50.0, 2020)
+    trans_txts = result.data.supply_products.index.get_level_values("transaction_txt").tolist()
+    assert "Total supply" in trans_txts
+
+
+def test_threshold_value_keeps_all_when_low(sut):
+    """threshold=0 keeps both products."""
+    result = inspect_industries(sut, "X").display_products_threshold_value(0.0, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" in products
+
+
+def test_threshold_value_distribution_sliced_in_lockstep(sut):
+    result = inspect_industries(sut, "X").display_products_threshold_value(50.0, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    dist_products = result.data.supply_products_distribution.index.get_level_values("product").tolist()
+    assert sp_products == dist_products
+
+
+# ---------------------------------------------------------------------------
+# display_products_threshold_share
+# ---------------------------------------------------------------------------
+#
+# supply X 2020: A=60/100=0.6, B=40/100=0.4
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_share_keeps_above_threshold(sut):
+    """threshold=0.5: keeps A (share=0.6 >= 0.5), drops B (share=0.4 < 0.5)."""
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" not in products
+
+
+def test_threshold_share_keeps_total_row(sut):
+    """Total supply row always kept."""
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    trans_txts = result.data.supply_products.index.get_level_values("transaction_txt").tolist()
+    assert "Total supply" in trans_txts
+
+
+def test_threshold_share_keeps_all_when_zero(sut):
+    """threshold=0 keeps both products."""
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.0, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" in products
+
+
+def test_threshold_share_distribution_sliced_in_lockstep(sut):
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    dist_products = result.data.supply_products_distribution.index.get_level_values("product").tolist()
+    assert sp_products == dist_products
+
+
+def test_threshold_share_coefficients_sliced_in_lockstep(sut):
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    sp_products = result.data.use_products.index.get_level_values("product").tolist()
+    coeff_products = result.data.use_products_coefficients.index.get_level_values("product").tolist()
+    assert sp_products == coeff_products

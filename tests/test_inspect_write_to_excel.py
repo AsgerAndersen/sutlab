@@ -527,7 +527,7 @@ def test_write_to_excel_writes_empty_dataframes(
     wb = openpyxl.load_workbook(path)
     # All 13 fields should be present — empty DataFrames are not skipped
     assert "balance" in wb.sheetnames
-    assert "supply_detail" in wb.sheetnames
+    assert "supply_products" in wb.sheetnames
     assert "price_layers_rates" in wb.sheetnames
     assert len(wb.sheetnames) == 13
 
