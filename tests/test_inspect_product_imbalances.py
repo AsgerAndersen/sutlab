@@ -397,7 +397,7 @@ def test_no_price_layer_columns_when_none_in_metadata(supply, use):
 def test_summary_shape(sut):
     summary = inspect_unbalanced_products(sut).data.summary
     assert summary.shape == (1, 2)
-    assert list(summary.columns) == ["n_unbalanced", "largest_unbalance"]
+    assert list(summary.columns) == ["n_unbalanced", "largest_diff"]
     assert summary.index.name == "table"
     assert list(summary.index) == ["imbalances"]
 
@@ -408,23 +408,23 @@ def test_summary_n_unbalanced(sut):
     assert summary.loc["imbalances", "n_unbalanced"] == 3
 
 
-def test_summary_largest_unbalance_is_signed(sut):
+def test_summary_largest_diff_is_signed(sut):
     # D has the largest abs diff (80), and it is positive
     summary = inspect_unbalanced_products(sut).data.summary
-    assert summary.loc["imbalances", "largest_unbalance"] == pytest.approx(80.0)
+    assert summary.loc["imbalances", "largest_diff"] == pytest.approx(80.0)
 
 
-def test_summary_largest_unbalance_signed_negative(sut):
-    # With products=["C"] only C remains (diff=-30); largest_unbalance should be -30
+def test_summary_largest_diff_signed_negative(sut):
+    # With products=["C"] only C remains (diff=-30); largest_diff should be -30
     summary = inspect_unbalanced_products(sut, products=["C"]).data.summary
-    assert summary.loc["imbalances", "largest_unbalance"] == pytest.approx(-30.0)
+    assert summary.loc["imbalances", "largest_diff"] == pytest.approx(-30.0)
 
 
 def test_summary_nan_when_all_balanced(sut):
-    # Tolerance=100 excludes all products → largest_unbalance is NaN
+    # Tolerance=100 excludes all products → largest_diff is NaN
     summary = inspect_unbalanced_products(sut, tolerance=100).data.summary
     assert summary.loc["imbalances", "n_unbalanced"] == 0
-    assert np.isnan(summary.loc["imbalances", "largest_unbalance"])
+    assert np.isnan(summary.loc["imbalances", "largest_diff"])
 
 
 def test_summary_respects_tolerance(sut):

@@ -67,7 +67,7 @@ class UnbalancedProductsInspection:
     summary : pd.DataFrame
         One row summarising the imbalances table. Index is ``"imbalances"``;
         columns are ``n_unbalanced`` (number of rows in the imbalances table)
-        and ``largest_unbalance`` (the signed diff value whose absolute value
+        and ``largest_diff`` (the signed diff value whose absolute value
         is largest; ``NaN`` when the imbalances table is empty).
     """
 
@@ -291,14 +291,14 @@ def inspect_unbalanced_products(
             names=[prod_col, prod_txt_col],
         )
 
-    # Build summary: one row with n_unbalanced and largest_unbalance.
+    # Build summary: one row with n_unbalanced and largest_diff.
     n_unbalanced = len(result)
     if n_unbalanced > 0:
-        largest_unbalance = result[diff_name].loc[result[diff_name].abs().idxmax()]
+        largest_diff = result[diff_name].loc[result[diff_name].abs().idxmax()]
     else:
-        largest_unbalance = float("nan")
+        largest_diff = float("nan")
     summary = pd.DataFrame(
-        {"n_unbalanced": [n_unbalanced], "largest_unbalance": [largest_unbalance]},
+        {"n_unbalanced": [n_unbalanced], "largest_diff": [largest_diff]},
         index=pd.Index(["imbalances"], name="table"),
     )
 
