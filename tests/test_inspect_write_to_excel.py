@@ -38,8 +38,8 @@ from sutlab.inspect import (
     ProductInspectionData,
     IndustryInspection,
     IndustryInspectionData,
-    BalancingTargetsInspection,
-    BalancingTargetsData,
+    UnbalancedTargetsInspection,
+    UnbalancedTargetsData,
     SUTComparisonInspection,
     SUTComparisonData,
 )
@@ -52,13 +52,13 @@ from sutlab.inspect import (
 
 @pytest.fixture
 def realistic_balancing_result():
-    """BalancingTargetsInspection with column structure matching a real inspection.
+    """UnbalancedTargetsInspection with column structure matching a real inspection.
 
     ``_supply_styler`` requires at least one column not prefixed with
     ``target_/diff_/rel_/tol_/violation_``.  The DataFrames here mirror what
-    ``inspect_balancing_targets`` would produce.
+    ``inspect_unbalanced_targets`` would produce.
     """
-    supply = pd.DataFrame(
+    supply_cat = pd.DataFrame(
         {
             "bas": [300.0],
             "target_bas": [360.0],
@@ -71,24 +71,57 @@ def realistic_balancing_result():
             [("0100", "X")], names=["trans", "brch"]
         ),
     )
-    use = pd.DataFrame(
+    use_cat = pd.DataFrame(
         {
             "koeb": [80.0],
             "target_koeb": [90.0],
             "diff_koeb": [-10.0],
             "rel_koeb": [-0.111],
+            "tol_koeb": [float("nan")],
+            "violation_koeb": [float("nan")],
         },
         index=pd.MultiIndex.from_tuples(
             [("2000", "X")], names=["trans", "brch"]
         ),
     )
-    data = BalancingTargetsData(
-        supply=supply,
-        use=use,
-        supply_violations=None,
-        use_violations=None,
+    supply_trans = pd.DataFrame(
+        {
+            "bas": [300.0],
+            "target_bas": [360.0],
+            "diff_bas": [-60.0],
+            "rel_bas": [-0.167],
+            "tol_bas": [10.0],
+            "violation_bas": [-50.0],
+        },
+        index=pd.Index(["0100"], name="trans"),
     )
-    return BalancingTargetsInspection(data=data)
+    use_trans = pd.DataFrame(
+        {
+            "koeb": [80.0],
+            "target_koeb": [90.0],
+            "diff_koeb": [-10.0],
+            "rel_koeb": [-0.111],
+            "tol_koeb": [float("nan")],
+            "violation_koeb": [float("nan")],
+        },
+        index=pd.Index(["2000"], name="trans"),
+    )
+    summary = pd.DataFrame(
+        {"n_unbalanced": [1, 1, 1, 1]},
+        index=pd.Index(["supply_transactions", "supply_categories", "use_transactions", "use_categories"], name="table"),
+    )
+    data = UnbalancedTargetsData(
+        supply_categories=supply_cat,
+        use_categories=use_cat,
+        supply_categories_violations=None,
+        use_categories_violations=None,
+        supply_transactions=supply_trans,
+        use_transactions=use_trans,
+        supply_transactions_violations=None,
+        use_transactions_violations=None,
+        summary=summary,
+    )
+    return UnbalancedTargetsInspection(data=data)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +159,7 @@ def test_make_sheet_name_all_known_fields_within_limit():
         IndustryInspectionData,
         FinalUseInspectionData,
         UnbalancedProductsData,
-        BalancingTargetsData,
+        UnbalancedTargetsData,
         SUTComparisonData,
     )
     data_classes = [
@@ -134,7 +167,7 @@ def test_make_sheet_name_all_known_fields_within_limit():
         IndustryInspectionData,
         FinalUseInspectionData,
         UnbalancedProductsData,
-        BalancingTargetsData,
+        UnbalancedTargetsData,
         SUTComparisonData,
     ]
     for cls in data_classes:
@@ -302,8 +335,8 @@ def test_write_to_excel_value_columns_wider_than_default(tmp_path, balancing_res
     path = tmp_path / "out.xlsx"
     balancing_result_with_none.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    ws = wb["supply"]
-    # Column B is the first (and only) value column in the supply sheet
+    ws = wb["supply_categories"]
+    # Column B is the first (and only) value column in the supply_categories sheet
     assert ws.column_dimensions["B"].width == _EXCEL_VALUE_COLUMN_WIDTH
 
 
@@ -354,38 +387,67 @@ def test_fit_index_column_widths_multiindex(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# write_to_excel — BalancingTargetsInspection (has None fields)
+# write_to_excel — UnbalancedTargetsInspection (has None fields)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def balancing_result_with_none():
-    """BalancingTargetsInspection where violations tables are None."""
-    supply = pd.DataFrame({"target_bas": [100.0]})
-    use = pd.DataFrame({"target_koeb": [200.0]})
-    data = BalancingTargetsData(
-        supply=supply,
-        use=use,
-        supply_violations=None,
-        use_violations=None,
+    """UnbalancedTargetsInspection where all violations tables are None."""
+    supply_cat = pd.DataFrame({"target_bas": [100.0]})
+    use_cat = pd.DataFrame({"target_koeb": [200.0]})
+    supply_trans = pd.DataFrame({"target_bas": [100.0]})
+    use_trans = pd.DataFrame({"target_koeb": [200.0]})
+    summary = pd.DataFrame(
+        {"n_unbalanced": [1, 1, 1, 1]},
+        index=pd.Index(["supply_transactions", "supply_categories", "use_transactions", "use_categories"], name="table"),
     )
-    return BalancingTargetsInspection(data=data)
+    data = UnbalancedTargetsData(
+        supply_categories=supply_cat,
+        use_categories=use_cat,
+        supply_categories_violations=None,
+        use_categories_violations=None,
+        supply_transactions=supply_trans,
+        use_transactions=use_trans,
+        supply_transactions_violations=None,
+        use_transactions_violations=None,
+        summary=summary,
+    )
+    return UnbalancedTargetsInspection(data=data)
 
 
 @pytest.fixture
 def balancing_result_with_violations():
-    """BalancingTargetsInspection where violations tables are populated."""
-    supply = pd.DataFrame({"target_bas": [100.0]})
-    use = pd.DataFrame({"target_koeb": [200.0]})
-    supply_violations = pd.DataFrame({"violation_bas": [-50.0]})
-    use_violations = pd.DataFrame({"violation_koeb": [-12.0]})
-    data = BalancingTargetsData(
-        supply=supply,
-        use=use,
-        supply_violations=supply_violations,
-        use_violations=use_violations,
+    """UnbalancedTargetsInspection where all violations tables are populated."""
+    supply_cat = pd.DataFrame({"target_bas": [100.0]})
+    use_cat = pd.DataFrame({"target_koeb": [200.0]})
+    supply_cat_viol = pd.DataFrame({"violation_bas": [-50.0]})
+    use_cat_viol = pd.DataFrame({"violation_koeb": [-12.0]})
+    supply_trans = pd.DataFrame({"target_bas": [100.0]})
+    use_trans = pd.DataFrame({"target_koeb": [200.0]})
+    supply_trans_viol = pd.DataFrame({"violation_bas": [-50.0]})
+    use_trans_viol = pd.DataFrame({"violation_koeb": [-12.0]})
+    summary = pd.DataFrame(
+        {"n_unbalanced": [1, 1, 1, 1, 1, 1, 1, 1]},
+        index=pd.Index([
+            "supply_transactions", "supply_categories",
+            "use_transactions", "use_categories",
+            "supply_transactions_violations", "supply_categories_violations",
+            "use_transactions_violations", "use_categories_violations",
+        ], name="table"),
     )
-    return BalancingTargetsInspection(data=data)
+    data = UnbalancedTargetsData(
+        supply_categories=supply_cat,
+        use_categories=use_cat,
+        supply_categories_violations=supply_cat_viol,
+        use_categories_violations=use_cat_viol,
+        supply_transactions=supply_trans,
+        use_transactions=use_trans,
+        supply_transactions_violations=supply_trans_viol,
+        use_transactions_violations=use_trans_viol,
+        summary=summary,
+    )
+    return UnbalancedTargetsInspection(data=data)
 
 
 def test_write_to_excel_creates_file(tmp_path, balancing_result_with_none):
@@ -398,16 +460,21 @@ def test_write_to_excel_skips_none_fields(tmp_path, balancing_result_with_none):
     path = tmp_path / "out.xlsx"
     balancing_result_with_none.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    assert "supply_violations" not in wb.sheetnames
-    assert "use_violations" not in wb.sheetnames
+    assert "supply_categories_violations" not in wb.sheetnames
+    assert "use_categories_violations" not in wb.sheetnames
+    assert "supply_transactions_violations" not in wb.sheetnames
+    assert "use_transactions_violations" not in wb.sheetnames
 
 
 def test_write_to_excel_writes_non_none_fields(tmp_path, balancing_result_with_none):
     path = tmp_path / "out.xlsx"
     balancing_result_with_none.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    assert "supply" in wb.sheetnames
-    assert "use" in wb.sheetnames
+    assert "supply_categories" in wb.sheetnames
+    assert "use_categories" in wb.sheetnames
+    assert "supply_transactions" in wb.sheetnames
+    assert "use_transactions" in wb.sheetnames
+    assert "summary" in wb.sheetnames
 
 
 def test_write_to_excel_writes_all_fields_when_no_none(
@@ -416,15 +483,26 @@ def test_write_to_excel_writes_all_fields_when_no_none(
     path = tmp_path / "out.xlsx"
     balancing_result_with_violations.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    assert set(wb.sheetnames) == {"supply", "use", "supply_violations", "use_violations"}
+    expected = {
+        "supply_categories",
+        "use_categories",
+        "supply_categories_violations",
+        "use_categories_violations",
+        "supply_transactions",
+        "use_transactions",
+        "supply_transactions_violations",
+        "use_transactions_violations",
+        "summary",
+    }
+    assert set(wb.sheetnames) == expected
 
 
 def test_write_to_excel_index_column_widths_set(tmp_path, balancing_result_with_none):
-    """Index column A of the supply sheet has a non-zero width after writing."""
+    """Index column A of the supply_categories sheet has a non-zero width after writing."""
     path = tmp_path / "out.xlsx"
     balancing_result_with_none.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    ws = wb["supply"]
+    ws = wb["supply_categories"]
     assert ws.column_dimensions["A"].width > 0
 
 
@@ -525,7 +603,7 @@ def test_write_to_excel_applies_styling(tmp_path, realistic_balancing_result):
     realistic_balancing_result.write_to_excel(path)
 
     wb = openpyxl.load_workbook(path)
-    ws = wb["supply"]
+    ws = wb["supply_categories"]
 
     # At least one non-header cell should have a non-None, non-default fill
     # (the supply palette applies a coloured background to data cells).
@@ -548,4 +626,4 @@ def test_write_to_excel_falls_back_to_raw_when_styling_fails(
     path = tmp_path / "fallback.xlsx"
     balancing_result_with_none.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    assert "supply" in wb.sheetnames
+    assert "supply_categories" in wb.sheetnames

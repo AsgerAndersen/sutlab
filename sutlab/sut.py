@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Literal
 
 if TYPE_CHECKING:
-    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, BalancingTargetsInspection, SUTComparisonInspection
+    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, UnbalancedTargetsInspection, SUTComparisonInspection
 
 import pandas as pd
 
@@ -581,15 +581,15 @@ class SUT:
         from sutlab.balancing import resolve_target_tolerances
         return resolve_target_tolerances(self)
 
-    def inspect_balancing_targets(
+    def inspect_unbalanced_targets(
         self,
         transactions: str | list[str] | None = None,
         categories: str | list[str] | None = None,
         sort: bool = False,
-    ) -> BalancingTargetsInspection:
-        """Delegates to :func:`~sutlab.inspect.inspect_balancing_targets`."""
-        from sutlab.inspect import inspect_balancing_targets
-        return inspect_balancing_targets(self, transactions=transactions, categories=categories, sort=sort)
+    ) -> UnbalancedTargetsInspection:
+        """Delegates to :func:`~sutlab.inspect.inspect_unbalanced_targets`."""
+        from sutlab.inspect import inspect_unbalanced_targets
+        return inspect_unbalanced_targets(self, transactions=transactions, categories=categories, sort=sort)
 
     def inspect_sut_comparison(
         self,

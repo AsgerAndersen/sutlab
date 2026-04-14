@@ -1526,7 +1526,73 @@ def _style_summary_table(df: pd.DataFrame) -> Styler:
         data_css.append(f"background-color: {data_bg}{sep}")
         index_css.append(f"background-color: {index_bg}{sep}")
 
-    css_df = pd.DataFrame({"n_differences": data_css}, index=df.index)
+    css_df = pd.DataFrame({df.columns[0]: data_css}, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+    styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+
+    return styler
+
+
+def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
+    """Apply row colours and block separator to the unbalanced-targets summary table.
+
+    Colour scheme:
+
+    - ``supply_*`` rows → alternating green (``supply`` palette, shades 0/1).
+    - ``use_*`` rows → alternating blue (``use`` palette, shades 0/1).
+
+    Shade counters reset at the start of each block. A ``2px solid #999``
+    separator is placed after the last main-tables row when a violations block
+    follows (i.e. when the table has 8 rows).
+
+    Formats ``n_unbalanced`` as a plain integer (no decimals).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary DataFrame with ``table`` as the index name and
+        ``n_unbalanced`` as the sole column.
+    """
+    styler = df.style.format(
+        lambda v: "" if pd.isna(v) else str(int(v)), na_rep=""
+    )
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    table_names = df.index.tolist()
+    col_name = df.columns[0]
+
+    # Separator after the 4th row (index 3) when a violations block follows.
+    separator_row = 3 if n == 8 else None
+
+    supply_counter = 0
+    use_counter = 0
+    data_css = []
+    index_css = []
+
+    for i, name in enumerate(table_names):
+        # Reset shade counters at the start of each block.
+        if i == 4:
+            supply_counter = 0
+            use_counter = 0
+
+        sep = "; border-bottom: 2px solid #999" if i == separator_row else ""
+
+        if "supply" in name:
+            data_bg = _DATA_COLORS["supply"][supply_counter % 2]
+            index_bg = _INDEX_COLORS["supply"][supply_counter % 2]
+            supply_counter += 1
+        else:
+            data_bg = _DATA_COLORS["use"][use_counter % 2]
+            index_bg = _INDEX_COLORS["use"][use_counter % 2]
+            use_counter += 1
+
+        data_css.append(f"background-color: {data_bg}{sep}")
+        index_css.append(f"background-color: {index_bg}{sep}")
+
+    css_df = pd.DataFrame({col_name: data_css}, index=df.index)
     styler = styler.apply(lambda d: css_df, axis=None)
     styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
 
