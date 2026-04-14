@@ -1603,25 +1603,29 @@ def _style_summary_table(df: pd.DataFrame) -> Styler:
 
     Colour scheme:
 
-    - ``supply`` and ``balancing_targets_supply`` rows → green
-      (``supply`` palette, shade 0).
-    - Use rows (``use_basic``, ``use_purchasers``, ``use_price_layers`` and
-      their ``balancing_targets_*`` counterparts) → alternating blue
-      (``use`` palette), counter resetting at the start of each block.
+    - ``supply*`` rows → green (``supply`` palette, shade 0).
+    - ``use*`` rows → alternating blue (``use`` palette), counter resetting
+      at the start of each block.
     - Data cells use ``_DATA_COLORS``; index cells use the more saturated
       ``_INDEX_COLORS``, matching the convention in other inspection tables.
 
-    A ``2px solid #999`` separator is placed between the SUT block (first
-    four rows) and the balancing-targets block (last four rows) when both
-    are present.
+    Blocks (each separated by a ``2px solid #999`` border):
 
-    Formats ``n_differences`` as a plain integer (no decimals).
+    1. SUT comparison block: ``supply``, ``use_basic``, ``use_price_layers``,
+       ``use_purchasers``.
+    2. Balancing targets block (optional): ``balancing_targets_*`` rows.
+    3. Products summary block: ``supply_products_summary``,
+       ``use_products_summary``.
+    4. Columns summary block: ``supply_columns_summary``,
+       ``use_columns_summary``.
+
+    Formats ``n_changes`` as a plain integer (no decimals).
 
     Parameters
     ----------
     df : pd.DataFrame
         Summary DataFrame with ``table`` as the index name and
-        ``n_differences`` as the sole column.
+        ``n_changes`` as the sole column.
     """
     styler = df.style.format(
         lambda v: "" if pd.isna(v) else str(int(v)), na_rep=""
@@ -1633,27 +1637,39 @@ def _style_summary_table(df: pd.DataFrame) -> Styler:
     n = len(df)
     table_names = df.index.tolist()
 
-    # Determine the separator row: last SUT row, when a targets block follows.
-    has_targets_block = any(name.startswith("balancing_targets_") for name in table_names)
-    sut_end = next(
-        (i for i in range(n - 1, -1, -1) if not table_names[i].startswith("balancing_targets_")),
-        None,
-    )
-    separator_row = sut_end if (has_targets_block and sut_end is not None) else None
+    _PRODUCTS_BLOCK = {"supply_products_summary", "use_products_summary"}
+    _COLUMNS_BLOCK = {"supply_columns_summary", "use_columns_summary"}
+    _SUPPLY_ROWS = {"supply", "balancing_targets_supply",
+                    "supply_products_summary", "supply_columns_summary"}
+
+    def _block(name: str) -> str:
+        if name.startswith("balancing_targets_"):
+            return "targets"
+        if name in _PRODUCTS_BLOCK:
+            return "products"
+        if name in _COLUMNS_BLOCK:
+            return "columns"
+        return "sut"
+
+    # Build the set of row indices where a block separator should appear
+    # (last row of each block that is followed by a different block).
+    separator_rows = {
+        i for i in range(n - 1)
+        if _block(table_names[i]) != _block(table_names[i + 1])
+    }
 
     data_css = []
     index_css = []
     use_counter = 0
 
     for i, name in enumerate(table_names):
-        # Reset the use-row alternation counter at the start of each block.
-        if name in ("supply", "balancing_targets_supply"):
+        # Reset the use-row alternation counter at the first row of each block.
+        if i == 0 or _block(name) != _block(table_names[i - 1]):
             use_counter = 0
 
-        sep = "; border-bottom: 2px solid #999" if i == separator_row else ""
+        sep = "; border-bottom: 2px solid #999" if i in separator_rows else ""
 
-        is_supply = name in ("supply", "balancing_targets_supply")
-        if is_supply:
+        if name in _SUPPLY_ROWS:
             data_bg = _DATA_COLORS["supply"][0]
             index_bg = _INDEX_COLORS["supply"][0]
         else:

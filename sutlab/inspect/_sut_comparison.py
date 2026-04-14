@@ -70,7 +70,7 @@ class SUTComparisonData:
         either SUT has no balancing targets.
     summary : pd.DataFrame
         One row per comparison table. Index is the table name; column is
-        ``n_differences`` (the number of rows in that table). Balancing
+        ``n_changes`` (the number of rows in that table). Balancing
         targets rows are omitted when either SUT has no balancing targets.
     supply_products_summary : pd.DataFrame
         One row per (id, product). Columns: ``n_changes``, ``diff_norm``,
@@ -451,11 +451,6 @@ def inspect_sut_comparison(
         summary_entries["balancing_targets_use_price_layers"] = len(targets_use_price_layers)
         summary_entries["balancing_targets_use_purchasers"] = len(targets_use_purchasers)
 
-    summary = pd.DataFrame(
-        {"n_differences": list(summary_entries.values())},
-        index=pd.Index(list(summary_entries.keys()), name="table"),
-    )
-
     # Build the four summary tables from the already-filtered supply and
     # use_purchasers comparison tables.
     supply_products_summary = _build_comparison_summary(
@@ -469,6 +464,17 @@ def inspect_sut_comparison(
     )
     use_columns_summary = _build_comparison_summary(
         use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
+    )
+
+    # Add the products and columns summary row counts as two final blocks.
+    summary_entries["supply_products_summary"] = len(supply_products_summary)
+    summary_entries["use_products_summary"] = len(use_products_summary)
+    summary_entries["supply_columns_summary"] = len(supply_columns_summary)
+    summary_entries["use_columns_summary"] = len(use_columns_summary)
+
+    summary = pd.DataFrame(
+        {"n_changes": list(summary_entries.values())},
+        index=pd.Index(list(summary_entries.keys()), name="table"),
     )
 
     return SUTComparisonInspection(

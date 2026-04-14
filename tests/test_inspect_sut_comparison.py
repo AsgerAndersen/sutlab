@@ -885,7 +885,7 @@ def test_summary_index_name(before_sut, after_sut):
 
 def test_summary_column(before_sut, after_sut):
     result = inspect_sut_comparison(before_sut, after_sut)
-    assert list(result.data.summary.columns) == ["n_differences"]
+    assert list(result.data.summary.columns) == ["n_changes"]
 
 
 def test_summary_sut_rows_present(before_sut, after_sut):
@@ -900,10 +900,10 @@ def test_summary_sut_rows_present(before_sut, after_sut):
 def test_summary_correct_counts(before_sut, after_sut):
     result = inspect_sut_comparison(before_sut, after_sut)
     summary = result.data.summary
-    assert summary.loc["supply", "n_differences"] == len(result.data.supply)
-    assert summary.loc["use_basic", "n_differences"] == len(result.data.use_basic)
-    assert summary.loc["use_purchasers", "n_differences"] == len(result.data.use_purchasers)
-    assert summary.loc["use_price_layers", "n_differences"] == len(result.data.use_price_layers)
+    assert summary.loc["supply", "n_changes"] == len(result.data.supply)
+    assert summary.loc["use_basic", "n_changes"] == len(result.data.use_basic)
+    assert summary.loc["use_purchasers", "n_changes"] == len(result.data.use_purchasers)
+    assert summary.loc["use_price_layers", "n_changes"] == len(result.data.use_price_layers)
 
 
 def test_summary_no_target_rows_when_targets_absent(before_sut, after_sut):
@@ -929,8 +929,42 @@ def test_summary_target_rows_present_when_targets_available(
 def test_summary_target_counts_correct(before_sut_with_targets, after_sut_with_targets):
     result = inspect_sut_comparison(before_sut_with_targets, after_sut_with_targets)
     summary = result.data.summary
-    assert summary.loc["balancing_targets_supply", "n_differences"] == len(result.data.balancing_targets_supply)
-    assert summary.loc["balancing_targets_use_price_layers", "n_differences"] == len(result.data.balancing_targets_use_price_layers)
+    assert summary.loc["balancing_targets_supply", "n_changes"] == len(result.data.balancing_targets_supply)
+    assert summary.loc["balancing_targets_use_price_layers", "n_changes"] == len(result.data.balancing_targets_use_price_layers)
+
+
+def test_summary_includes_products_and_columns_rows(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    idx = result.data.summary.index.tolist()
+    assert "supply_products_summary" in idx
+    assert "use_products_summary" in idx
+    assert "supply_columns_summary" in idx
+    assert "use_columns_summary" in idx
+
+
+def test_summary_products_and_columns_counts_correct(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.summary
+    assert summary.loc["supply_products_summary", "n_changes"] == len(result.data.supply_products_summary)
+    assert summary.loc["use_products_summary", "n_changes"] == len(result.data.use_products_summary)
+    assert summary.loc["supply_columns_summary", "n_changes"] == len(result.data.supply_columns_summary)
+    assert summary.loc["use_columns_summary", "n_changes"] == len(result.data.use_columns_summary)
+
+
+def test_summary_products_block_follows_sut_block(before_sut, after_sut):
+    # Products block rows must appear after all SUT comparison rows.
+    idx = inspect_sut_comparison(before_sut, after_sut).data.summary.index.tolist()
+    sut_rows = {"supply", "use_basic", "use_price_layers", "use_purchasers"}
+    last_sut = max(i for i, name in enumerate(idx) if name in sut_rows)
+    first_products = min(i for i, name in enumerate(idx) if name in {"supply_products_summary", "use_products_summary"})
+    assert last_sut < first_products
+
+
+def test_summary_columns_block_follows_products_block(before_sut, after_sut):
+    idx = inspect_sut_comparison(before_sut, after_sut).data.summary.index.tolist()
+    last_products = max(i for i, name in enumerate(idx) if name in {"supply_products_summary", "use_products_summary"})
+    first_columns = min(i for i, name in enumerate(idx) if name in {"supply_columns_summary", "use_columns_summary"})
+    assert last_products < first_columns
 
 
 # ---------------------------------------------------------------------------
