@@ -11,7 +11,7 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._style import _style_imbalances_table
+from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary
 from sutlab.inspect._shared import _write_inspection_to_excel
 
 
@@ -25,6 +25,7 @@ class UnbalancedProductsData:
     """
 
     imbalances: pd.DataFrame
+    summary: pd.DataFrame
 
 
 @dataclass
@@ -62,6 +63,12 @@ class UnbalancedProductsInspection:
           layer summed across all use rows for the product in the active
           balancing member. Provided as context for diagnosing the imbalance.
         - ``use_{price_purchasers}`` — total use at purchasers' prices.
+
+    summary : pd.DataFrame
+        One row summarising the imbalances table. Index is ``"imbalances"``;
+        columns are ``n_unbalanced`` (number of rows in the imbalances table)
+        and ``largest_unbalance`` (the signed diff value whose absolute value
+        is largest; ``NaN`` when the imbalances table is empty).
     """
 
     data: UnbalancedProductsData
@@ -75,6 +82,11 @@ class UnbalancedProductsInspection:
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
         return _style_imbalances_table(df, supply_cols, use_cols, rel_col)
+
+    @property
+    def summary(self) -> Styler:
+        """Styled summary table."""
+        return _style_unbalanced_products_summary(self.data.summary)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -279,4 +291,17 @@ def inspect_unbalanced_products(
             names=[prod_col, prod_txt_col],
         )
 
-    return UnbalancedProductsInspection(data=UnbalancedProductsData(imbalances=result))
+    # Build summary: one row with n_unbalanced and largest_unbalance.
+    n_unbalanced = len(result)
+    if n_unbalanced > 0:
+        largest_unbalance = result[diff_name].loc[result[diff_name].abs().idxmax()]
+    else:
+        largest_unbalance = float("nan")
+    summary = pd.DataFrame(
+        {"n_unbalanced": [n_unbalanced], "largest_unbalance": [largest_unbalance]},
+        index=pd.Index(["imbalances"], name="table"),
+    )
+
+    return UnbalancedProductsInspection(
+        data=UnbalancedProductsData(imbalances=result, summary=summary)
+    )
