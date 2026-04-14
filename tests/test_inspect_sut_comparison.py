@@ -993,3 +993,151 @@ def test_targets_styled_properties_return_styler_when_present(
     assert isinstance(result.balancing_targets_use_basic, Styler)
     assert isinstance(result.balancing_targets_use_purchasers, Styler)
     assert isinstance(result.balancing_targets_use_price_layers, Styler)
+
+
+# ---------------------------------------------------------------------------
+# Summary tables
+# ---------------------------------------------------------------------------
+#
+# Only A/2021 changed: supply diff_bas=10, use_purchasers diff_koeb=11.
+# One changed row in supply → one row in supply_products_summary (A/2021)
+#                            and one row in supply_columns_summary (P1/X/2021).
+# One changed row in use_purchasers → one row in use_products_summary (A/2021)
+#                                    and one row in use_columns_summary (P2/X/2021).
+# ---------------------------------------------------------------------------
+
+
+def test_supply_products_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.supply_products_summary
+    # Only A/2021 changed — one (year, nrnr) group in supply.
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "nrnr"
+
+
+def test_supply_products_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.supply_products_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 10.0   # sqrt(10^2)
+    assert pytest.approx(row["diff_median"]) == 10.0
+    assert pytest.approx(row["diff_max"]) == 10.0
+    assert pytest.approx(row["rel_median"]) == 10.0 / 100.0
+    assert pytest.approx(row["rel_max"]) == 10.0 / 100.0
+
+
+def test_supply_columns_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.supply_columns_summary
+    # One changed (year=2021, trans=P1, brch=X) group.
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "trans"
+    assert summary.index.names[2] == "brch"
+
+
+def test_supply_columns_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.supply_columns_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 10.0
+    assert pytest.approx(row["diff_max"]) == 10.0
+
+
+def test_use_products_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.use_products_summary
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "nrnr"
+
+
+def test_use_products_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.use_products_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 11.0   # sqrt(11^2)
+    assert pytest.approx(row["diff_max"]) == 11.0
+    assert pytest.approx(row["rel_max"]) == 11.0 / 104.0
+
+
+def test_use_columns_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.use_columns_summary
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "trans"
+    assert summary.index.names[2] == "brch"
+
+
+def test_use_columns_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.use_columns_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 11.0
+    assert pytest.approx(row["diff_max"]) == 11.0
+
+
+def test_summary_empty_when_source_empty(before_sut, after_sut):
+    # diff_tolerance=999 → nothing passes → supply and use_purchasers are empty
+    # → all four summary tables should be empty DataFrames.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=999)
+    assert len(result.data.supply_products_summary) == 0
+    assert len(result.data.supply_columns_summary) == 0
+    assert len(result.data.use_products_summary) == 0
+    assert len(result.data.use_columns_summary) == 0
+
+
+def test_percentiles_argument_changes_columns(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut, percentiles=[0.0, 0.75, 1.0])
+    cols = result.data.supply_products_summary.columns.tolist()
+    assert "diff_min" in cols
+    assert "diff_p75" in cols
+    assert "diff_max" in cols
+    assert "rel_min" in cols
+    assert "rel_p75" in cols
+    assert "rel_max" in cols
+    # Default median column should not be present.
+    assert "diff_median" not in cols
+
+
+def test_diff_norm_multiple_changes(before_sut, after_sut):
+    # Lower diff_tolerance so both A/2021 (diff=10) and
+    # an extra fictitious change would be captured if we had two rows.
+    # With diff_tolerance=0 both use_basic rows (bas diff=10) and
+    # use_purchasers rows are exposed.  For products summary of supply
+    # there is still only one row (A/2021, diff=10), so norm = 10.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=0)
+    supply_prod = result.data.supply_products_summary
+    row_a = supply_prod.loc[(2021, "A")]
+    assert pytest.approx(row_a["diff_norm"]) == 10.0
+
+
+def test_rel_nan_excluded_from_rel_percentiles(cols, metadata):
+    # before bas=0, after bas=10 → rel=NaN (division by zero).
+    # rel percentile columns should be NaN since the only row has NaN rel.
+    supply_before = pd.DataFrame({
+        "year": [2021], "nrnr": ["A"], "trans": ["P1"], "brch": ["X"],
+        "bas": [0.], "koeb": [0.],
+    })
+    supply_after = pd.DataFrame({
+        "year": [2021], "nrnr": ["A"], "trans": ["P1"], "brch": ["X"],
+        "bas": [10.], "koeb": [10.],
+    })
+    use_df = pd.DataFrame(columns=["year", "nrnr", "trans", "brch", "bas", "ava", "moms", "koeb"])
+    sut_a = SUT(price_basis="current_year", supply=supply_before, use=use_df, metadata=metadata)
+    sut_b = SUT(price_basis="current_year", supply=supply_after, use=use_df, metadata=metadata)
+    result = inspect_sut_comparison(sut_a, sut_b, diff_tolerance=0)
+    row = result.data.supply_products_summary.iloc[0]
+    assert pd.isna(row["rel_median"])
+    assert pd.isna(row["rel_max"])
+
+
+def test_summary_tables_styled_properties_return_styler(before_sut, after_sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_sut_comparison(before_sut, after_sut)
+    assert isinstance(result.supply_products_summary, Styler)
+    assert isinstance(result.supply_columns_summary, Styler)
+    assert isinstance(result.use_products_summary, Styler)
+    assert isinstance(result.use_columns_summary, Styler)

@@ -16,6 +16,7 @@ from sutlab.inspect._style import (
     _style_comparison_table,
     _style_comparison_layers_table,
     _style_summary_table,
+    _style_comparison_summary_table,
 )
 from sutlab.inspect._shared import _write_inspection_to_excel
 
@@ -71,6 +72,24 @@ class SUTComparisonData:
         One row per comparison table. Index is the table name; column is
         ``n_differences`` (the number of rows in that table). Balancing
         targets rows are omitted when either SUT has no balancing targets.
+    supply_products_summary : pd.DataFrame
+        One row per (id, product). Columns: ``n_changes``, ``diff_norm``,
+        diff percentile columns (``diff_min``, ``diff_median``, etc.),
+        rel percentile columns (``rel_min``, ``rel_median``, etc.). Derived
+        from the ``supply`` comparison table (basic prices only). Empty when
+        ``supply`` is empty.
+    supply_columns_summary : pd.DataFrame
+        One row per (id, transaction, category). Same column structure as
+        ``supply_products_summary``. Derived from the ``supply`` comparison
+        table.
+    use_products_summary : pd.DataFrame
+        One row per (id, product). Same column structure as
+        ``supply_products_summary``. Derived from the ``use_purchasers``
+        comparison table.
+    use_columns_summary : pd.DataFrame
+        One row per (id, transaction, category). Same column structure as
+        ``supply_products_summary``. Derived from the ``use_purchasers``
+        comparison table.
     """
 
     supply: pd.DataFrame
@@ -82,6 +101,10 @@ class SUTComparisonData:
     balancing_targets_use_purchasers: pd.DataFrame | None
     balancing_targets_use_price_layers: pd.DataFrame | None
     summary: pd.DataFrame
+    supply_products_summary: pd.DataFrame
+    supply_columns_summary: pd.DataFrame
+    use_products_summary: pd.DataFrame
+    use_columns_summary: pd.DataFrame
 
 
 @dataclass
@@ -170,6 +193,26 @@ class SUTComparisonInspection:
         """Styled summary table."""
         return _style_summary_table(self.data.summary)
 
+    @property
+    def supply_products_summary(self) -> Styler:
+        """Styled supply-by-product summary table."""
+        return _style_comparison_summary_table(self.data.supply_products_summary, "supply")
+
+    @property
+    def supply_columns_summary(self) -> Styler:
+        """Styled supply-by-transaction/category summary table."""
+        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply")
+
+    @property
+    def use_products_summary(self) -> Styler:
+        """Styled use-by-product summary table (purchasers' prices)."""
+        return _style_comparison_summary_table(self.data.use_products_summary, "use")
+
+    @property
+    def use_columns_summary(self) -> Styler:
+        """Styled use-by-transaction/category summary table (purchasers' prices)."""
+        return _style_comparison_summary_table(self.data.use_columns_summary, "use")
+
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
 
@@ -198,6 +241,7 @@ def inspect_sut_comparison(
     rel_tolerance: float = float("inf"),
     filter_nan_as_zero: bool = False,
     sort: bool = False,
+    percentiles: list[float] = [0.5, 1.0],
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -243,6 +287,12 @@ def inspect_sut_comparison(
         each id (for ``supply``, ``use_basic``, ``use_purchasers``) or
         within each ``(id, price_layer)`` group (for ``use_price_layers``).
         Default ``False`` preserves natural sort order.
+    percentiles : list of float, optional
+        Quantiles to compute for the diff and rel columns of the four
+        summary tables. Each value must be in ``[0, 1]``. Special names:
+        ``0`` → ``_min``, ``0.5`` → ``_median``, ``1`` → ``_max``;
+        all others → ``_p{int(p * 100)}`` (e.g. ``0.75`` → ``diff_p75``).
+        Default ``[0.5, 1.0]``.
 
     Returns
     -------
@@ -406,6 +456,21 @@ def inspect_sut_comparison(
         index=pd.Index(list(summary_entries.keys()), name="table"),
     )
 
+    # Build the four summary tables from the already-filtered supply and
+    # use_purchasers comparison tables.
+    supply_products_summary = _build_comparison_summary(
+        supply_table, group_cols=[id_col, prod_col], percentiles=percentiles
+    )
+    supply_columns_summary = _build_comparison_summary(
+        supply_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles
+    )
+    use_products_summary = _build_comparison_summary(
+        use_purchasers_table, group_cols=[id_col, prod_col], percentiles=percentiles
+    )
+    use_columns_summary = _build_comparison_summary(
+        use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles
+    )
+
     return SUTComparisonInspection(
         data=SUTComparisonData(
             supply=supply_table,
@@ -417,6 +482,10 @@ def inspect_sut_comparison(
             balancing_targets_use_purchasers=targets_use_purchasers,
             balancing_targets_use_price_layers=targets_use_price_layers,
             summary=summary,
+            supply_products_summary=supply_products_summary,
+            supply_columns_summary=supply_columns_summary,
+            use_products_summary=use_products_summary,
+            use_columns_summary=use_columns_summary,
         )
     )
 
@@ -927,6 +996,128 @@ def _build_transaction_names(classifications, trans_col: str) -> dict[str, str]:
         trans_df[trans_col].astype(str),
         trans_df[trans_txt_col].astype(str),
     ))
+
+
+def _percentile_col_name(prefix: str, p: float) -> str:
+    """Return the column name for a percentile of ``prefix``.
+
+    Special cases: ``0`` → ``{prefix}_min``, ``0.5`` → ``{prefix}_median``,
+    ``1`` → ``{prefix}_max``. All others → ``{prefix}_p{int(p * 100)}``.
+    """
+    if p == 0.0:
+        return f"{prefix}_min"
+    if p == 0.5:
+        return f"{prefix}_median"
+    if p == 1.0:
+        return f"{prefix}_max"
+    return f"{prefix}_p{int(round(p * 100))}"
+
+
+def _build_comparison_summary(
+    df: pd.DataFrame,
+    group_cols: list[str],
+    percentiles: list[float],
+) -> pd.DataFrame:
+    """Build a summary table by grouping a comparison table on ``group_cols``.
+
+    Detects the diff column (starts with ``"diff_"``) and rel column (starts
+    with ``"rel_"``) from ``df.columns``. Computes ``n_changes``,
+    ``diff_norm``, diff percentile columns, and rel percentile columns
+    (NaN rel values excluded from quantile computation).
+
+    Text companion columns (``{col}_txt``) for any column in ``group_cols``
+    that are present in ``df``'s index are interleaved into the output index
+    directly after their corresponding code level.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        A comparison table (``supply`` or ``use_purchasers``) with a
+        MultiIndex whose level names include the columns in ``group_cols``,
+        and value columns including ``diff_*`` and ``rel_*``.
+    group_cols : list of str
+        Actual column names to group by (e.g. ``[id_col, prod_col]``).
+    percentiles : list of float
+        Quantile values to compute. Each in ``[0, 1]``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Summary table with ``group_cols`` (and optional ``_txt`` companions)
+        as the index and ``n_changes``, ``diff_norm``, diff percentile
+        columns, and rel percentile columns as value columns.
+    """
+    diff_col = next((c for c in df.columns if c.startswith("diff_")), None)
+    rel_col = next((c for c in df.columns if c.startswith("rel_")), None)
+
+    if df.empty:
+        # Return an empty DataFrame with the correct index names.
+        index_cols = []
+        for col in group_cols:
+            index_cols.append(col)
+            # We cannot know which _txt companions exist without data,
+            # so just use the code columns.
+        return pd.DataFrame(index=pd.MultiIndex.from_tuples([], names=index_cols)
+                            if len(index_cols) > 1
+                            else pd.Index([], name=index_cols[0]))
+
+    flat = df.reset_index()
+
+    # Detect _txt companions for each group column (only those present in flat).
+    txt_companions = [
+        f"{col}_txt" for col in group_cols if f"{col}_txt" in flat.columns
+    ]
+
+    grouped = flat.groupby(group_cols, dropna=False)
+
+    n_changes = grouped.size().rename("n_changes")
+
+    if diff_col is not None:
+        diff_norm = grouped[diff_col].apply(
+            lambda s: ((s ** 2).sum()) ** 0.5
+        ).rename("diff_norm")
+    else:
+        diff_norm = pd.Series(float("nan"), index=n_changes.index, name="diff_norm")
+
+    parts = [n_changes, diff_norm]
+
+    if diff_col is not None:
+        for p in sorted(set(percentiles)):
+            name = _percentile_col_name("diff", p)
+            parts.append(grouped[diff_col].quantile(p).rename(name))
+
+    if rel_col is not None:
+        flat_rel = flat.dropna(subset=[rel_col])
+        if not flat_rel.empty:
+            grouped_rel = flat_rel.groupby(group_cols, dropna=False)
+            for p in sorted(set(percentiles)):
+                name = _percentile_col_name("rel", p)
+                parts.append(
+                    grouped_rel[rel_col].quantile(p).reindex(n_changes.index).rename(name)
+                )
+        else:
+            for p in sorted(set(percentiles)):
+                name = _percentile_col_name("rel", p)
+                parts.append(pd.Series(float("nan"), index=n_changes.index, name=name))
+
+    result = pd.concat(parts, axis=1)
+
+    # Join _txt companions (first value per group) alongside the stats.
+    if txt_companions:
+        txt_df = flat.groupby(group_cols, dropna=False)[txt_companions].first()
+        result = pd.concat([txt_df, result], axis=1)
+
+    result = result.reset_index()
+
+    # Build the final index with _txt interleaved after each code column.
+    index_cols = []
+    for col in group_cols:
+        index_cols.append(col)
+        txt_col = f"{col}_txt"
+        if txt_col in txt_companions:
+            index_cols.append(txt_col)
+
+    return result.set_index(index_cols)
 
 
 def _build_combined_category_names(classifications, cat_col: str) -> dict[str, str]:

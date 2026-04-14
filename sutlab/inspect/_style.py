@@ -1748,6 +1748,92 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
     return styler
 
 
+def _style_comparison_summary_table(df: pd.DataFrame, palette: str) -> Styler:
+    """Apply colours and formatting to a comparison summary table.
+
+    Used for ``supply_products_summary``, ``supply_columns_summary``,
+    ``use_products_summary``, and ``use_columns_summary``.
+
+    Colour scheme:
+
+    - All data cells → alternating shades of ``palette`` by row position.
+    - Index cells → same palette, same alternation.
+    - ``id`` index level (level 0) → thick ``2px solid #999`` separator on
+      the first row of each non-last id block (merged cell convention).
+    - All other index levels → separator on the last row of each id block.
+    - Data cells → separator on the last row of each id block.
+
+    Formatting:
+
+    - ``n_changes`` → plain integer (no decimals).
+    - ``diff_norm`` and ``diff_*`` columns → number format.
+    - ``rel_*`` columns → percentage format.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary table whose first index level is the id column.
+    palette : str
+        ``"supply"`` (green) or ``"use"`` (blue).
+    """
+    n_changes_cols = [c for c in df.columns if c == "n_changes"]
+    diff_cols = [c for c in df.columns if c == "diff_norm" or c.startswith("diff_")]
+    rel_cols = [c for c in df.columns if c.startswith("rel_")]
+
+    styler = df.style.format(na_rep="")
+    if n_changes_cols:
+        styler = styler.format(
+            lambda v: "" if pd.isna(v) else str(int(v)), subset=n_changes_cols
+        )
+    if diff_cols:
+        styler = styler.format(_format_number, na_rep="", subset=diff_cols)
+    if rel_cols:
+        styler = styler.format(_format_percentage, na_rep="", subset=rel_cols)
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    id_vals = df.index.get_level_values(0)
+    block_end_rows = {i for i in range(n - 1) if id_vals[i] != id_vals[i + 1]}
+    all_block_starts = {0} | {i + 1 for i in block_end_rows}
+    last_block_start = max(all_block_starts)
+    id_border_rows = all_block_starts - {last_block_start}
+
+    data_css = {}
+    for col in df.columns:
+        col_css = []
+        for i in range(n):
+            sep = "; border-bottom: 2px solid #999" if i in block_end_rows else ""
+            bg = _DATA_COLORS[palette][i % 2]
+            col_css.append(f"background-color: {bg}{sep}")
+        data_css[col] = col_css
+    css_df = pd.DataFrame(data_css, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+
+    id_index_css = [
+        f"background-color: {_INDEX_COLORS[palette][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in id_border_rows else "")
+        for i in range(n)
+    ]
+    inner_index_css = [
+        f"background-color: {_INDEX_COLORS[palette][i % 2]}"
+        + ("; border-bottom: 2px solid #999" if i in block_end_rows else "")
+        for i in range(n)
+    ]
+
+    if isinstance(df.index, pd.MultiIndex):
+        styler = styler.apply_index(lambda s, css=id_index_css: css, level=0, axis=0)
+        for level_name in df.index.names[1:]:
+            styler = styler.apply_index(
+                lambda s, css=inner_index_css: css, level=level_name, axis=0
+            )
+    else:
+        styler = styler.apply_index(lambda s, css=id_index_css: css, axis=0)
+
+    return styler
+
+
 def _style_unbalanced_products_summary(df: pd.DataFrame) -> Styler:
     """Apply neutral grey colours to the unbalanced-products summary table.
 

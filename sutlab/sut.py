@@ -603,6 +603,7 @@ class SUT:
         rel_tolerance: float = float("inf"),
         filter_nan_as_zero: bool = False,
         sort: bool = False,
+        percentiles: list[float] = [0.5, 1.0],
     ) -> SUTComparisonInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_sut_comparison`."""
         from sutlab.inspect import inspect_sut_comparison
@@ -611,6 +612,7 @@ class SUT:
             ids=ids, products=products, transactions=transactions, categories=categories,
             diff_tolerance=diff_tolerance, rel_tolerance=rel_tolerance,
             filter_nan_as_zero=filter_nan_as_zero, sort=sort,
+            percentiles=percentiles,
         )
 
     def adjust_add_sut(self, adjustments: SUT) -> SUT:
