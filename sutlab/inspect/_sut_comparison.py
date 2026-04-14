@@ -194,8 +194,8 @@ def inspect_sut_comparison(
     products: str | list[str] | None = None,
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
-    diff_tolerance: float = 0,
-    rel_tolerance: float = 0,
+    diff_tolerance: float = 1,
+    rel_tolerance: float = 1e-6,
     filter_nan_as_zero: bool = False,
     sort: bool = False,
     compare_dimensions: str | list[str] | None = None,
@@ -227,11 +227,10 @@ def inspect_sut_comparison(
         Filter by category code. Same pattern syntax as ``ids``.
     diff_tolerance : float, optional
         Absolute tolerance. A row is included when
-        ``abs(diff) > diff_tolerance``. Default ``0`` (any non-zero
-        difference).
+        ``abs(diff) > diff_tolerance``. Default ``1``.
     rel_tolerance : float, optional
         Relative tolerance. A row is included when
-        ``abs(rel) > rel_tolerance``. Default ``0``.
+        ``abs(rel) > rel_tolerance``. Default ``1e-6``.
     filter_nan_as_zero : bool, optional
         When ``True``, rows where one side is ``NaN`` and the other is ``0``
         are excluded from all tables. This suppresses the noise that arises
