@@ -100,6 +100,80 @@ def resolve_target_tolerances(sut: SUT) -> SUT:
     return replace(sut, balancing_targets=new_targets)
 
 
+def _resolve_transaction_tolerances(
+    trans_targets: pd.DataFrame,
+    tolerances: TargetTolerances,
+    trans_col: str,
+    target_price_col: str,
+    n_cat_col: str,
+    tol_col_name: str,
+) -> pd.DataFrame:
+    """Resolve transaction-level tolerances for aggregated transaction targets.
+
+    Uses only the ``transactions`` tolerance table — category-level overrides
+    are ignored. The absolute tolerance component is scaled by the number of
+    categories per transaction::
+
+        abs_tol_effective = n_categories * abs_tol
+        tol = min(abs(rel * aggregated_target), abs_tol_effective)
+
+    This reflects what the balancing config implies at the transaction level:
+    if each category is allowed to be off by at most ``abs_tol``, the
+    transaction total can be off by at most ``n_categories * abs_tol``.
+
+    When no entry exists in ``tolerances.transactions`` for a transaction,
+    the tolerance is left as ``NaN`` (no error raised).
+
+    Parameters
+    ----------
+    trans_targets : DataFrame
+        Aggregated targets, one row per transaction. Must contain
+        ``trans_col``, ``target_price_col``, and ``n_cat_col``.
+    tolerances : TargetTolerances
+        Tolerance specification. Only ``transactions`` is used.
+    trans_col : str
+        Name of the transaction column.
+    target_price_col : str
+        Name of the aggregated target price column.
+    n_cat_col : str
+        Name of the column holding the count of categories per transaction.
+    tol_col_name : str
+        Name of the new tolerance column to add.
+
+    Returns
+    -------
+    DataFrame
+        Copy of ``trans_targets`` with ``tol_col_name`` appended.
+    """
+    df = trans_targets.copy()
+    original_index = df.index
+
+    if tolerances.transactions is not None:
+        trans_tol = tolerances.transactions.rename(
+            columns={"rel": "_rel", "abs": "_abs"}
+        )
+        df = df.merge(trans_tol, on=[trans_col], how="left")
+    else:
+        df["_rel"] = float("nan")
+        df["_abs"] = float("nan")
+
+    df.index = original_index
+
+    has_target = df[target_price_col].notna()
+
+    # Scale absolute tolerance by number of categories.
+    scaled_abs = df["_abs"] * df[n_cat_col]
+    rel_component = (df["_rel"] * df[target_price_col]).abs()
+
+    df["_rel_component"] = rel_component
+    df["_scaled_abs"] = scaled_abs
+    df[tol_col_name] = df[["_rel_component", "_scaled_abs"]].min(axis=1, skipna=True)
+    df.loc[~has_target, tol_col_name] = float("nan")
+
+    df = df.drop(columns=["_rel", "_abs", "_rel_component", "_scaled_abs"])
+    return df
+
+
 def _add_tolerance_column(
     targets_df: pd.DataFrame,
     tolerances: TargetTolerances,

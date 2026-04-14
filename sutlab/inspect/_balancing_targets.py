@@ -1,5 +1,6 @@
 """
-inspect_balancing_targets: supply and use column totals vs. balancing targets.
+inspect_unbalanced_targets: supply and use column totals vs. balancing targets,
+filtered to rows where the absolute difference exceeds 1.
 """
 
 from __future__ import annotations
@@ -10,77 +11,94 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes
-from sutlab.inspect._style import _style_balancing_targets_table
+from sutlab.inspect._style import _style_balancing_targets_table, _style_unbalanced_targets_summary
 from sutlab.inspect._shared import _write_inspection_to_excel
 
 
 @dataclass
-class BalancingTargetsData:
-    """Raw DataFrames underlying a :class:`BalancingTargetsInspection`.
+class UnbalancedTargetsData:
+    """Raw DataFrames underlying a :class:`UnbalancedTargetsInspection`.
 
     Use this directly for programmatic access. For display in a Jupyter
     notebook, use the corresponding property on
-    :class:`BalancingTargetsInspection` once styling is added.
+    :class:`UnbalancedTargetsInspection` once styling is added.
     """
 
-    supply: pd.DataFrame
-    use: pd.DataFrame
-    supply_violations: pd.DataFrame | None
-    use_violations: pd.DataFrame | None
+    supply_categories: pd.DataFrame
+    use_categories: pd.DataFrame
+    supply_categories_violations: pd.DataFrame | None
+    use_categories_violations: pd.DataFrame | None
+    supply_transactions: pd.DataFrame
+    use_transactions: pd.DataFrame
+    supply_transactions_violations: pd.DataFrame | None
+    use_transactions_violations: pd.DataFrame | None
+    summary: pd.DataFrame
 
 
 @dataclass
-class BalancingTargetsInspection:
+class UnbalancedTargetsInspection:
     """
-    Result of :func:`inspect_balancing_targets`.
+    Result of :func:`inspect_unbalanced_targets`.
 
+    Only rows where ``abs(diff_*) > 1`` are included in all tables.
     Raw DataFrames are available under ``result.data``.
 
     Attributes
     ----------
-    supply : pd.DataFrame
-        One row per (transaction, category) combination in the supply
-        balancing targets for the active balancing member. Columns:
+    supply_categories : pd.DataFrame
+        One row per (transaction, category) in the supply balancing targets
+        for the active balancing member, where ``abs(diff_{price_basic}) > 1``.
+        Columns: ``{price_basic}``, ``target_{price_basic}``,
+        ``diff_{price_basic}``, ``rel_{price_basic}``, ``tol_{price_basic}``,
+        ``violation_{price_basic}``.
+        Row index: two-level ``(transaction, category)`` MultiIndex, or
+        four-level with label columns when classifications are loaded.
 
-        - ``{price_basic}`` — actual column total from the supply data.
-        - ``target_{price_basic}`` — target value from ``balancing_targets``.
-        - ``diff_{price_basic}`` — actual minus target.
-        - ``rel_{price_basic}`` — actual / target - 1. ``NaN`` when target
-          is zero or ``NaN``.
-        - ``tol_{price_basic}`` — resolved tolerance from
-          ``balancing_config.target_tolerances``. ``NaN`` when no
-          ``target_tolerances`` are configured or when the target is ``NaN``.
-        - ``violation_{price_basic}`` — how far the actual value falls outside
-          the tolerance band. Positive when actual > target + tolerance;
-          negative when actual < target - tolerance; zero when within
-          tolerance. ``NaN`` when no ``target_tolerances`` are configured.
+    use_categories : pd.DataFrame
+        Same structure as ``supply_categories`` but for the use side,
+        using ``{price_purchasers}``.
 
-        The row index is a two-level MultiIndex
-        ``({transaction}, {category})`` when no classifications are loaded,
-        or a four-level MultiIndex
-        ``({transaction}, {transaction}_txt, {category}, {category}_txt)``
-        when classifications are available.
+    supply_categories_violations : pd.DataFrame or None
+        Subset of ``supply_categories`` where ``violation_{price_basic} != 0``.
+        Empty DataFrame when no violations exist. ``None`` when no
+        ``target_tolerances`` configured.
 
-    use : pd.DataFrame
-        Same structure as ``supply`` but for the use side, using
-        ``{price_purchasers}`` instead of ``{price_basic}``.
+    use_categories_violations : pd.DataFrame or None
+        Subset of ``use_categories`` where ``violation_{price_purchasers} != 0``.
+        Empty DataFrame when no violations exist. ``None`` when no
+        ``target_tolerances`` configured.
 
-    supply_violations : pd.DataFrame or None
-        Subset of ``supply`` where ``violation_{price_basic} != 0``. Empty
-        DataFrame when no supply violations exist. ``None`` when no
-        ``target_tolerances`` are configured.
+    supply_transactions : pd.DataFrame
+        One row per transaction in the supply targets, where
+        ``abs(diff_{price_basic}) > 1``. Targets and actuals are aggregated
+        by summing over all categories. Columns same as ``supply_categories``
+        minus the category index level. Tolerances use transaction-level
+        ``rel`` from the config; the absolute component is scaled by the
+        number of categories per transaction.
+        Row index: single-level transaction (or two-level with label).
 
-    use_violations : pd.DataFrame or None
-        Subset of ``use`` where ``violation_{price_purchasers} != 0``. Empty
-        DataFrame when no use violations exist. ``None`` when no
+    use_transactions : pd.DataFrame
+        Same structure as ``supply_transactions`` for the use side.
+
+    supply_transactions_violations : pd.DataFrame or None
+        Subset of ``supply_transactions`` where ``violation_{price_basic} != 0``.
+        ``None`` when no ``target_tolerances`` configured.
+
+    use_transactions_violations : pd.DataFrame or None
+        Subset of ``use_transactions`` where ``violation_{price_purchasers} != 0``.
+        ``None`` when no ``target_tolerances`` configured.
+
+    summary : pd.DataFrame
+        One row per non-``None`` table. Index is the table name; column is
+        ``n_unbalanced`` (the number of rows in that table, i.e. rows where
+        ``abs(diff_*) > 1``). Violations tables are omitted when no
         ``target_tolerances`` are configured.
     """
 
-    data: BalancingTargetsData
+    data: UnbalancedTargetsData
 
     def _supply_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a supply-side targets table."""
-        # Derive column names from the DataFrame columns.
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
         return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply")
@@ -92,28 +110,57 @@ class BalancingTargetsInspection:
         return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use")
 
     @property
-    def supply(self) -> Styler:
-        """Styled supply targets table."""
-        return self._supply_styler(self.data.supply)
+    def supply_categories(self) -> Styler:
+        """Styled supply category-level targets table."""
+        return self._supply_styler(self.data.supply_categories)
 
     @property
-    def use(self) -> Styler:
-        """Styled use targets table."""
-        return self._use_styler(self.data.use)
+    def use_categories(self) -> Styler:
+        """Styled use category-level targets table."""
+        return self._use_styler(self.data.use_categories)
 
     @property
-    def supply_violations(self) -> Styler | None:
-        """Styled supply violations table, or ``None`` if no tolerances configured."""
-        if self.data.supply_violations is None:
+    def supply_categories_violations(self) -> Styler | None:
+        """Styled supply category violations, or ``None`` if no tolerances configured."""
+        if self.data.supply_categories_violations is None:
             return None
-        return self._supply_styler(self.data.supply_violations)
+        return self._supply_styler(self.data.supply_categories_violations)
 
     @property
-    def use_violations(self) -> Styler | None:
-        """Styled use violations table, or ``None`` if no tolerances configured."""
-        if self.data.use_violations is None:
+    def use_categories_violations(self) -> Styler | None:
+        """Styled use category violations, or ``None`` if no tolerances configured."""
+        if self.data.use_categories_violations is None:
             return None
-        return self._use_styler(self.data.use_violations)
+        return self._use_styler(self.data.use_categories_violations)
+
+    @property
+    def supply_transactions(self) -> Styler:
+        """Styled supply transaction-level targets table."""
+        return self._supply_styler(self.data.supply_transactions)
+
+    @property
+    def use_transactions(self) -> Styler:
+        """Styled use transaction-level targets table."""
+        return self._use_styler(self.data.use_transactions)
+
+    @property
+    def supply_transactions_violations(self) -> Styler | None:
+        """Styled supply transaction violations, or ``None`` if no tolerances configured."""
+        if self.data.supply_transactions_violations is None:
+            return None
+        return self._supply_styler(self.data.supply_transactions_violations)
+
+    @property
+    def use_transactions_violations(self) -> Styler | None:
+        """Styled use transaction violations, or ``None`` if no tolerances configured."""
+        if self.data.use_transactions_violations is None:
+            return None
+        return self._use_styler(self.data.use_transactions_violations)
+
+    @property
+    def summary(self) -> Styler:
+        """Styled summary table."""
+        return _style_unbalanced_targets_summary(self.data.summary)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -131,19 +178,24 @@ class BalancingTargetsInspection:
         _write_inspection_to_excel(self, path)
 
 
-def inspect_balancing_targets(
+def inspect_unbalanced_targets(
     sut: SUT,
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
     sort: bool = False,
-) -> BalancingTargetsInspection:
+) -> UnbalancedTargetsInspection:
     """
-    Return supply and use column totals compared against balancing targets.
+    Return supply and use column totals compared against balancing targets,
+    restricted to rows where the absolute difference exceeds 1.
 
-    For each (transaction, category) combination in the balancing targets,
-    shows the actual column total from the SUT data alongside the target,
-    the difference, the relative deviation, the resolved tolerance, and
-    whether the tolerance is violated.
+    Produces eight tables: category-level and transaction-level views for
+    supply and use, each with a corresponding violations subset.
+
+    The category-level tables show one row per (transaction, category)
+    combination. The transaction-level tables aggregate targets and actuals
+    by summing over categories, with tolerances scaled accordingly.
+
+    Only rows where ``abs(diff_*) > 1`` appear in any table.
 
     Parameters
     ----------
@@ -152,22 +204,21 @@ def inspect_balancing_targets(
         ``balancing_targets`` set.
     transactions : str, list of str, or None, optional
         Transaction codes to include. Accepts the same pattern syntax as
-        :func:`~sutlab.sut.filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). ``None`` (the default) includes
-        all transactions present in the targets.
+        :func:`~sutlab.sut.filter_rows`. ``None`` includes all transactions.
+        Applied to both category-level and transaction-level tables.
     categories : str, list of str, or None, optional
         Category codes to include. Same pattern syntax as ``transactions``.
         ``None`` includes all categories.
+        Applied to the category-level tables only; the transaction-level
+        tables always aggregate over all categories.
     sort : bool, optional
-        When ``True``, rows are sorted by the absolute value of
-        ``diff_{price}`` in descending order (largest deviation first).
+        When ``True``, rows are sorted by ``abs(diff_*)`` descending.
         Default ``False`` preserves the order from the targets DataFrame.
 
     Returns
     -------
-    BalancingTargetsInspection
+    UnbalancedTargetsInspection
         A dataclass whose ``data`` attribute holds the raw DataFrames.
-        See :class:`BalancingTargetsInspection` for the table structures.
 
     Raises
     ------
@@ -180,7 +231,7 @@ def inspect_balancing_targets(
     """
     if sut.metadata is None:
         raise ValueError(
-            "sut.metadata is required to call inspect_balancing_targets. "
+            "sut.metadata is required to call inspect_unbalanced_targets. "
             "Provide a SUTMetadata with column name mappings."
         )
     if sut.balancing_id is None:
@@ -200,8 +251,8 @@ def inspect_balancing_targets(
         and sut.balancing_config.target_tolerances is not None
     )
 
-    # If tolerances are configured but tol columns are not yet present,
-    # resolve them silently before building the tables.
+    # If tolerances are configured but tol columns are not yet present on the
+    # category-level targets, resolve them silently before building the tables.
     working_sut = sut
     if has_tolerances:
         tol_col_supply = f"tol_{cols.price_basic}"
@@ -212,14 +263,19 @@ def inspect_balancing_targets(
             from sutlab.balancing import resolve_target_tolerances
             working_sut = resolve_target_tolerances(sut)
 
+    tolerances = (
+        working_sut.balancing_config.target_tolerances
+        if has_tolerances
+        else None
+    )
+
     classifications = sut.metadata.classifications
 
-    # Build label lookup dicts (empty when no classifications loaded).
     trans_names = _build_transaction_names(classifications, cols.transaction)
     cat_names = _build_combined_category_names(classifications, cols.category)
     has_labels = bool(trans_names or cat_names)
 
-    supply_table = _build_side_table(
+    supply_categories = _build_categories_table(
         sut=working_sut,
         data_df=working_sut.supply,
         targets_df=working_sut.balancing_targets.supply,
@@ -236,7 +292,7 @@ def inspect_balancing_targets(
         has_labels=has_labels,
     )
 
-    use_table = _build_side_table(
+    use_categories = _build_categories_table(
         sut=working_sut,
         data_df=working_sut.use,
         targets_df=working_sut.balancing_targets.use,
@@ -253,23 +309,85 @@ def inspect_balancing_targets(
         has_labels=has_labels,
     )
 
+    supply_transactions = _build_transactions_table(
+        sut=working_sut,
+        data_df=working_sut.supply,
+        targets_df=working_sut.balancing_targets.supply,
+        price_col=cols.price_basic,
+        id_col=cols.id,
+        trans_col=cols.transaction,
+        cat_col=cols.category,
+        transactions_filter=transactions,
+        has_tolerances=has_tolerances,
+        tolerances=tolerances,
+        sort=sort,
+        trans_names=trans_names,
+        has_labels=has_labels,
+    )
+
+    use_transactions = _build_transactions_table(
+        sut=working_sut,
+        data_df=working_sut.use,
+        targets_df=working_sut.balancing_targets.use,
+        price_col=cols.price_purchasers,
+        id_col=cols.id,
+        trans_col=cols.transaction,
+        cat_col=cols.category,
+        transactions_filter=transactions,
+        has_tolerances=has_tolerances,
+        tolerances=tolerances,
+        sort=sort,
+        trans_names=trans_names,
+        has_labels=has_labels,
+    )
+
     if has_tolerances:
         supply_viol_col = f"violation_{cols.price_basic}"
-        supply_viol_mask = supply_table[supply_viol_col].notna() & (supply_table[supply_viol_col] != 0)
-        supply_violations = supply_table[supply_viol_mask].copy()
-        use_viol_col = f"violation_{cols.price_purchasers}"
-        use_viol_mask = use_table[use_viol_col].notna() & (use_table[use_viol_col] != 0)
-        use_violations = use_table[use_viol_mask].copy()
-    else:
-        supply_violations = None
-        use_violations = None
+        supply_cat_viol_mask = supply_categories[supply_viol_col].notna() & (supply_categories[supply_viol_col] != 0)
+        supply_categories_violations = supply_categories[supply_cat_viol_mask].copy()
 
-    return BalancingTargetsInspection(
-        data=BalancingTargetsData(
-            supply=supply_table,
-            use=use_table,
-            supply_violations=supply_violations,
-            use_violations=use_violations,
+        use_viol_col = f"violation_{cols.price_purchasers}"
+        use_cat_viol_mask = use_categories[use_viol_col].notna() & (use_categories[use_viol_col] != 0)
+        use_categories_violations = use_categories[use_cat_viol_mask].copy()
+
+        supply_trans_viol_mask = supply_transactions[supply_viol_col].notna() & (supply_transactions[supply_viol_col] != 0)
+        supply_transactions_violations = supply_transactions[supply_trans_viol_mask].copy()
+
+        use_trans_viol_mask = use_transactions[use_viol_col].notna() & (use_transactions[use_viol_col] != 0)
+        use_transactions_violations = use_transactions[use_trans_viol_mask].copy()
+    else:
+        supply_categories_violations = None
+        use_categories_violations = None
+        supply_transactions_violations = None
+        use_transactions_violations = None
+
+    summary_entries = {
+        "supply_transactions": len(supply_transactions),
+        "supply_categories": len(supply_categories),
+        "use_transactions": len(use_transactions),
+        "use_categories": len(use_categories),
+    }
+    if has_tolerances:
+        summary_entries["supply_transactions_violations"] = len(supply_transactions_violations)
+        summary_entries["supply_categories_violations"] = len(supply_categories_violations)
+        summary_entries["use_transactions_violations"] = len(use_transactions_violations)
+        summary_entries["use_categories_violations"] = len(use_categories_violations)
+    summary = pd.DataFrame(
+        {"n_unbalanced": list(summary_entries.values())},
+        index=pd.Index(list(summary_entries.keys()), name="table"),
+    )
+
+    return UnbalancedTargetsInspection(
+        data=UnbalancedTargetsData(
+            supply_categories=supply_categories,
+            use_categories=use_categories,
+            supply_categories_violations=supply_categories_violations,
+            use_categories_violations=use_categories_violations,
+            supply_transactions=supply_transactions,
+            use_transactions=use_transactions,
+            supply_transactions_violations=supply_transactions_violations,
+            use_transactions_violations=use_transactions_violations,
+            summary=summary,
         )
     )
 
@@ -279,7 +397,7 @@ def inspect_balancing_targets(
 # ---------------------------------------------------------------------------
 
 
-def _build_side_table(
+def _build_categories_table(
     sut: SUT,
     data_df: pd.DataFrame,
     targets_df: pd.DataFrame,
@@ -295,7 +413,7 @@ def _build_side_table(
     cat_names: dict[str, str],
     has_labels: bool,
 ) -> pd.DataFrame:
-    """Build supply or use comparison table for the active balancing member."""
+    """Build supply or use comparison table at (transaction, category) level."""
     tol_col = f"tol_{price_col}"
     violation_col = f"violation_{price_col}"
     target_col = f"target_{price_col}"
@@ -333,7 +451,6 @@ def _build_side_table(
         .groupby([trans_col, cat_col], dropna=False)[price_col]
         .sum()
         .reset_index()
-        .rename(columns={price_col: price_col})
     )
 
     # Build the result table: start from targets so every target row is present.
@@ -374,6 +491,9 @@ def _build_side_table(
     if sort:
         result = result.sort_values(diff_col, key=lambda s: s.abs(), ascending=False)
 
+    # Filter to rows with abs(diff) > 1 — NaN diff rows are excluded.
+    result = result[result[diff_col].abs() > 1]
+
     # Build MultiIndex.
     result = result.set_index([trans_col, cat_col])
     if has_labels:
@@ -389,6 +509,134 @@ def _build_side_table(
                 [cat_names.get(str(c), "") for c in cat_vals],
             ],
             names=[trans_col, trans_txt_col, cat_col, cat_txt_col],
+        )
+
+    return result
+
+
+def _build_transactions_table(
+    sut: SUT,
+    data_df: pd.DataFrame,
+    targets_df: pd.DataFrame,
+    price_col: str,
+    id_col: str,
+    trans_col: str,
+    cat_col: str,
+    transactions_filter: str | list[str] | None,
+    has_tolerances: bool,
+    tolerances,
+    sort: bool,
+    trans_names: dict[str, str],
+    has_labels: bool,
+) -> pd.DataFrame:
+    """Build supply or use comparison table aggregated to transaction level.
+
+    Targets and actuals are summed over all categories. The ``categories``
+    filter is intentionally not applied — the transaction-level table always
+    reflects the full transaction total. The absolute tolerance component is
+    scaled by the number of categories per transaction.
+    """
+    tol_col = f"tol_{price_col}"
+    violation_col = f"violation_{price_col}"
+    target_col = f"target_{price_col}"
+    diff_col = f"diff_{price_col}"
+    rel_col = f"rel_{price_col}"
+    n_cat_col = "_n_categories"
+
+    # Filter targets to the active balancing member.
+    member_targets = targets_df[targets_df[id_col] == sut.balancing_id].copy()
+
+    # Apply transactions filter.
+    if transactions_filter is not None:
+        patterns = (
+            [transactions_filter]
+            if isinstance(transactions_filter, str)
+            else list(transactions_filter)
+        )
+        all_trans = member_targets[trans_col].dropna().unique().tolist()
+        matched_trans = _match_codes(all_trans, patterns)
+        member_targets = member_targets[member_targets[trans_col].isin(matched_trans)]
+
+    # Count categories per transaction (used to scale absolute tolerance).
+    n_cats = (
+        member_targets
+        .groupby(trans_col, dropna=False)[cat_col]
+        .count()
+        .reset_index()
+        .rename(columns={cat_col: n_cat_col})
+    )
+
+    # Aggregate targets to transaction level (NaN preserved via min_count=1).
+    agg_targets = (
+        member_targets
+        .groupby(trans_col, dropna=False)[price_col]
+        .sum(min_count=1)
+        .reset_index()
+        .rename(columns={price_col: target_col})
+    )
+
+    # Aggregate actuals to transaction level.
+    member_data = data_df[data_df[id_col] == sut.balancing_id]
+    actuals = (
+        member_data
+        .groupby(trans_col, dropna=False)[price_col]
+        .sum(min_count=1)
+        .reset_index()
+    )
+
+    # Build result from aggregated targets.
+    result = agg_targets.merge(actuals, on=[trans_col], how="left")
+    result[price_col] = result[price_col].fillna(0.0)
+    result = result.merge(n_cats, on=[trans_col], how="left")
+
+    # Derived columns.
+    result[diff_col] = result[price_col] - result[target_col]
+    result[rel_col] = (
+        result[price_col]
+        / result[target_col].replace(0, float("nan"))
+        - 1
+    )
+
+    # Transaction-level tolerances with n_categories-scaled absolute component.
+    if has_tolerances and tolerances is not None:
+        from sutlab.balancing._tolerances import _resolve_transaction_tolerances
+        result = _resolve_transaction_tolerances(
+            trans_targets=result,
+            tolerances=tolerances,
+            trans_col=trans_col,
+            target_price_col=target_col,
+            n_cat_col=n_cat_col,
+            tol_col_name=tol_col,
+        )
+    else:
+        result[tol_col] = float("nan")
+
+    result = result.drop(columns=[n_cat_col])
+
+    # Tolerance violation.
+    result[violation_col] = _compute_tol_violation(result[diff_col], result[tol_col])
+
+    # Column order.
+    result = result[[trans_col, price_col, target_col, diff_col, rel_col, tol_col, violation_col]]
+
+    # Sort by absolute diff if requested.
+    if sort:
+        result = result.sort_values(diff_col, key=lambda s: s.abs(), ascending=False)
+
+    # Filter to rows with abs(diff) > 1 — NaN diff rows are excluded.
+    result = result[result[diff_col].abs() > 1]
+
+    # Build index.
+    result = result.set_index([trans_col])
+    if has_labels:
+        trans_vals = result.index.get_level_values(trans_col)
+        trans_txt_col = f"{trans_col}_txt"
+        result.index = pd.MultiIndex.from_arrays(
+            [
+                trans_vals,
+                [trans_names.get(str(t), "") for t in trans_vals],
+            ],
+            names=[trans_col, trans_txt_col],
         )
 
     return result

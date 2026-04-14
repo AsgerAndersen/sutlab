@@ -23,9 +23,9 @@ from sutlab.inspect._product_imbalances import (
     UnbalancedProductsData,
 )
 from sutlab.inspect._balancing_targets import (
-    inspect_balancing_targets,
-    BalancingTargetsInspection,
-    BalancingTargetsData,
+    inspect_unbalanced_targets,
+    UnbalancedTargetsInspection,
+    UnbalancedTargetsData,
 )
 from sutlab.inspect._sut_comparison import (
     inspect_sut_comparison,
@@ -61,9 +61,9 @@ __all__ = [
     "inspect_unbalanced_products",
     "UnbalancedProductsInspection",
     "UnbalancedProductsData",
-    "inspect_balancing_targets",
-    "BalancingTargetsInspection",
-    "BalancingTargetsData",
+    "inspect_unbalanced_targets",
+    "UnbalancedTargetsInspection",
+    "UnbalancedTargetsData",
     "inspect_sut_comparison",
     "SUTComparisonInspection",
     "SUTComparisonData",
