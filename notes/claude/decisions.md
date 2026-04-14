@@ -798,6 +798,29 @@ Append-only. Each entry: date, decision, brief rationale.
   `"supply"` or `"use"` limits filtering to that table; `None` (default) filters both.
   `_remove_locked.py` renamed to `_filter_free.py`.
 
+- **2026-04-14**: Renamed all `*_detail_*` fields/properties in `ProductInspection` and
+  `IndustryInspection` to `*_products_*` (e.g. `supply_detail` → `supply_products`,
+  `use_detail_coefficients` → `use_products_coefficients`). Rationale: "products" is more
+  explicit and consistent with the dimension being broken down.
+
+- **2026-04-14**: Added `supply_products_summary` and `use_products_summary` tables to
+  `IndustryInspection`. Per-transaction statistics over the product dimension: `total_supply`/
+  `total_use`, `n_products`, coverage counts (`n_products_p{N}`, always using numeric suffix —
+  no min/median/max aliases for coverage rows), value percentiles (`value_{label}`), share
+  percentiles (`share_{label}`). Row order: total, n_products, coverage (asc), value (desc),
+  share (desc). `inspect_industries` gains `percentiles=[0.5, 1.0]` and
+  `coverage_thresholds=[0.5, 0.8, 0.95]` keyword-only arguments. Formatting: total/value →
+  number, n_products/n_products_* → integer, share_* → percentage. No special bold or colour
+  on the total row — uniform alternating colours throughout.
+
+- **2026-04-14**: Added `display_products_n_largest(n, id)`,
+  `display_products_threshold_value(threshold, id)`, and
+  `display_products_threshold_share(threshold, id)` to `IndustryInspection`. Each returns a
+  new `IndustryInspection` with products tables filtered for display; derived tables and rows
+  (transaction == "") always preserved; summary/balance/price_layer tables copied unchanged.
+  Supply and use filtered independently. All filtering vectorised (groupby().rank(),
+  boolean indexing, index.isin()). `id` is required (no default).
+
 - **2026-04-14**: `compare_dimensions: str | list[str] | None = None` added to
   `inspect_sut_comparison` (and the SUT delegate method). Accepted values: `"product"`,
   `"transaction"`, `"category"` — one or more. When set, both SUTs are aggregated via
