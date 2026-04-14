@@ -195,7 +195,7 @@ def inspect_sut_comparison(
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
     diff_tolerance: float = 1,
-    rel_tolerance: float = 1e-6,
+    rel_tolerance: float = float("inf"),
     filter_nan_as_zero: bool = False,
     sort: bool = False,
     compare_dimensions: str | list[str] | None = None,
@@ -230,7 +230,8 @@ def inspect_sut_comparison(
         ``abs(diff) > diff_tolerance``. Default ``1``.
     rel_tolerance : float, optional
         Relative tolerance. A row is included when
-        ``abs(rel) > rel_tolerance``. Default ``1e-6``.
+        ``abs(rel) > rel_tolerance``. Default ``float("inf")`` (disabled —
+        only ``diff_tolerance`` applies).
     filter_nan_as_zero : bool, optional
         When ``True``, rows where one side is ``NaN`` and the other is ``0``
         are excluded from all tables. This suppresses the noise that arises
