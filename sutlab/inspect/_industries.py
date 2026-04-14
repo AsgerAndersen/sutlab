@@ -375,6 +375,81 @@ class IndustryInspection:
             self.data.balance_growth, self._p1_trans, format_func=_format_percentage
         )
 
+    def display_products_n_largest(self, n: int, id) -> "IndustryInspection":
+        """Return a copy with supply/use product tables filtered to the n largest products.
+
+        Within each ``(industry, transaction)`` block, keeps the ``n`` products
+        with the largest values in the ``id`` year column. Total/derived rows
+        (``transaction == ""``) are always kept. All non-products tables
+        (``balance``, ``price_layers``, etc.) and summary tables are copied
+        unchanged without recomputation.
+
+        Parameters
+        ----------
+        n : int
+            Number of largest products to keep per ``(industry, transaction)`` block.
+        id : value
+            Id value (e.g. year) whose column is used for ranking.
+
+        Returns
+        -------
+        IndustryInspection
+            New inspection with filtered products tables.
+        """
+        return _display_products_n_largest(self, n, id)
+
+    def display_products_threshold_value(
+        self, threshold: float, id
+    ) -> "IndustryInspection":
+        """Return a copy with supply/use product tables filtered by an absolute value threshold.
+
+        Within each ``(industry, transaction)`` block, keeps products whose
+        value in the ``id`` year column is greater than or equal to
+        ``threshold``. Total/derived rows (``transaction == ""``) are always
+        kept. All non-products tables and summary tables are copied unchanged.
+
+        Parameters
+        ----------
+        threshold : float
+            Minimum value (inclusive) in the ``id`` column for a product to
+            be kept.
+        id : value
+            Id value (e.g. year) whose column is used for filtering.
+
+        Returns
+        -------
+        IndustryInspection
+            New inspection with filtered products tables.
+        """
+        return _display_products_threshold_value(self, threshold, id)
+
+    def display_products_threshold_share(
+        self, threshold: float, id
+    ) -> "IndustryInspection":
+        """Return a copy with supply/use product tables filtered by a share threshold.
+
+        Within each ``(industry, transaction)`` block, keeps products whose
+        share of the transaction total in the ``id`` year column is greater
+        than or equal to ``threshold``. Shares are taken from
+        ``supply_products_distribution`` / ``use_products_distribution``.
+        Total/derived rows (``transaction == ""``) are always kept. All
+        non-products tables and summary tables are copied unchanged.
+
+        Parameters
+        ----------
+        threshold : float
+            Minimum share (inclusive, in [0, 1]) in the ``id`` column for a
+            product to be kept.
+        id : value
+            Id value (e.g. year) whose column is used for filtering.
+
+        Returns
+        -------
+        IndustryInspection
+            New inspection with filtered products tables.
+        """
+        return _display_products_threshold_share(self, threshold, id)
+
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
 
@@ -389,6 +464,222 @@ class IndustryInspection:
             Destination ``.xlsx`` file path.
         """
         _write_inspection_to_excel(self, path)
+
+
+def _keep_products_by_index(
+    table: pd.DataFrame,
+    keep_index: pd.Index,
+) -> pd.DataFrame:
+    """Return ``table`` keeping all total/derived rows plus product rows in ``keep_index``.
+
+    Total/derived rows are identified by an empty ``transaction`` level value.
+    ``keep_index`` should contain only product-row index tuples (i.e. those
+    with non-empty ``transaction``).
+
+    Parameters
+    ----------
+    table : pd.DataFrame
+        A products table (``supply_products``, ``use_products``, or a
+        derived variant) with a six-level MultiIndex whose ``transaction``
+        level is ``""`` for total/derived rows and non-empty for product rows.
+    keep_index : pd.Index
+        MultiIndex of product rows to retain. Rows not in this index and not
+        total rows are dropped.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered table preserving original row order.
+    """
+    if table.empty:
+        return table
+    total_mask = table.index.get_level_values("transaction") == ""
+    product_keep_mask = table.index.isin(keep_index)
+    return table[total_mask | product_keep_mask]
+
+
+def _apply_products_filter(
+    inspection: IndustryInspection,
+    supply_keep_index: pd.Index,
+    use_keep_index: pd.Index,
+) -> IndustryInspection:
+    """Build a new IndustryInspection with filtered products tables.
+
+    Applies ``supply_keep_index`` to all ``supply_products*`` tables and
+    ``use_keep_index`` to all ``use_products*`` tables (except the summary
+    tables, which have no product dimension and are copied unchanged).
+    All other tables are copied as-is.
+
+    Parameters
+    ----------
+    inspection : IndustryInspection
+        Source inspection result.
+    supply_keep_index : pd.Index
+        Product-row index values to keep in supply tables.
+    use_keep_index : pd.Index
+        Product-row index values to keep in use tables.
+
+    Returns
+    -------
+    IndustryInspection
+        New inspection with filtered products tables.
+    """
+    d = inspection.data
+    new_data = IndustryInspectionData(
+        balance=d.balance,
+        balance_growth=d.balance_growth,
+        supply_products=_keep_products_by_index(d.supply_products, supply_keep_index),
+        supply_products_distribution=_keep_products_by_index(
+            d.supply_products_distribution, supply_keep_index
+        ),
+        supply_products_growth=_keep_products_by_index(
+            d.supply_products_growth, supply_keep_index
+        ),
+        supply_products_summary=d.supply_products_summary,
+        use_products=_keep_products_by_index(d.use_products, use_keep_index),
+        use_products_distribution=_keep_products_by_index(
+            d.use_products_distribution, use_keep_index
+        ),
+        use_products_coefficients=_keep_products_by_index(
+            d.use_products_coefficients, use_keep_index
+        ),
+        use_products_growth=_keep_products_by_index(
+            d.use_products_growth, use_keep_index
+        ),
+        use_products_summary=d.use_products_summary,
+        price_layers=d.price_layers,
+        price_layers_rates=d.price_layers_rates,
+        price_layers_distribution=d.price_layers_distribution,
+        price_layers_growth=d.price_layers_growth,
+    )
+    return IndustryInspection(data=new_data, _p1_trans=inspection._p1_trans)
+
+
+def _n_largest_keep_index(products_table: pd.DataFrame, n: int, id_val) -> pd.Index:
+    """Return the index of the n largest product rows per (industry, transaction) block.
+
+    Rows with empty ``transaction`` (total/derived rows) are excluded from
+    consideration — only product rows participate in ranking. Ties are broken
+    arbitrarily (``method="first"``). NaN values rank last.
+
+    Parameters
+    ----------
+    products_table : pd.DataFrame
+        A products table with a six-level MultiIndex.
+    n : int
+        Number of largest products to keep per block.
+    id_val
+        Column label to rank by.
+
+    Returns
+    -------
+    pd.Index
+        MultiIndex containing the index tuples of product rows to keep.
+    """
+    if products_table.empty:
+        return products_table.index[:0]
+    product_mask = products_table.index.get_level_values("transaction") != ""
+    product_rows = products_table[product_mask]
+    if product_rows.empty:
+        return product_rows.index[:0]
+    ranks = product_rows.groupby(
+        level=["industry", "transaction"], dropna=False
+    )[id_val].rank(method="first", ascending=False, na_option="bottom")
+    return product_rows.index[ranks <= n]
+
+
+def _threshold_value_keep_index(
+    products_table: pd.DataFrame, threshold: float, id_val
+) -> pd.Index:
+    """Return the index of product rows whose value in ``id_val`` >= ``threshold``.
+
+    Parameters
+    ----------
+    products_table : pd.DataFrame
+        A products table with a six-level MultiIndex.
+    threshold : float
+        Minimum value (inclusive).
+    id_val
+        Column label to filter by.
+
+    Returns
+    -------
+    pd.Index
+        MultiIndex containing the index tuples of product rows to keep.
+    """
+    if products_table.empty:
+        return products_table.index[:0]
+    product_mask = products_table.index.get_level_values("transaction") != ""
+    product_rows = products_table[product_mask]
+    if product_rows.empty:
+        return product_rows.index[:0]
+    return product_rows.index[product_rows[id_val] >= threshold]
+
+
+def _threshold_share_keep_index(
+    dist_table: pd.DataFrame, threshold: float, id_val
+) -> pd.Index:
+    """Return the index of product rows whose share in ``id_val`` >= ``threshold``.
+
+    Shares are read from the distribution table (``supply_products_distribution``
+    or ``use_products_distribution``).
+
+    Parameters
+    ----------
+    dist_table : pd.DataFrame
+        A products distribution table with a six-level MultiIndex.
+    threshold : float
+        Minimum share (inclusive, in [0, 1]).
+    id_val
+        Column label to filter by.
+
+    Returns
+    -------
+    pd.Index
+        MultiIndex containing the index tuples of product rows to keep.
+    """
+    if dist_table.empty:
+        return dist_table.index[:0]
+    product_mask = dist_table.index.get_level_values("transaction") != ""
+    product_rows = dist_table[product_mask]
+    if product_rows.empty:
+        return product_rows.index[:0]
+    return product_rows.index[product_rows[id_val] >= threshold]
+
+
+def _display_products_n_largest(
+    inspection: IndustryInspection, n: int, id_val
+) -> IndustryInspection:
+    """Filter supply/use products tables to the n largest products per block."""
+    supply_keep = _n_largest_keep_index(inspection.data.supply_products, n, id_val)
+    use_keep = _n_largest_keep_index(inspection.data.use_products, n, id_val)
+    return _apply_products_filter(inspection, supply_keep, use_keep)
+
+
+def _display_products_threshold_value(
+    inspection: IndustryInspection, threshold: float, id_val
+) -> IndustryInspection:
+    """Filter supply/use products tables to products with value >= threshold."""
+    supply_keep = _threshold_value_keep_index(
+        inspection.data.supply_products, threshold, id_val
+    )
+    use_keep = _threshold_value_keep_index(
+        inspection.data.use_products, threshold, id_val
+    )
+    return _apply_products_filter(inspection, supply_keep, use_keep)
+
+
+def _display_products_threshold_share(
+    inspection: IndustryInspection, threshold: float, id_val
+) -> IndustryInspection:
+    """Filter supply/use products tables to products with share >= threshold."""
+    supply_keep = _threshold_share_keep_index(
+        inspection.data.supply_products_distribution, threshold, id_val
+    )
+    use_keep = _threshold_share_keep_index(
+        inspection.data.use_products_distribution, threshold, id_val
+    )
+    return _apply_products_filter(inspection, supply_keep, use_keep)
 
 
 def inspect_industries(

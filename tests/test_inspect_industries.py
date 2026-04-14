@@ -1313,3 +1313,161 @@ def test_use_products_summary_coverage_single_product(sut):
 
 def test_use_products_summary_property_returns_styler(sut):
     assert isinstance(inspect_industries(sut, "X").use_products_summary, Styler)
+
+
+# ---------------------------------------------------------------------------
+# display_products_n_largest
+# ---------------------------------------------------------------------------
+#
+# Fixture data (supply, industry X, transaction 0100, basic prices, 2020):
+#   product A = 60, product B = 40  → A is largest
+# Fixture data (use, industry X, transaction 2000, purchasers' prices, 2020):
+#   product A = 60  (only product)
+# ---------------------------------------------------------------------------
+
+
+def test_n_largest_returns_industry_inspection(sut):
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    assert isinstance(result, IndustryInspection)
+
+
+def test_n_largest_supply_keeps_top_product(sut):
+    """n=1 for supply X in 2020 keeps product A (60) and drops B (40)."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" not in products
+
+
+def test_n_largest_supply_keeps_total_row(sut):
+    """Total supply row must always be kept regardless of n."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    trans_txts = result.data.supply_products.index.get_level_values("transaction_txt").tolist()
+    assert "Total supply" in trans_txts
+
+
+def test_n_largest_supply_keeps_all_when_n_gte_count(sut):
+    """n=10 keeps both products A and B."""
+    result = inspect_industries(sut, "X").display_products_n_largest(10, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" in products
+
+
+def test_n_largest_distribution_sliced_in_lockstep(sut):
+    """supply_products_distribution keeps the same product rows as supply_products."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    dist_products = result.data.supply_products_distribution.index.get_level_values("product").tolist()
+    assert sp_products == dist_products
+
+
+def test_n_largest_growth_sliced_in_lockstep(sut):
+    """supply_products_growth keeps the same product rows as supply_products."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    growth_products = result.data.supply_products_growth.index.get_level_values("product").tolist()
+    assert sp_products == growth_products
+
+
+def test_n_largest_summary_unchanged(sut):
+    """supply_products_summary is not affected by the filter."""
+    base = inspect_industries(sut, "X")
+    filtered = base.display_products_n_largest(1, 2020)
+    pd.testing.assert_frame_equal(
+        filtered.data.supply_products_summary, base.data.supply_products_summary
+    )
+
+
+def test_n_largest_balance_unchanged(sut):
+    """balance table is not affected by the filter."""
+    base = inspect_industries(sut, "X")
+    filtered = base.display_products_n_largest(1, 2020)
+    pd.testing.assert_frame_equal(filtered.data.balance, base.data.balance)
+
+
+def test_n_largest_use_filtered_independently(sut):
+    """use_products filtered independently; single product kept when n=1."""
+    result = inspect_industries(sut, "X").display_products_n_largest(1, 2020)
+    products = result.data.use_products.index.get_level_values("product").tolist()
+    assert "A" in products
+
+
+# ---------------------------------------------------------------------------
+# display_products_threshold_value
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_value_keeps_above_threshold(sut):
+    """threshold=50: keeps A (60 >= 50) and drops B (40 < 50) in supply."""
+    result = inspect_industries(sut, "X").display_products_threshold_value(50.0, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" not in products
+
+
+def test_threshold_value_keeps_total_row(sut):
+    """Total supply row always kept."""
+    result = inspect_industries(sut, "X").display_products_threshold_value(50.0, 2020)
+    trans_txts = result.data.supply_products.index.get_level_values("transaction_txt").tolist()
+    assert "Total supply" in trans_txts
+
+
+def test_threshold_value_keeps_all_when_low(sut):
+    """threshold=0 keeps both products."""
+    result = inspect_industries(sut, "X").display_products_threshold_value(0.0, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" in products
+
+
+def test_threshold_value_distribution_sliced_in_lockstep(sut):
+    result = inspect_industries(sut, "X").display_products_threshold_value(50.0, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    dist_products = result.data.supply_products_distribution.index.get_level_values("product").tolist()
+    assert sp_products == dist_products
+
+
+# ---------------------------------------------------------------------------
+# display_products_threshold_share
+# ---------------------------------------------------------------------------
+#
+# supply X 2020: A=60/100=0.6, B=40/100=0.4
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_share_keeps_above_threshold(sut):
+    """threshold=0.5: keeps A (share=0.6 >= 0.5), drops B (share=0.4 < 0.5)."""
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" not in products
+
+
+def test_threshold_share_keeps_total_row(sut):
+    """Total supply row always kept."""
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    trans_txts = result.data.supply_products.index.get_level_values("transaction_txt").tolist()
+    assert "Total supply" in trans_txts
+
+
+def test_threshold_share_keeps_all_when_zero(sut):
+    """threshold=0 keeps both products."""
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.0, 2020)
+    products = result.data.supply_products.index.get_level_values("product").tolist()
+    assert "A" in products
+    assert "B" in products
+
+
+def test_threshold_share_distribution_sliced_in_lockstep(sut):
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    sp_products = result.data.supply_products.index.get_level_values("product").tolist()
+    dist_products = result.data.supply_products_distribution.index.get_level_values("product").tolist()
+    assert sp_products == dist_products
+
+
+def test_threshold_share_coefficients_sliced_in_lockstep(sut):
+    result = inspect_industries(sut, "X").display_products_threshold_share(0.5, 2020)
+    sp_products = result.data.use_products.index.get_level_values("product").tolist()
+    coeff_products = result.data.use_products_coefficients.index.get_level_values("product").tolist()
+    assert sp_products == coeff_products
