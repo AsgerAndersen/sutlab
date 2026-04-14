@@ -1021,8 +1021,10 @@ def test_supply_products_summary_values(before_sut, after_sut):
     row = result.data.supply_products_summary.iloc[0]
     assert row["n_changes"] == 1
     assert pytest.approx(row["diff_norm"]) == 10.0   # sqrt(10^2)
+    assert pytest.approx(row["diff_min"]) == 10.0
     assert pytest.approx(row["diff_median"]) == 10.0
     assert pytest.approx(row["diff_max"]) == 10.0
+    assert pytest.approx(row["rel_min"]) == 10.0 / 100.0
     assert pytest.approx(row["rel_median"]) == 10.0 / 100.0
     assert pytest.approx(row["rel_max"]) == 10.0 / 100.0
 
@@ -1089,6 +1091,15 @@ def test_summary_empty_when_source_empty(before_sut, after_sut):
     assert len(result.data.use_columns_summary) == 0
 
 
+def test_percentiles_default_includes_min(before_sut, after_sut):
+    # Default percentiles=[0.0, 0.5, 1.0] — all three columns present.
+    result = inspect_sut_comparison(before_sut, after_sut)
+    cols = result.data.supply_products_summary.columns.tolist()
+    assert "diff_min" in cols
+    assert "diff_median" in cols
+    assert "diff_max" in cols
+
+
 def test_percentiles_argument_changes_columns(before_sut, after_sut):
     result = inspect_sut_comparison(before_sut, after_sut, percentiles=[0.0, 0.75, 1.0])
     cols = result.data.supply_products_summary.columns.tolist()
@@ -1098,7 +1109,7 @@ def test_percentiles_argument_changes_columns(before_sut, after_sut):
     assert "rel_min" in cols
     assert "rel_p75" in cols
     assert "rel_max" in cols
-    # Default median column should not be present.
+    # Median not requested — should not be present.
     assert "diff_median" not in cols
 
 

@@ -241,7 +241,7 @@ def inspect_sut_comparison(
     rel_tolerance: float = float("inf"),
     filter_nan_as_zero: bool = False,
     sort: bool = False,
-    percentiles: list[float] = [0.5, 1.0],
+    percentiles: list[float] = [0.0, 0.5, 1.0],
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -292,7 +292,7 @@ def inspect_sut_comparison(
         summary tables. Each value must be in ``[0, 1]``. Special names:
         ``0`` → ``_min``, ``0.5`` → ``_median``, ``1`` → ``_max``;
         all others → ``_p{int(p * 100)}`` (e.g. ``0.75`` → ``diff_p75``).
-        Default ``[0.5, 1.0]``.
+        Default ``[0.0, 0.5, 1.0]``.
 
     Returns
     -------
