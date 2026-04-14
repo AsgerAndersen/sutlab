@@ -600,7 +600,7 @@ class SUT:
         transactions: str | list[str] | None = None,
         categories: str | list[str] | None = None,
         diff_tolerance: float = 1,
-        rel_tolerance: float = 1e-6,
+        rel_tolerance: float = float("inf"),
         filter_nan_as_zero: bool = False,
         sort: bool = False,
         compare_dimensions: str | list[str] | None = None,

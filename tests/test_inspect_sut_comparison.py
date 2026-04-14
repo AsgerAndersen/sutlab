@@ -174,7 +174,7 @@ def test_use_purchasers_only_changed_row_returned(before_sut, after_sut):
 
 
 def test_use_price_layers_only_changed_layer_returned(before_sut, after_sut):
-    result = inspect_sut_comparison(before_sut, after_sut)
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=0)
     layers = result.data.use_price_layers
     # Only moms changed for A/2021/P2/X; ava did not change.
     assert len(layers) == 1
@@ -372,7 +372,7 @@ def test_sort_price_layers_within_id_and_layer(cols, metadata):
     sut_before = SUT(price_basis="current_year", supply=supply_df, use=use_before, metadata=metadata)
     sut_after = SUT(price_basis="current_year", supply=supply_df, use=use_after, metadata=metadata)
 
-    result = inspect_sut_comparison(sut_before, sut_after, sort=True)
+    result = inspect_sut_comparison(sut_before, sut_after, sort=True, diff_tolerance=0)
     layers = result.data.use_price_layers
     layer_names = layers.index.get_level_values("price_layer").tolist()
     nrnrs = layers.index.get_level_values("nrnr").tolist()
