@@ -387,3 +387,47 @@ def test_no_price_layer_columns_when_none_in_metadata(supply, use):
     )
     df = inspect_unbalanced_products(sut_plain).data.imbalances
     assert list(df.columns) == ["diff_bas", "rel_bas", "supply_bas", "use_bas", "use_koeb"]
+
+
+# ---------------------------------------------------------------------------
+# Summary table
+# ---------------------------------------------------------------------------
+
+
+def test_summary_shape(sut):
+    summary = inspect_unbalanced_products(sut).data.summary
+    assert summary.shape == (1, 2)
+    assert list(summary.columns) == ["n_unbalanced", "largest_diff"]
+    assert summary.index.name == "table"
+    assert list(summary.index) == ["imbalances"]
+
+
+def test_summary_n_unbalanced(sut):
+    # Default tolerance=1: A (diff=20), C (diff=-30), D (diff=80) are unbalanced
+    summary = inspect_unbalanced_products(sut).data.summary
+    assert summary.loc["imbalances", "n_unbalanced"] == 3
+
+
+def test_summary_largest_diff_is_signed(sut):
+    # D has the largest abs diff (80), and it is positive
+    summary = inspect_unbalanced_products(sut).data.summary
+    assert summary.loc["imbalances", "largest_diff"] == pytest.approx(80.0)
+
+
+def test_summary_largest_diff_signed_negative(sut):
+    # With products=["C"] only C remains (diff=-30); largest_diff should be -30
+    summary = inspect_unbalanced_products(sut, products=["C"]).data.summary
+    assert summary.loc["imbalances", "largest_diff"] == pytest.approx(-30.0)
+
+
+def test_summary_nan_when_all_balanced(sut):
+    # Tolerance=100 excludes all products → largest_diff is NaN
+    summary = inspect_unbalanced_products(sut, tolerance=100).data.summary
+    assert summary.loc["imbalances", "n_unbalanced"] == 0
+    assert np.isnan(summary.loc["imbalances", "largest_diff"])
+
+
+def test_summary_respects_tolerance(sut):
+    # tolerance=25: only C (abs=30) and D (abs=80) remain → n=2
+    summary = inspect_unbalanced_products(sut, tolerance=25).data.summary
+    assert summary.loc["imbalances", "n_unbalanced"] == 2

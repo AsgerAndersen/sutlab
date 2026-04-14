@@ -1545,16 +1545,25 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
     separator is placed after the last main-tables row when a violations block
     follows (i.e. when the table has 8 rows).
 
-    Formats ``n_unbalanced`` as a plain integer (no decimals).
+    Formats ``n_unbalanced`` as a plain integer and ``largest_diff`` as a
+    number with one decimal place. ``NaN`` values are rendered as empty strings.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Summary DataFrame with ``table`` as the index name and
-        ``n_unbalanced`` as the sole column.
+        Summary DataFrame with ``table`` as the index name and columns
+        ``n_unbalanced`` and ``largest_diff``.
     """
+    def _format_cell(v, col):
+        if pd.isna(v):
+            return ""
+        if col == "n_unbalanced":
+            return str(int(v))
+        return f"{v:,.1f}"
+
     styler = df.style.format(
-        lambda v: "" if pd.isna(v) else str(int(v)), na_rep=""
+        {col: (lambda v, c=col: _format_cell(v, c)) for col in df.columns},
+        na_rep="",
     )
 
     if df.empty:
@@ -1562,14 +1571,13 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
 
     n = len(df)
     table_names = df.index.tolist()
-    col_name = df.columns[0]
 
     # Separator after the 4th row (index 3) when a violations block follows.
     separator_row = 3 if n == 8 else None
 
     supply_counter = 0
     use_counter = 0
-    data_css = []
+    data_css_rows = []
     index_css = []
 
     for i, name in enumerate(table_names):
@@ -1589,10 +1597,64 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
             index_bg = _INDEX_COLORS["use"][use_counter % 2]
             use_counter += 1
 
-        data_css.append(f"background-color: {data_bg}{sep}")
+        data_css_rows.append(f"background-color: {data_bg}{sep}")
         index_css.append(f"background-color: {index_bg}{sep}")
 
-    css_df = pd.DataFrame({col_name: data_css}, index=df.index)
+    css_df = pd.DataFrame(
+        {col: data_css_rows for col in df.columns},
+        index=df.index,
+    )
+    styler = styler.apply(lambda d: css_df, axis=None)
+    styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+
+    return styler
+
+
+def _style_unbalanced_products_summary(df: pd.DataFrame) -> Styler:
+    """Apply neutral grey colours to the unbalanced-products summary table.
+
+    Colour scheme:
+
+    - All rows → alternating neutral grey (``balance`` palette, shades 0/1).
+
+    Formats ``n_unbalanced`` as a plain integer and ``largest_diff`` as a
+    number with one decimal place. ``NaN`` values are rendered as empty strings.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary DataFrame with ``table`` as the index name and columns
+        ``n_unbalanced`` and ``largest_diff``.
+    """
+    def _format_cell(v, col):
+        if pd.isna(v):
+            return ""
+        if col == "n_unbalanced":
+            return str(int(v))
+        return f"{v:,.1f}"
+
+    styler = df.style.format(
+        {col: (lambda v, c=col: _format_cell(v, c)) for col in df.columns},
+        na_rep="",
+    )
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    data_css = {
+        col: [
+            f"background-color: {_DATA_COLORS['balance'][i % 2]}"
+            for i in range(n)
+        ]
+        for col in df.columns
+    }
+    index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        for i in range(n)
+    ]
+
+    css_df = pd.DataFrame(data_css, index=df.index)
     styler = styler.apply(lambda d: css_df, axis=None)
     styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
 

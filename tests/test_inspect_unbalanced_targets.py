@@ -39,6 +39,7 @@ With tolerances (transaction-level; categories override 3110/HH):
     use   2000:  diff=-8,  tol=1.6 → violation=-6.4
 """
 
+import numpy as np
 import pytest
 import pandas as pd
 from numpy import nan as NAN
@@ -680,7 +681,7 @@ class TestSummary:
 
     def test_summary_column_name(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol)
-        assert list(result.data.summary.columns) == ["n_unbalanced"]
+        assert list(result.data.summary.columns) == ["n_unbalanced", "largest_diff"]
 
     def test_summary_index_name(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol)
@@ -729,6 +730,33 @@ class TestSummary:
         assert result.data.summary.loc["use_categories_violations", "n_unbalanced"] == len(d.use_categories_violations)
         assert result.data.summary.loc["supply_transactions_violations", "n_unbalanced"] == len(d.supply_transactions_violations)
         assert result.data.summary.loc["use_transactions_violations", "n_unbalanced"] == len(d.use_transactions_violations)
+
+    def test_summary_largest_diff_main_tables(self, sut_no_tol):
+        # supply 0100/X: diff_bas = 300 - 360 = -60 (only unbalanced supply row)
+        # use 3110/HH: diff_koeb = 78 - 90 = -12 (larger abs than 2000/X at -8)
+        result = inspect_unbalanced_targets(sut_no_tol)
+        s = result.data.summary
+        assert s.loc["supply_transactions", "largest_diff"] == pytest.approx(-60.0)
+        assert s.loc["supply_categories", "largest_diff"] == pytest.approx(-60.0)
+        assert s.loc["use_transactions", "largest_diff"] == pytest.approx(-12.0)
+        assert s.loc["use_categories", "largest_diff"] == pytest.approx(-12.0)
+
+    def test_summary_largest_diff_violations(self, sut_with_tol):
+        # Violations tables have non-empty rows; largest_diff should not be NaN.
+        result = inspect_unbalanced_targets(sut_with_tol)
+        s = result.data.summary
+        for row in ["supply_transactions_violations", "supply_categories_violations",
+                    "use_transactions_violations", "use_categories_violations"]:
+            assert not np.isnan(s.loc[row, "largest_diff"]), f"{row} largest_diff is NaN"
+
+    def test_summary_largest_diff_matches_violation_column(self, sut_with_tol):
+        # For violation tables the largest_diff reflects the violation column, not diff.
+        result = inspect_unbalanced_targets(sut_with_tol)
+        d = result.data
+        s = result.data.summary
+        supply_viol = d.supply_categories_violations
+        expected = supply_viol["violation_bas"].loc[supply_viol["violation_bas"].abs().idxmax()]
+        assert s.loc["supply_categories_violations", "largest_diff"] == pytest.approx(expected)
 
     def test_summary_property_returns_styler(self, sut_no_tol):
         from pandas.io.formats.style import Styler

@@ -361,20 +361,37 @@ def inspect_unbalanced_targets(
         supply_transactions_violations = None
         use_transactions_violations = None
 
-    summary_entries = {
-        "supply_transactions": len(supply_transactions),
-        "supply_categories": len(supply_categories),
-        "use_transactions": len(use_transactions),
-        "use_categories": len(use_categories),
+    def _largest_diff(df, col_prefix):
+        """Return the signed value with the largest absolute value in the first
+        column whose name starts with ``col_prefix``. NaN when the table is empty."""
+        matching = [c for c in df.columns if c.startswith(col_prefix)]
+        if not matching or df.empty:
+            return float("nan")
+        col = matching[0]
+        return df[col].loc[df[col].abs().idxmax()]
+
+    supply_diff_col = f"diff_{cols.price_basic}"
+    use_diff_col = f"diff_{cols.price_purchasers}"
+    supply_viol_col_name = f"violation_{cols.price_basic}"
+    use_viol_col_name = f"violation_{cols.price_purchasers}"
+
+    summary_rows = {
+        "supply_transactions": (len(supply_transactions), _largest_diff(supply_transactions, supply_diff_col)),
+        "supply_categories": (len(supply_categories), _largest_diff(supply_categories, supply_diff_col)),
+        "use_transactions": (len(use_transactions), _largest_diff(use_transactions, use_diff_col)),
+        "use_categories": (len(use_categories), _largest_diff(use_categories, use_diff_col)),
     }
     if has_tolerances:
-        summary_entries["supply_transactions_violations"] = len(supply_transactions_violations)
-        summary_entries["supply_categories_violations"] = len(supply_categories_violations)
-        summary_entries["use_transactions_violations"] = len(use_transactions_violations)
-        summary_entries["use_categories_violations"] = len(use_categories_violations)
+        summary_rows["supply_transactions_violations"] = (len(supply_transactions_violations), _largest_diff(supply_transactions_violations, supply_viol_col_name))
+        summary_rows["supply_categories_violations"] = (len(supply_categories_violations), _largest_diff(supply_categories_violations, supply_viol_col_name))
+        summary_rows["use_transactions_violations"] = (len(use_transactions_violations), _largest_diff(use_transactions_violations, use_viol_col_name))
+        summary_rows["use_categories_violations"] = (len(use_categories_violations), _largest_diff(use_categories_violations, use_viol_col_name))
     summary = pd.DataFrame(
-        {"n_unbalanced": list(summary_entries.values())},
-        index=pd.Index(list(summary_entries.keys()), name="table"),
+        {
+            "n_unbalanced": [v[0] for v in summary_rows.values()],
+            "largest_diff": [v[1] for v in summary_rows.values()],
+        },
+        index=pd.Index(list(summary_rows.keys()), name="table"),
     )
 
     return UnbalancedTargetsInspection(
