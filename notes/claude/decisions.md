@@ -833,3 +833,23 @@ Append-only. Each entry: date, decision, brief rationale.
   arguments, and add `_txt` companions only for columns present in the dict. This allowed
   `_set_targets_index` and `_set_targets_layers_index` to be removed (targets now use the
   same generic helpers).
+
+- **2026-04-15**: `compare_dimensions` removed from `inspect_sut_comparison` — not useful in
+  practice. `_resolve_dimension_cols` and `_aggregate_to_dimensions` helpers deleted.
+
+- **2026-04-15**: `diff_tolerance` and `rel_tolerance` in `inspect_sut_comparison` now use AND
+  logic: a row is kept only when `abs(diff) > diff_tolerance` AND `abs(rel) > rel_tolerance`.
+  When `rel_tolerance` is left at its default `inf`, behaviour is unchanged (only diff applies).
+
+- **2026-04-15**: Four new summary tables added to `SUTComparisonData`: `supply_products_summary`,
+  `supply_columns_summary`, `use_products_summary`, `use_columns_summary`. Derived from the
+  already-filtered `data.supply` and `data.use_purchasers` tables respectively. Columns:
+  `n_changes`, `diff_norm` (Euclidean norm of diffs), diff percentile columns, rel percentile
+  columns (NaN rel values excluded). Configurable via `percentiles` argument (default
+  `[0.0, 0.5, 1.0]`). When `sort=True`, sorted descending by `diff_norm`. Index: code columns
+  with interleaved `_txt` companions where available. Styled properties added (green/blue).
+
+- **2026-04-15**: `inspect_sut_comparison` `.summary` table updated: column renamed from
+  `n_differences` to `n_changes`; four new rows added for the summary tables. Block order:
+  base comparison tables → products summaries → columns summaries → balancing targets (optional).
+  Block separators in `_style_summary_table` updated to handle four blocks.
