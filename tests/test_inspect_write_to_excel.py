@@ -583,6 +583,10 @@ def test_write_to_excel_sheet_name_truncation(tmp_path):
         balancing_targets_use_purchasers=None,
         balancing_targets_use_price_layers=None,
         summary=empty,
+        supply_products_summary=empty,
+        supply_columns_summary=empty,
+        use_products_summary=empty,
+        use_columns_summary=empty,
     )
     result = SUTComparisonInspection(data=data)
     path = tmp_path / "out.xlsx"

@@ -211,22 +211,27 @@ def test_diff_tolerance_keeps_large_diffs(before_sut, after_sut):
 
 
 def test_rel_tolerance_filters_small_rel(before_sut, after_sut):
-    # rel for A in supply is ~0.10; rel_tolerance=0.15 is clearly above it — row excluded.
-    # diff_tolerance=999 ensures diff does not trigger either.
+    # diff=10 < diff_tolerance=999 → AND condition fails → row excluded.
     result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=0.15)
     assert len(result.data.supply) == 0
 
 
-def test_rel_tolerance_keeps_large_rel(before_sut, after_sut):
-    # rel_tolerance=0.05 is clearly below rel~0.10 — row kept.
-    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=0.05)
+def test_both_tolerances_exceeded_keeps_row(before_sut, after_sut):
+    # diff=10 > diff_tolerance=5 and rel~0.10 > rel_tolerance=0.05 — both exceeded, row kept.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=5, rel_tolerance=0.05)
     assert len(result.data.supply) == 1
 
 
-def test_either_tolerance_violated_keeps_row(before_sut, after_sut):
-    # diff=10 exceeds diff_tolerance=9 even if rel_tolerance=0.20 is not exceeded.
+def test_only_diff_exceeded_excludes_row(before_sut, after_sut):
+    # diff=10 > diff_tolerance=9 but rel~0.10 < rel_tolerance=0.20 — AND fails, row excluded.
     result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=9, rel_tolerance=0.20)
-    assert len(result.data.supply) == 1
+    assert len(result.data.supply) == 0
+
+
+def test_only_rel_exceeded_excludes_row(before_sut, after_sut):
+    # rel~0.10 > rel_tolerance=0.05 but diff=10 < diff_tolerance=999 — AND fails, row excluded.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=0.05)
+    assert len(result.data.supply) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -880,7 +885,7 @@ def test_summary_index_name(before_sut, after_sut):
 
 def test_summary_column(before_sut, after_sut):
     result = inspect_sut_comparison(before_sut, after_sut)
-    assert list(result.data.summary.columns) == ["n_differences"]
+    assert list(result.data.summary.columns) == ["n_changes"]
 
 
 def test_summary_sut_rows_present(before_sut, after_sut):
@@ -895,10 +900,10 @@ def test_summary_sut_rows_present(before_sut, after_sut):
 def test_summary_correct_counts(before_sut, after_sut):
     result = inspect_sut_comparison(before_sut, after_sut)
     summary = result.data.summary
-    assert summary.loc["supply", "n_differences"] == len(result.data.supply)
-    assert summary.loc["use_basic", "n_differences"] == len(result.data.use_basic)
-    assert summary.loc["use_purchasers", "n_differences"] == len(result.data.use_purchasers)
-    assert summary.loc["use_price_layers", "n_differences"] == len(result.data.use_price_layers)
+    assert summary.loc["supply", "n_changes"] == len(result.data.supply)
+    assert summary.loc["use_basic", "n_changes"] == len(result.data.use_basic)
+    assert summary.loc["use_purchasers", "n_changes"] == len(result.data.use_purchasers)
+    assert summary.loc["use_price_layers", "n_changes"] == len(result.data.use_price_layers)
 
 
 def test_summary_no_target_rows_when_targets_absent(before_sut, after_sut):
@@ -924,8 +929,52 @@ def test_summary_target_rows_present_when_targets_available(
 def test_summary_target_counts_correct(before_sut_with_targets, after_sut_with_targets):
     result = inspect_sut_comparison(before_sut_with_targets, after_sut_with_targets)
     summary = result.data.summary
-    assert summary.loc["balancing_targets_supply", "n_differences"] == len(result.data.balancing_targets_supply)
-    assert summary.loc["balancing_targets_use_price_layers", "n_differences"] == len(result.data.balancing_targets_use_price_layers)
+    assert summary.loc["balancing_targets_supply", "n_changes"] == len(result.data.balancing_targets_supply)
+    assert summary.loc["balancing_targets_use_price_layers", "n_changes"] == len(result.data.balancing_targets_use_price_layers)
+
+
+def test_summary_includes_products_and_columns_rows(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    idx = result.data.summary.index.tolist()
+    assert "supply_products_summary" in idx
+    assert "use_products_summary" in idx
+    assert "supply_columns_summary" in idx
+    assert "use_columns_summary" in idx
+
+
+def test_summary_products_and_columns_counts_correct(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.summary
+    assert summary.loc["supply_products_summary", "n_changes"] == len(result.data.supply_products_summary)
+    assert summary.loc["use_products_summary", "n_changes"] == len(result.data.use_products_summary)
+    assert summary.loc["supply_columns_summary", "n_changes"] == len(result.data.supply_columns_summary)
+    assert summary.loc["use_columns_summary", "n_changes"] == len(result.data.use_columns_summary)
+
+
+def test_summary_block_order(before_sut, after_sut):
+    # Order: base tables → products → columns → (no targets in this fixture).
+    idx = inspect_sut_comparison(before_sut, after_sut).data.summary.index.tolist()
+    sut_rows = {"supply", "use_basic", "use_price_layers", "use_purchasers"}
+    products_rows = {"supply_products_summary", "use_products_summary"}
+    columns_rows = {"supply_columns_summary", "use_columns_summary"}
+    last_sut = max(i for i, name in enumerate(idx) if name in sut_rows)
+    first_products = min(i for i, name in enumerate(idx) if name in products_rows)
+    last_products = max(i for i, name in enumerate(idx) if name in products_rows)
+    first_columns = min(i for i, name in enumerate(idx) if name in columns_rows)
+    assert last_sut < first_products
+    assert last_products < first_columns
+
+
+def test_summary_targets_block_last(before_sut_with_targets, after_sut_with_targets):
+    # Balancing targets block must follow the columns block.
+    idx = inspect_sut_comparison(
+        before_sut_with_targets, after_sut_with_targets
+    ).data.summary.index.tolist()
+    columns_rows = {"supply_columns_summary", "use_columns_summary"}
+    targets_rows = {n for n in idx if n.startswith("balancing_targets_")}
+    last_columns = max(i for i, name in enumerate(idx) if name in columns_rows)
+    first_targets = min(i for i, name in enumerate(idx) if name in targets_rows)
+    assert last_columns < first_targets
 
 
 # ---------------------------------------------------------------------------
@@ -988,3 +1037,202 @@ def test_targets_styled_properties_return_styler_when_present(
     assert isinstance(result.balancing_targets_use_basic, Styler)
     assert isinstance(result.balancing_targets_use_purchasers, Styler)
     assert isinstance(result.balancing_targets_use_price_layers, Styler)
+
+
+# ---------------------------------------------------------------------------
+# Summary tables
+# ---------------------------------------------------------------------------
+#
+# Only A/2021 changed: supply diff_bas=10, use_purchasers diff_koeb=11.
+# One changed row in supply → one row in supply_products_summary (A/2021)
+#                            and one row in supply_columns_summary (P1/X/2021).
+# One changed row in use_purchasers → one row in use_products_summary (A/2021)
+#                                    and one row in use_columns_summary (P2/X/2021).
+# ---------------------------------------------------------------------------
+
+
+def test_supply_products_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.supply_products_summary
+    # Only A/2021 changed — one (year, nrnr) group in supply.
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "nrnr"
+
+
+def test_supply_products_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.supply_products_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 10.0   # sqrt(10^2)
+    assert pytest.approx(row["diff_min"]) == 10.0
+    assert pytest.approx(row["diff_median"]) == 10.0
+    assert pytest.approx(row["diff_max"]) == 10.0
+    assert pytest.approx(row["rel_min"]) == 10.0 / 100.0
+    assert pytest.approx(row["rel_median"]) == 10.0 / 100.0
+    assert pytest.approx(row["rel_max"]) == 10.0 / 100.0
+
+
+def test_supply_columns_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.supply_columns_summary
+    # One changed (year=2021, trans=P1, brch=X) group.
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "trans"
+    assert summary.index.names[2] == "brch"
+
+
+def test_supply_columns_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.supply_columns_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 10.0
+    assert pytest.approx(row["diff_max"]) == 10.0
+
+
+def test_use_products_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.use_products_summary
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "nrnr"
+
+
+def test_use_products_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.use_products_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 11.0   # sqrt(11^2)
+    assert pytest.approx(row["diff_max"]) == 11.0
+    assert pytest.approx(row["rel_max"]) == 11.0 / 104.0
+
+
+def test_use_columns_summary_shape(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    summary = result.data.use_columns_summary
+    assert len(summary) == 1
+    assert summary.index.names[0] == "year"
+    assert summary.index.names[1] == "trans"
+    assert summary.index.names[2] == "brch"
+
+
+def test_use_columns_summary_values(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut)
+    row = result.data.use_columns_summary.iloc[0]
+    assert row["n_changes"] == 1
+    assert pytest.approx(row["diff_norm"]) == 11.0
+    assert pytest.approx(row["diff_max"]) == 11.0
+
+
+def test_summary_empty_when_source_empty(before_sut, after_sut):
+    # diff_tolerance=999 → nothing passes → supply and use_purchasers are empty
+    # → all four summary tables should be empty DataFrames.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=999, rel_tolerance=999)
+    assert len(result.data.supply_products_summary) == 0
+    assert len(result.data.supply_columns_summary) == 0
+    assert len(result.data.use_products_summary) == 0
+    assert len(result.data.use_columns_summary) == 0
+
+
+def test_percentiles_default_includes_min(before_sut, after_sut):
+    # Default percentiles=[0.0, 0.5, 1.0] — all three columns present.
+    result = inspect_sut_comparison(before_sut, after_sut)
+    cols = result.data.supply_products_summary.columns.tolist()
+    assert "diff_min" in cols
+    assert "diff_median" in cols
+    assert "diff_max" in cols
+
+
+def test_percentiles_argument_changes_columns(before_sut, after_sut):
+    result = inspect_sut_comparison(before_sut, after_sut, percentiles=[0.0, 0.75, 1.0])
+    cols = result.data.supply_products_summary.columns.tolist()
+    assert "diff_min" in cols
+    assert "diff_p75" in cols
+    assert "diff_max" in cols
+    assert "rel_min" in cols
+    assert "rel_p75" in cols
+    assert "rel_max" in cols
+    # Median not requested — should not be present.
+    assert "diff_median" not in cols
+
+
+def test_diff_norm_multiple_changes(before_sut, after_sut):
+    # Lower diff_tolerance so both A/2021 (diff=10) and
+    # an extra fictitious change would be captured if we had two rows.
+    # With diff_tolerance=0 both use_basic rows (bas diff=10) and
+    # use_purchasers rows are exposed.  For products summary of supply
+    # there is still only one row (A/2021, diff=10), so norm = 10.
+    result = inspect_sut_comparison(before_sut, after_sut, diff_tolerance=0)
+    supply_prod = result.data.supply_products_summary
+    row_a = supply_prod.loc[(2021, "A")]
+    assert pytest.approx(row_a["diff_norm"]) == 10.0
+
+
+def test_rel_nan_excluded_from_rel_percentiles(cols, metadata):
+    # before bas=0, after bas=10 → rel=NaN (division by zero).
+    # rel percentile columns should be NaN since the only row has NaN rel.
+    supply_before = pd.DataFrame({
+        "year": [2021], "nrnr": ["A"], "trans": ["P1"], "brch": ["X"],
+        "bas": [0.], "koeb": [0.],
+    })
+    supply_after = pd.DataFrame({
+        "year": [2021], "nrnr": ["A"], "trans": ["P1"], "brch": ["X"],
+        "bas": [10.], "koeb": [10.],
+    })
+    use_df = pd.DataFrame(columns=["year", "nrnr", "trans", "brch", "bas", "ava", "moms", "koeb"])
+    sut_a = SUT(price_basis="current_year", supply=supply_before, use=use_df, metadata=metadata)
+    sut_b = SUT(price_basis="current_year", supply=supply_after, use=use_df, metadata=metadata)
+    result = inspect_sut_comparison(sut_a, sut_b, diff_tolerance=0)
+    row = result.data.supply_products_summary.iloc[0]
+    assert pd.isna(row["rel_median"])
+    assert pd.isna(row["rel_max"])
+
+
+def test_summary_tables_styled_properties_return_styler(before_sut, after_sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_sut_comparison(before_sut, after_sut)
+    assert isinstance(result.supply_products_summary, Styler)
+    assert isinstance(result.supply_columns_summary, Styler)
+    assert isinstance(result.use_products_summary, Styler)
+    assert isinstance(result.use_columns_summary, Styler)
+
+
+def test_summary_tables_sorted_by_diff_norm_when_sort_true(before_sut, after_sut, cols, metadata):
+    # Create an after_sut where A/2021 changes by 10 and B/2021 changes by 5
+    # so that with sort=True, A comes first (larger diff_norm).
+    after_supply_two_changes = pd.DataFrame({
+        "year":  [2021, 2021, 2021, 2022, 2022, 2022],
+        "nrnr":  ["A",  "B",  "C",  "A",  "B",  "C"],
+        "trans": ["P1", "P1", "P1", "P1", "P1", "P1"],
+        "brch":  ["X",  "X",  "X",  "X",  "X",  "X"],
+        "bas":   [110., 55.,  80.,  100., 50.,  80.],  # A+10, B+5
+        "koeb":  [110., 55.,  80.,  100., 50.,  80.],
+    })
+    after_use_two_changes = pd.DataFrame({
+        "year":  [2021, 2021, 2021, 2022, 2022, 2022],
+        "nrnr":  ["A",  "B",  "C",  "A",  "B",  "C"],
+        "trans": ["P2", "P2", "P2", "P2", "P2", "P2"],
+        "brch":  ["X",  "X",  "X",  "X",  "X",  "X"],
+        "bas":   [100., 55.,  70.,  90.,  50.,  70.],
+        "ava":   [5.,   3.,   4.,   5.,   3.,   4.],
+        "moms":  [10.,  6.,   8.,   9.,   6.,   8.],
+        "koeb":  [115., 64.,  82.,  104., 59.,  82.],  # A+11, B+5
+    })
+    after_two = SUT(
+        price_basis="current_year",
+        supply=after_supply_two_changes,
+        use=after_use_two_changes,
+        metadata=metadata,
+    )
+    result_sorted = inspect_sut_comparison(before_sut, after_two, sort=True)
+    prod_summary = result_sorted.data.supply_products_summary
+    # With sort=True, A (diff_norm=10) should come before B (diff_norm=5).
+    assert prod_summary.index.get_level_values("nrnr")[0] == "A"
+    assert prod_summary.index.get_level_values("nrnr")[1] == "B"
+    # Without sort, natural groupby order applies (not guaranteed to be A first,
+    # but diff_norm values should still be correct).
+    result_unsorted = inspect_sut_comparison(before_sut, after_two, sort=False)
+    norms = sorted(result_unsorted.data.supply_products_summary["diff_norm"].tolist(), reverse=True)
+    assert pytest.approx(norms[0]) == 10.0
+    assert pytest.approx(norms[1]) == 5.0

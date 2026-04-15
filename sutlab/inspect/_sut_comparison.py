@@ -16,6 +16,7 @@ from sutlab.inspect._style import (
     _style_comparison_table,
     _style_comparison_layers_table,
     _style_summary_table,
+    _style_comparison_summary_table,
 )
 from sutlab.inspect._shared import _write_inspection_to_excel
 
@@ -36,7 +37,7 @@ class SUTComparisonData:
         either SUT. Columns: ``before_{price_basic}``,
         ``after_{price_basic}``, ``diff_{price_basic}``,
         ``rel_{price_basic}``. Only rows where ``abs(diff) > diff_tolerance``
-        or ``abs(rel) > rel_tolerance`` are included; rows that appear in
+        and ``abs(rel) > rel_tolerance`` are included; rows that appear in
         only one SUT are always included unless ``filter_nan_as_zero=True``
         suppresses the NaN-vs-zero cases.
     use_basic : pd.DataFrame
@@ -69,8 +70,26 @@ class SUTComparisonData:
         either SUT has no balancing targets.
     summary : pd.DataFrame
         One row per comparison table. Index is the table name; column is
-        ``n_differences`` (the number of rows in that table). Balancing
+        ``n_changes`` (the number of rows in that table). Balancing
         targets rows are omitted when either SUT has no balancing targets.
+    supply_products_summary : pd.DataFrame
+        One row per (id, product). Columns: ``n_changes``, ``diff_norm``,
+        diff percentile columns (``diff_min``, ``diff_median``, etc.),
+        rel percentile columns (``rel_min``, ``rel_median``, etc.). Derived
+        from the ``supply`` comparison table (basic prices only). Empty when
+        ``supply`` is empty.
+    supply_columns_summary : pd.DataFrame
+        One row per (id, transaction, category). Same column structure as
+        ``supply_products_summary``. Derived from the ``supply`` comparison
+        table.
+    use_products_summary : pd.DataFrame
+        One row per (id, product). Same column structure as
+        ``supply_products_summary``. Derived from the ``use_purchasers``
+        comparison table.
+    use_columns_summary : pd.DataFrame
+        One row per (id, transaction, category). Same column structure as
+        ``supply_products_summary``. Derived from the ``use_purchasers``
+        comparison table.
     """
 
     supply: pd.DataFrame
@@ -82,6 +101,10 @@ class SUTComparisonData:
     balancing_targets_use_purchasers: pd.DataFrame | None
     balancing_targets_use_price_layers: pd.DataFrame | None
     summary: pd.DataFrame
+    supply_products_summary: pd.DataFrame
+    supply_columns_summary: pd.DataFrame
+    use_products_summary: pd.DataFrame
+    use_columns_summary: pd.DataFrame
 
 
 @dataclass
@@ -170,6 +193,26 @@ class SUTComparisonInspection:
         """Styled summary table."""
         return _style_summary_table(self.data.summary)
 
+    @property
+    def supply_products_summary(self) -> Styler:
+        """Styled supply-by-product summary table."""
+        return _style_comparison_summary_table(self.data.supply_products_summary, "supply")
+
+    @property
+    def supply_columns_summary(self) -> Styler:
+        """Styled supply-by-transaction/category summary table."""
+        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply")
+
+    @property
+    def use_products_summary(self) -> Styler:
+        """Styled use-by-product summary table (purchasers' prices)."""
+        return _style_comparison_summary_table(self.data.use_products_summary, "use")
+
+    @property
+    def use_columns_summary(self) -> Styler:
+        """Styled use-by-transaction/category summary table (purchasers' prices)."""
+        return _style_comparison_summary_table(self.data.use_columns_summary, "use")
+
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
 
@@ -198,7 +241,7 @@ def inspect_sut_comparison(
     rel_tolerance: float = float("inf"),
     filter_nan_as_zero: bool = False,
     sort: bool = False,
-    compare_dimensions: str | list[str] | None = None,
+    percentiles: list[float] = [0.0, 0.5, 1.0],
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -226,12 +269,13 @@ def inspect_sut_comparison(
     categories : str, list of str, or None, optional
         Filter by category code. Same pattern syntax as ``ids``.
     diff_tolerance : float, optional
-        Absolute tolerance. A row is included when
-        ``abs(diff) > diff_tolerance``. Default ``1``.
+        Absolute tolerance. Default ``1``.
     rel_tolerance : float, optional
-        Relative tolerance. A row is included when
-        ``abs(rel) > rel_tolerance``. Default ``float("inf")`` (disabled —
-        only ``diff_tolerance`` applies).
+        Relative tolerance. Default ``float("inf")`` (disabled — only
+        ``diff_tolerance`` applies). A row is included when both
+        ``abs(diff) > diff_tolerance`` and ``abs(rel) > rel_tolerance``.
+        Rows present in only one SUT are always included regardless of
+        tolerances.
     filter_nan_as_zero : bool, optional
         When ``True``, rows where one side is ``NaN`` and the other is ``0``
         are excluded from all tables. This suppresses the noise that arises
@@ -243,17 +287,12 @@ def inspect_sut_comparison(
         each id (for ``supply``, ``use_basic``, ``use_purchasers``) or
         within each ``(id, price_layer)`` group (for ``use_price_layers``).
         Default ``False`` preserves natural sort order.
-    compare_dimensions : str, list of str, or None, optional
-        When specified, both SUTs are aggregated over the dimensions not
-        listed here before comparing. Accepted values: ``"product"``,
-        ``"transaction"``, ``"category"`` — one or more. For example,
-        ``["transaction", "category"]`` sums over products so that each
-        row in the output represents a transaction/category total.
-        Filtering (``ids``, ``products``, ``transactions``, ``categories``)
-        is applied first; aggregation follows. ``None`` (the default)
-        performs no aggregation and compares at the full row level.
-        For balancing targets (which have no product dimension),
-        ``"product"`` has no effect.
+    percentiles : list of float, optional
+        Quantiles to compute for the diff and rel columns of the four
+        summary tables. Each value must be in ``[0, 1]``. Special names:
+        ``0`` → ``_min``, ``0.5`` → ``_median``, ``1`` → ``_max``;
+        all others → ``_p{int(p * 100)}`` (e.g. ``0.75`` → ``diff_p75``).
+        Default ``[0.0, 0.5, 1.0]``.
 
     Returns
     -------
@@ -301,33 +340,12 @@ def inspect_sut_comparison(
     # Collect price layer columns present in either SUT's use DataFrame.
     layer_cols = _get_union_price_layer_columns(cols, filtered_before.use, filtered_after.use)
 
-    # Resolve compare_dimensions to actual column names and build key_cols.
-    # None means keep all three dimensions (product, transaction, category).
-    dimension_cols = _resolve_dimension_cols(compare_dimensions, prod_col, trans_col, cat_col)
-    key_cols = [id_col] + dimension_cols
+    key_cols = [id_col, prod_col, trans_col, cat_col]
 
-    # Aggregate supply and use DataFrames when compare_dimensions is specified.
-    supply_price_cols = [price_basic_col]
-    use_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
-
-    if compare_dimensions is not None:
-        before_supply = _aggregate_to_dimensions(
-            filtered_before.supply, key_cols, supply_price_cols
-        )
-        after_supply = _aggregate_to_dimensions(
-            filtered_after.supply, key_cols, supply_price_cols
-        )
-        before_use = _aggregate_to_dimensions(
-            filtered_before.use, key_cols, use_price_cols
-        )
-        after_use = _aggregate_to_dimensions(
-            filtered_after.use, key_cols, use_price_cols
-        )
-    else:
-        before_supply = filtered_before.supply
-        after_supply = filtered_after.supply
-        before_use = filtered_before.use
-        after_use = filtered_after.use
+    before_supply = filtered_before.supply
+    after_supply = filtered_after.supply
+    before_use = filtered_before.use
+    after_use = filtered_after.use
 
     # Build label lookup dicts from classifications (empty dicts when unavailable).
     classifications = before.metadata.classifications
@@ -414,7 +432,6 @@ def inspect_sut_comparison(
             sort=sort,
             trans_names=trans_names,
             cat_names=cat_names,
-            dimension_cols=dimension_cols,
         )
     else:
         targets_supply = None
@@ -428,6 +445,27 @@ def inspect_sut_comparison(
         "use_price_layers": len(use_price_layers_table),
         "use_purchasers": len(use_purchasers_table),
     }
+    # Build the four summary tables from the already-filtered supply and
+    # use_purchasers comparison tables.
+    supply_products_summary = _build_comparison_summary(
+        supply_table, group_cols=[id_col, prod_col], percentiles=percentiles, sort=sort
+    )
+    supply_columns_summary = _build_comparison_summary(
+        supply_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
+    )
+    use_products_summary = _build_comparison_summary(
+        use_purchasers_table, group_cols=[id_col, prod_col], percentiles=percentiles, sort=sort
+    )
+    use_columns_summary = _build_comparison_summary(
+        use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
+    )
+
+    # Summary block order: base tables, products, columns, balancing targets.
+    summary_entries["supply_products_summary"] = len(supply_products_summary)
+    summary_entries["use_products_summary"] = len(use_products_summary)
+    summary_entries["supply_columns_summary"] = len(supply_columns_summary)
+    summary_entries["use_columns_summary"] = len(use_columns_summary)
+
     if targets_supply is not None:
         summary_entries["balancing_targets_supply"] = len(targets_supply)
         summary_entries["balancing_targets_use_basic"] = len(targets_use_basic)
@@ -435,7 +473,7 @@ def inspect_sut_comparison(
         summary_entries["balancing_targets_use_purchasers"] = len(targets_use_purchasers)
 
     summary = pd.DataFrame(
-        {"n_differences": list(summary_entries.values())},
+        {"n_changes": list(summary_entries.values())},
         index=pd.Index(list(summary_entries.keys()), name="table"),
     )
 
@@ -450,6 +488,10 @@ def inspect_sut_comparison(
             balancing_targets_use_purchasers=targets_use_purchasers,
             balancing_targets_use_price_layers=targets_use_price_layers,
             summary=summary,
+            supply_products_summary=supply_products_summary,
+            supply_columns_summary=supply_columns_summary,
+            use_products_summary=use_products_summary,
+            use_columns_summary=use_columns_summary,
         )
     )
 
@@ -457,83 +499,6 @@ def inspect_sut_comparison(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _resolve_dimension_cols(
-    compare_dimensions: str | list[str] | None,
-    prod_col: str,
-    trans_col: str,
-    cat_col: str,
-) -> list[str]:
-    """Map compare_dimensions role strings to actual column names in canonical order.
-
-    Parameters
-    ----------
-    compare_dimensions : str, list of str, or None
-        Role name(s) to keep. ``None`` returns all three columns.
-    prod_col, trans_col, cat_col : str
-        Actual column names from SUTColumns.
-
-    Returns
-    -------
-    list of str
-        Column names corresponding to the requested dimensions, in the
-        canonical order product → transaction → category.
-
-    Raises
-    ------
-    ValueError
-        If any role string is not one of ``"product"``, ``"transaction"``,
-        ``"category"``.
-    """
-    if compare_dimensions is None:
-        return [prod_col, trans_col, cat_col]
-    if isinstance(compare_dimensions, str):
-        compare_dimensions = [compare_dimensions]
-    valid = {"product", "transaction", "category"}
-    invalid = set(compare_dimensions) - valid
-    if invalid:
-        raise ValueError(
-            f"Invalid compare_dimensions value(s): {sorted(invalid)!r}. "
-            f"Valid dimensions: {sorted(valid)}."
-        )
-    role_to_col = {"product": prod_col, "transaction": trans_col, "category": cat_col}
-    # Canonical order: product, transaction, category.
-    return [
-        role_to_col[role]
-        for role in ["product", "transaction", "category"]
-        if role in compare_dimensions
-    ]
-
-
-def _aggregate_to_dimensions(
-    df: pd.DataFrame,
-    key_cols: list[str],
-    price_cols: list[str],
-) -> pd.DataFrame:
-    """Sum price columns, keeping only key_cols as group keys.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Source DataFrame containing key_cols and price_cols.
-    key_cols : list of str
-        Columns to group by (id + kept dimensions).
-    price_cols : list of str
-        Price columns to sum. Columns absent from df are skipped.
-
-    Returns
-    -------
-    pd.DataFrame
-        Aggregated DataFrame with key_cols and available price columns.
-        All-NaN groups produce NaN in the output (``min_count=1``).
-    """
-    available_price_cols = [c for c in price_cols if c in df.columns]
-    return (
-        df.groupby(key_cols, dropna=False)[available_price_cols]
-        .sum(min_count=1)
-        .reset_index()
-    )
 
 
 def _validate_column_structures(before: SUT, after: SUT) -> None:
@@ -690,7 +655,11 @@ def _extract_price_comparison(
     rel = merged_use[src_after] / safe_before - 1
 
     is_one_sided = merged_use["_merge"] != "both"
-    keep = is_one_sided | (diff.abs() > diff_tolerance) | (rel.abs() > rel_tolerance)
+    exceeds_diff = diff.abs() > diff_tolerance
+    if rel_tolerance < float("inf"):
+        keep = is_one_sided | (exceeds_diff & (rel.abs() > rel_tolerance))
+    else:
+        keep = is_one_sided | exceeds_diff
 
     if filter_nan_as_zero:
         nan_vs_zero = (
@@ -744,7 +713,11 @@ def _extract_layers_comparison(
         safe_before = before_vals.replace(0, float("nan"))
         rel = after_vals / safe_before - 1
 
-        keep = is_one_sided | (diff.abs() > diff_tolerance) | (rel.abs() > rel_tolerance)
+        exceeds_diff = diff.abs() > diff_tolerance
+        if rel_tolerance < float("inf"):
+            keep = is_one_sided | (exceeds_diff & (rel.abs() > rel_tolerance))
+        else:
+            keep = is_one_sided | exceeds_diff
 
         if filter_nan_as_zero:
             nan_vs_zero = (
@@ -877,26 +850,20 @@ def _build_targets_comparison(
     sort: bool,
     trans_names: dict[str, str],
     cat_names: dict[str, str],
-    dimension_cols: list[str],
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build the four balancing targets comparison tables.
 
     Returns (targets_supply, targets_use_basic, targets_use_purchasers,
     targets_use_price_layers). Reuses the same merge and extraction helpers
-    as the SUT data comparison. Targets have no product dimension, so
-    ``dimension_cols`` is filtered to exclude the product column before
-    building ``targets_key_cols``.
+    as the SUT data comparison.
     """
     id_col = cols.id
-    prod_col = cols.product
     trans_col = cols.transaction
     cat_col = cols.category
     price_basic_col = cols.price_basic
     price_purchasers_col = cols.price_purchasers
 
-    # Targets have no product dimension; exclude it from the key columns.
-    targets_dimension_cols = [col for col in dimension_cols if col != prod_col]
-    targets_key_cols = [id_col] + targets_dimension_cols
+    targets_key_cols = [id_col, trans_col, cat_col]
 
     names_by_col = {trans_col: trans_names, cat_col: cat_names}
 
@@ -924,25 +891,6 @@ def _build_targets_comparison(
 
     # Collect price layer columns present in either use targets DataFrame.
     layer_cols = _get_union_price_layer_columns(cols, before_targets_use, after_targets_use)
-
-    # Aggregate targets when compare_dimensions excludes transaction or category.
-    # When targets_dimension_cols already covers [trans_col, cat_col] the
-    # groupby is effectively a no-op (rows are unique on those keys).
-    if targets_dimension_cols != [trans_col, cat_col]:
-        supply_target_price_cols = [price_basic_col]
-        use_target_price_cols = [price_basic_col] + layer_cols + [price_purchasers_col]
-        before_targets_supply = _aggregate_to_dimensions(
-            before_targets_supply, targets_key_cols, supply_target_price_cols
-        )
-        after_targets_supply = _aggregate_to_dimensions(
-            after_targets_supply, targets_key_cols, supply_target_price_cols
-        )
-        before_targets_use = _aggregate_to_dimensions(
-            before_targets_use, targets_key_cols, use_target_price_cols
-        )
-        after_targets_use = _aggregate_to_dimensions(
-            after_targets_use, targets_key_cols, use_target_price_cols
-        )
 
     # Supply: one merge on targets_key_cols for price_basic only.
     targets_supply = _build_single_price_comparison(
@@ -1054,6 +1002,137 @@ def _build_transaction_names(classifications, trans_col: str) -> dict[str, str]:
         trans_df[trans_col].astype(str),
         trans_df[trans_txt_col].astype(str),
     ))
+
+
+def _percentile_col_name(prefix: str, p: float) -> str:
+    """Return the column name for a percentile of ``prefix``.
+
+    Special cases: ``0`` → ``{prefix}_min``, ``0.5`` → ``{prefix}_median``,
+    ``1`` → ``{prefix}_max``. All others → ``{prefix}_p{int(p * 100)}``.
+    """
+    if p == 0.0:
+        return f"{prefix}_min"
+    if p == 0.5:
+        return f"{prefix}_median"
+    if p == 1.0:
+        return f"{prefix}_max"
+    return f"{prefix}_p{int(round(p * 100))}"
+
+
+def _build_comparison_summary(
+    df: pd.DataFrame,
+    group_cols: list[str],
+    percentiles: list[float],
+    sort: bool = False,
+) -> pd.DataFrame:
+    """Build a summary table by grouping a comparison table on ``group_cols``.
+
+    Detects the diff column (starts with ``"diff_"``) and rel column (starts
+    with ``"rel_"``) from ``df.columns``. Computes ``n_changes``,
+    ``diff_norm``, diff percentile columns, and rel percentile columns
+    (NaN rel values excluded from quantile computation).
+
+    Text companion columns (``{col}_txt``) for any column in ``group_cols``
+    that are present in ``df``'s index are interleaved into the output index
+    directly after their corresponding code level.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        A comparison table (``supply`` or ``use_purchasers``) with a
+        MultiIndex whose level names include the columns in ``group_cols``,
+        and value columns including ``diff_*`` and ``rel_*``.
+    group_cols : list of str
+        Actual column names to group by (e.g. ``[id_col, prod_col]``).
+    percentiles : list of float
+        Quantile values to compute. Each in ``[0, 1]``.
+    sort : bool, optional
+        When ``True``, rows are sorted by ``diff_norm`` descending.
+        Default ``False``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Summary table with ``group_cols`` (and optional ``_txt`` companions)
+        as the index and ``n_changes``, ``diff_norm``, diff percentile
+        columns, and rel percentile columns as value columns.
+    """
+    diff_col = next((c for c in df.columns if c.startswith("diff_")), None)
+    rel_col = next((c for c in df.columns if c.startswith("rel_")), None)
+
+    if df.empty:
+        # Return an empty DataFrame with the correct index names.
+        index_cols = []
+        for col in group_cols:
+            index_cols.append(col)
+            # We cannot know which _txt companions exist without data,
+            # so just use the code columns.
+        return pd.DataFrame(index=pd.MultiIndex.from_tuples([], names=index_cols)
+                            if len(index_cols) > 1
+                            else pd.Index([], name=index_cols[0]))
+
+    flat = df.reset_index()
+
+    # Detect _txt companions for each group column (only those present in flat).
+    txt_companions = [
+        f"{col}_txt" for col in group_cols if f"{col}_txt" in flat.columns
+    ]
+
+    grouped = flat.groupby(group_cols, dropna=False)
+
+    n_changes = grouped.size().rename("n_changes")
+
+    if diff_col is not None:
+        diff_norm = grouped[diff_col].apply(
+            lambda s: ((s ** 2).sum()) ** 0.5
+        ).rename("diff_norm")
+    else:
+        diff_norm = pd.Series(float("nan"), index=n_changes.index, name="diff_norm")
+
+    parts = [n_changes, diff_norm]
+
+    if diff_col is not None:
+        for p in sorted(set(percentiles)):
+            name = _percentile_col_name("diff", p)
+            parts.append(grouped[diff_col].quantile(p).rename(name))
+
+    if rel_col is not None:
+        flat_rel = flat.dropna(subset=[rel_col])
+        if not flat_rel.empty:
+            grouped_rel = flat_rel.groupby(group_cols, dropna=False)
+            for p in sorted(set(percentiles)):
+                name = _percentile_col_name("rel", p)
+                parts.append(
+                    grouped_rel[rel_col].quantile(p).reindex(n_changes.index).rename(name)
+                )
+        else:
+            for p in sorted(set(percentiles)):
+                name = _percentile_col_name("rel", p)
+                parts.append(pd.Series(float("nan"), index=n_changes.index, name=name))
+
+    result = pd.concat(parts, axis=1)
+
+    # Join _txt companions (first value per group) alongside the stats.
+    if txt_companions:
+        txt_df = flat.groupby(group_cols, dropna=False)[txt_companions].first()
+        result = pd.concat([txt_df, result], axis=1)
+
+    result = result.reset_index()
+
+    # Build the final index with _txt interleaved after each code column.
+    index_cols = []
+    for col in group_cols:
+        index_cols.append(col)
+        txt_col = f"{col}_txt"
+        if txt_col in txt_companions:
+            index_cols.append(txt_col)
+
+    result = result.set_index(index_cols)
+
+    if sort and "diff_norm" in result.columns:
+        result = result.sort_values("diff_norm", ascending=False)
+
+    return result
 
 
 def _build_combined_category_names(classifications, cat_col: str) -> dict[str, str]:
