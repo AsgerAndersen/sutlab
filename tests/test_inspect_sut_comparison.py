@@ -951,20 +951,30 @@ def test_summary_products_and_columns_counts_correct(before_sut, after_sut):
     assert summary.loc["use_columns_summary", "n_changes"] == len(result.data.use_columns_summary)
 
 
-def test_summary_products_block_follows_sut_block(before_sut, after_sut):
-    # Products block rows must appear after all SUT comparison rows.
+def test_summary_block_order(before_sut, after_sut):
+    # Order: base tables → products → columns → (no targets in this fixture).
     idx = inspect_sut_comparison(before_sut, after_sut).data.summary.index.tolist()
     sut_rows = {"supply", "use_basic", "use_price_layers", "use_purchasers"}
+    products_rows = {"supply_products_summary", "use_products_summary"}
+    columns_rows = {"supply_columns_summary", "use_columns_summary"}
     last_sut = max(i for i, name in enumerate(idx) if name in sut_rows)
-    first_products = min(i for i, name in enumerate(idx) if name in {"supply_products_summary", "use_products_summary"})
+    first_products = min(i for i, name in enumerate(idx) if name in products_rows)
+    last_products = max(i for i, name in enumerate(idx) if name in products_rows)
+    first_columns = min(i for i, name in enumerate(idx) if name in columns_rows)
     assert last_sut < first_products
-
-
-def test_summary_columns_block_follows_products_block(before_sut, after_sut):
-    idx = inspect_sut_comparison(before_sut, after_sut).data.summary.index.tolist()
-    last_products = max(i for i, name in enumerate(idx) if name in {"supply_products_summary", "use_products_summary"})
-    first_columns = min(i for i, name in enumerate(idx) if name in {"supply_columns_summary", "use_columns_summary"})
     assert last_products < first_columns
+
+
+def test_summary_targets_block_last(before_sut_with_targets, after_sut_with_targets):
+    # Balancing targets block must follow the columns block.
+    idx = inspect_sut_comparison(
+        before_sut_with_targets, after_sut_with_targets
+    ).data.summary.index.tolist()
+    columns_rows = {"supply_columns_summary", "use_columns_summary"}
+    targets_rows = {n for n in idx if n.startswith("balancing_targets_")}
+    last_columns = max(i for i, name in enumerate(idx) if name in columns_rows)
+    first_targets = min(i for i, name in enumerate(idx) if name in targets_rows)
+    assert last_columns < first_targets
 
 
 # ---------------------------------------------------------------------------

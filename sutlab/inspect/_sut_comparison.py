@@ -445,12 +445,6 @@ def inspect_sut_comparison(
         "use_price_layers": len(use_price_layers_table),
         "use_purchasers": len(use_purchasers_table),
     }
-    if targets_supply is not None:
-        summary_entries["balancing_targets_supply"] = len(targets_supply)
-        summary_entries["balancing_targets_use_basic"] = len(targets_use_basic)
-        summary_entries["balancing_targets_use_price_layers"] = len(targets_use_price_layers)
-        summary_entries["balancing_targets_use_purchasers"] = len(targets_use_purchasers)
-
     # Build the four summary tables from the already-filtered supply and
     # use_purchasers comparison tables.
     supply_products_summary = _build_comparison_summary(
@@ -466,11 +460,17 @@ def inspect_sut_comparison(
         use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
     )
 
-    # Add the products and columns summary row counts as two final blocks.
+    # Summary block order: base tables, products, columns, balancing targets.
     summary_entries["supply_products_summary"] = len(supply_products_summary)
     summary_entries["use_products_summary"] = len(use_products_summary)
     summary_entries["supply_columns_summary"] = len(supply_columns_summary)
     summary_entries["use_columns_summary"] = len(use_columns_summary)
+
+    if targets_supply is not None:
+        summary_entries["balancing_targets_supply"] = len(targets_supply)
+        summary_entries["balancing_targets_use_basic"] = len(targets_use_basic)
+        summary_entries["balancing_targets_use_price_layers"] = len(targets_use_price_layers)
+        summary_entries["balancing_targets_use_purchasers"] = len(targets_use_purchasers)
 
     summary = pd.DataFrame(
         {"n_changes": list(summary_entries.values())},

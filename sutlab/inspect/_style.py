@@ -1613,11 +1613,11 @@ def _style_summary_table(df: pd.DataFrame) -> Styler:
 
     1. SUT comparison block: ``supply``, ``use_basic``, ``use_price_layers``,
        ``use_purchasers``.
-    2. Balancing targets block (optional): ``balancing_targets_*`` rows.
-    3. Products summary block: ``supply_products_summary``,
+    2. Products summary block: ``supply_products_summary``,
        ``use_products_summary``.
-    4. Columns summary block: ``supply_columns_summary``,
+    3. Columns summary block: ``supply_columns_summary``,
        ``use_columns_summary``.
+    4. Balancing targets block (optional): ``balancing_targets_*`` rows.
 
     Formats ``n_changes`` as a plain integer (no decimals).
 
