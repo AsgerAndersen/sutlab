@@ -853,3 +853,25 @@ Append-only. Each entry: date, decision, brief rationale.
   `n_differences` to `n_changes`; four new rows added for the summary tables. Block order:
   base comparison tables → products summaries → columns summaries → balancing targets (optional).
   Block separators in `_style_summary_table` updated to handle four blocks.
+
+- **2026-04-16**: `inspect_aggregates_nominal` designed (not yet implemented). See
+  `notes/claude/inspect_aggregates.md` for full design reference. Key decisions:
+  - Function renamed `inspect_aggregates_nominal` (not `inspect_gdp_nominal`) to leave room
+    for additional aggregate tables in the same inspection object later.
+  - `gdp_decomp` column added to `SUTClassifications.transactions` as an optional extra
+    column. Optional override `gdp_decomp: pd.DataFrame | None` argument (columns:
+    actual transaction col name + `"gdp_decomp"`) overrides the metadata column.
+    Raises informative error if absent from both metadata and argument.
+  - ESA codes drive classification: P1 (output, supply), P2 (intermediate consumption, use,
+    negated), P6 (exports, use), P7 (imports, use, negated), D2121 (import duties, supply).
+    D2121 is supply-side so it cannot appear in the expenditure block's domestic final use.
+  - Product tax rows come from summing price layer columns across all products/use rows
+    (not from transaction rows). Import duties come from D2121 supply rows.
+  - Sign convention: P2 and P7 rows multiplied by −1 explicitly; all others taken as-is.
+  - GDP from production and expenditure will not necessarily agree (SUT may be unbalanced).
+  - Multiple transactions sharing the same `gdp_decomp` value are summed into one row.
+  - Output: `AggregatesNominalInspection` with `.data` holding the GDP DataFrame.
+    Styling deferred. Columns = id values; rows = 2-level MultiIndex (approach, component).
+  - Future `inspect_aggregates_real` will chain-link rows independently (chain-linking is
+    not additive). A shared private helper will define row structure separately from value
+    computation, reused by both nominal and real functions.
