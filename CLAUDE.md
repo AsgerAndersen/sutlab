@@ -124,7 +124,7 @@ SUT with one field updated. Does not mutate the original.
 
 ## Open design questions
 - What other inspection functions are needed beyond `inspect_products`?
-- What is the exact interface for the GDP decomposition argument to inspection functions?
+- GDP decomposition interface settled — see `notes/claude/inspect_aggregates.md`. Styling for `inspect_aggregates_nominal` deferred to next session.
 - What further balancing functions are needed beyond `balance_columns` and `balance_products_use`?
 - `derive.py` scope settled (see decisions.md 2026-03-31). Convert to a package if/when the file grows crowded.
 - What other functions belong in the adjust module (`adjust_multiply`, `adjust_move`)? Full scope unsettled pending user discussions.
