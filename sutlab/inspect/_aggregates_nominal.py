@@ -10,7 +10,6 @@ from pathlib import Path
 import pandas as pd
 
 from sutlab.sut import SUT
-from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._shared import _write_inspection_to_excel
 
 
@@ -355,6 +354,37 @@ def _sum_row_dicts(row_dicts: list[dict], id_values: list) -> dict:
     return total.reindex(id_values).to_dict()
 
 
+def _get_product_tax_columns(cols, use_df: pd.DataFrame) -> list[str]:
+    """Return product tax/subsidy column names in use DataFrame column order.
+
+    Considers only the four tax/subsidy roles on ``SUTColumns``:
+    ``product_taxes``, ``product_subsidies``,
+    ``product_taxes_less_subsidies``, and ``vat``. Margin roles
+    (trade, wholesale, retail, transport) are excluded. Returns only
+    columns that are both mapped (not ``None``) and present in ``use_df``.
+
+    Parameters
+    ----------
+    cols : SUTColumns
+        Column role mapping.
+    use_df : pd.DataFrame
+        Use DataFrame; column order determines the result order.
+
+    Returns
+    -------
+    list of str
+        Actual column names for present product tax/subsidy columns.
+    """
+    tax_roles = {
+        cols.product_taxes,
+        cols.product_subsidies,
+        cols.product_taxes_less_subsidies,
+        cols.vat,
+    }
+    tax_cols_set = {col for col in tax_roles if col is not None}
+    return [col for col in use_df.columns if col in tax_cols_set]
+
+
 def _build_production_rows(
     sut: SUT,
     cols,
@@ -369,7 +399,10 @@ def _build_production_rows(
       1. P1 (output) rows — one per gdp_decomp label, basic prices
       2. P2 (intermediate consumption) rows — purchasers' prices, sign × -1
       3. Gross Value Added (derived sum of rows 1-2)
-      4. One row per price layer column present in use (actual column name)
+      4. One row per present product tax/subsidy column in use — actual column
+         name with first letter capitalised (product_taxes,
+         product_subsidies, product_taxes_less_subsidies, vat roles only;
+         margin columns excluded)
       5. Import duties (if D2121 transactions present) — basic prices
       6. Total product taxes, netto (derived sum of rows 4-5)
       7. GDP (derived: GVA + Total product taxes, netto)
@@ -405,11 +438,11 @@ def _build_production_rows(
     gva_values = _sum_row_dicts([vals for _, vals in p1_rows + p2_rows], id_values)
     rows.append((_LABEL_GVA, gva_values))
 
-    # --- Price layer rows (one per present layer column, actual column name) ---
-    layer_cols = _get_price_layer_columns(cols, sut.use)
+    # --- Product tax/subsidy rows (one per present column, label capitalised) ---
+    tax_layer_cols = _get_product_tax_columns(cols, sut.use)
     tax_component_dicts = []
 
-    for layer_col in layer_cols:
+    for layer_col in tax_layer_cols:
         layer_series = (
             sut.use
             .groupby(id_col, dropna=False)[layer_col]
@@ -417,7 +450,7 @@ def _build_production_rows(
             .reindex(id_values)
         )
         layer_values = layer_series.to_dict()
-        rows.append((layer_col, layer_values))
+        rows.append((layer_col.capitalize(), layer_values))
         tax_component_dicts.append(layer_values)
 
     # --- D2121: Import duties (supply, basic prices, as-is) ---

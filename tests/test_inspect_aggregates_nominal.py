@@ -139,6 +139,8 @@ def test_expenditure_block_present(sut):
 
 
 def test_production_block_row_labels(sut):
+    # ava is wholesale_margins (margin role) → excluded
+    # moms is vat (tax role) → included, first letter capitalised
     result = inspect_aggregates_nominal(sut)
     prod_labels = result.data.gdp.loc["Production"].index.tolist()
     expected = [
@@ -146,8 +148,7 @@ def test_production_block_row_labels(sut):
         "Non-market output",
         "Intermediate consumption",
         "Gross Value Added",
-        "ava",          # actual column name
-        "moms",         # actual column name
+        "Moms",         # vat column, capitalised; ava (margin) excluded
         "Import duties",
         "Total product taxes, netto",
         "GDP",
@@ -214,18 +215,19 @@ def test_production_gva_derived(sut):
     assert row[2022] == pytest.approx(95.7)
 
 
-def test_production_price_layer_ava(sut):
-    # use ava: 2021: 5+2+1=8, 2022: 5.5+2.2+1.1=8.8
+def test_production_margin_column_excluded(sut):
+    # ava is wholesale_margins (margin role) → must not appear in Production block
     result = inspect_aggregates_nominal(sut)
-    row = result.data.gdp.loc[("Production", "ava")]
-    assert row[2021] == pytest.approx(8.0)
-    assert row[2022] == pytest.approx(8.8)
+    prod_labels = result.data.gdp.loc["Production"].index.tolist()
+    assert "ava" not in prod_labels
+    assert "Ava" not in prod_labels
 
 
-def test_production_price_layer_moms(sut):
+def test_production_vat_column_capitalised(sut):
+    # moms is vat role → included as "Moms"
     # use moms: 2021: 8+4+2=14, 2022: 8.8+4.4+2.2=15.4
     result = inspect_aggregates_nominal(sut)
-    row = result.data.gdp.loc[("Production", "moms")]
+    row = result.data.gdp.loc[("Production", "Moms")]
     assert row[2021] == pytest.approx(14.0)
     assert row[2022] == pytest.approx(15.4)
 
@@ -239,19 +241,20 @@ def test_production_import_duties(sut):
 
 
 def test_production_total_product_taxes(sut):
-    # ava + moms + import duties: 2021: 8+14+10=32, 2022: 8.8+15.4+11=35.2
+    # moms (vat) + import duties only; ava (margin) excluded
+    # 2021: 14+10=24, 2022: 15.4+11=26.4
     result = inspect_aggregates_nominal(sut)
     row = result.data.gdp.loc[("Production", "Total product taxes, netto")]
-    assert row[2021] == pytest.approx(32.0)
-    assert row[2022] == pytest.approx(35.2)
+    assert row[2021] == pytest.approx(24.0)
+    assert row[2022] == pytest.approx(26.4)
 
 
 def test_production_gdp(sut):
-    # GDP = GVA + Total taxes: 2021: 87+32=119, 2022: 95.7+35.2=130.9
+    # GDP = GVA + Total taxes: 2021: 87+24=111, 2022: 95.7+26.4=122.1
     result = inspect_aggregates_nominal(sut)
     row = result.data.gdp.loc[("Production", "GDP")]
-    assert row[2021] == pytest.approx(119.0)
-    assert row[2022] == pytest.approx(130.9)
+    assert row[2021] == pytest.approx(111.0)
+    assert row[2022] == pytest.approx(122.1)
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +484,9 @@ def test_no_price_layer_rows_when_no_layer_columns(supply, transactions_df):
     )
     result = inspect_aggregates_nominal(sut_no_layers)
     prod_labels = result.data.gdp.loc["Production"].index.tolist()
-    # No ava or moms rows; Import duties still present because D2121 is in trans
-    assert "ava" not in prod_labels
-    assert "moms" not in prod_labels
-    # Total product taxes row = import duties only
+    # No tax/subsidy columns mapped → no tax layer rows
+    assert "Moms" not in prod_labels
+    # Import duties still present because D2121 is in trans classification
     assert "Total product taxes, netto" in prod_labels
 
 
