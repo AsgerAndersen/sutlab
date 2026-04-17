@@ -22,6 +22,7 @@ _LABEL_GVA = "Gross Value Added"
 _LABEL_IMPORT_DUTIES = "Import duties"
 _LABEL_TOTAL_PRODUCT_TAXES = "Total product taxes, netto"
 _LABEL_GDP = "GDP"
+_BALANCE_BLOCK = "Balance"
 _LABEL_DOMESTIC_FINAL_EXPENDITURE = "Domestic final expenditure"
 _LABEL_EXPORT_NETTO = "Export, netto"
 
@@ -164,12 +165,19 @@ def inspect_aggregates_nominal(
     production_rows = _build_production_rows(sut, cols, trans_info, trans_col, id_col, id_values)
     expenditure_rows = _build_expenditure_rows(sut, cols, trans_info, trans_col, id_col, id_values)
 
+    # --- Balance row: GDP (production) - GDP (expenditure) ---
+    prod_gdp = dict(next(vals for label, vals in production_rows if label == _LABEL_GDP))
+    exp_gdp = dict(next(vals for label, vals in expenditure_rows if label == _LABEL_GDP))
+    balance_values = {id_val: prod_gdp.get(id_val, float("nan")) - exp_gdp.get(id_val, float("nan"))
+                      for id_val in id_values}
+
     # --- Assemble into final DataFrame ---
     index_tuples = (
         [(_PRODUCTION_BLOCK, label) for label, _ in production_rows] +
-        [(_EXPENDITURE_BLOCK, label) for label, _ in expenditure_rows]
+        [(_EXPENDITURE_BLOCK, label) for label, _ in expenditure_rows] +
+        [(_BALANCE_BLOCK, _LABEL_GDP)]
     )
-    data_rows = [values for _, values in production_rows + expenditure_rows]
+    data_rows = [values for _, values in production_rows + expenditure_rows] + [balance_values]
 
     index = pd.MultiIndex.from_tuples(index_tuples)
     gdp_df = pd.DataFrame(data_rows, index=index, columns=id_values)

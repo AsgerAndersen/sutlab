@@ -335,6 +335,34 @@ def test_gdp_production_and_expenditure_can_differ(sut):
 
 
 # ---------------------------------------------------------------------------
+# Balance block
+# ---------------------------------------------------------------------------
+
+
+def test_balance_block_present(sut):
+    result = inspect_aggregates_nominal(sut)
+    blocks = result.data.gdp.index.get_level_values(0).unique().tolist()
+    assert "Balance" in blocks
+
+
+def test_balance_block_contains_single_gdp_row(sut):
+    result = inspect_aggregates_nominal(sut)
+    balance_labels = result.data.gdp.loc["Balance"].index.tolist()
+    assert balance_labels == ["GDP"]
+
+
+def test_balance_gdp_is_production_minus_expenditure(sut):
+    # Production GDP: 2021=111, 2022=122.1; Expenditure GDP: 2021=9, 2022=10.9
+    # Balance: 2021=102, 2022=111.2
+    result = inspect_aggregates_nominal(sut)
+    balance = result.data.gdp.loc[("Balance", "GDP")]
+    prod_gdp = result.data.gdp.loc[("Production", "GDP")]
+    exp_gdp = result.data.gdp.loc[("Expenditure", "GDP")]
+    assert balance[2021] == pytest.approx(prod_gdp[2021] - exp_gdp[2021])
+    assert balance[2022] == pytest.approx(prod_gdp[2022] - exp_gdp[2022])
+
+
+# ---------------------------------------------------------------------------
 # gdp_decomp override
 # ---------------------------------------------------------------------------
 
