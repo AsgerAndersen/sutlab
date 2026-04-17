@@ -15,6 +15,7 @@ from sutlab.inspect._shared import _sort_by_id_value, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
+    _make_number_formatter,
     _style_balance_table,
     _style_detail_table,
     _style_price_layers_table,
@@ -191,18 +192,19 @@ class ProductInspection:
     """
 
     data: ProductInspectionData
+    display_unit: float | None = None
 
     @property
     def balance(self) -> Styler:
-        return _style_balance_table(self.data.balance, _format_number)
+        return _style_balance_table(self.data.balance, _make_number_formatter(self.display_unit))
 
     @property
     def supply_products(self) -> Styler:
-        return _style_detail_table(self.data.supply_products, _format_number, "supply")
+        return _style_detail_table(self.data.supply_products, _make_number_formatter(self.display_unit), "supply")
 
     @property
     def use_products(self) -> Styler:
-        return _style_detail_table(self.data.use_products, _format_number, "use")
+        return _style_detail_table(self.data.use_products, _make_number_formatter(self.display_unit), "use")
 
     @property
     def balance_distribution(self) -> Styler:
@@ -230,7 +232,7 @@ class ProductInspection:
 
     @property
     def price_layers(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers, _format_number)
+        return _style_price_layers_table(self.data.price_layers, _make_number_formatter(self.display_unit))
 
     @property
     def price_layers_distribution(self) -> Styler:
@@ -257,7 +259,7 @@ class ProductInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def inspect_products(
@@ -265,6 +267,7 @@ def inspect_products(
     products: str | list[str],
     ids=None,
     sort_id=None,
+    display_unit: float | None = None,
 ) -> ProductInspection:
     """
     Return inspection tables for one or more products.
@@ -466,7 +469,7 @@ def inspect_products(
         price_layers_growth=price_layers_growth,
         price_layers_rates=price_layers_rates,
     )
-    return ProductInspection(data=data)
+    return ProductInspection(data=data, display_unit=display_unit)
 
 
 def _build_category_names_by_trans(

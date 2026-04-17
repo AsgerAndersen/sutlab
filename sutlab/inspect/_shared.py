@@ -112,6 +112,7 @@ def _apply_number_formats(
     ws,
     df: pd.DataFrame,
     field_name: str,
+    display_unit: float | None = None,
 ) -> None:
     """Apply Excel number formats to the data cells of a written worksheet.
 
@@ -163,6 +164,8 @@ def _apply_number_formats(
                 cell.number_format = _EXCEL_PERCENTAGE_FORMAT
             else:
                 cell.number_format = _EXCEL_NUMBER_FORMAT
+                if display_unit is not None:
+                    cell.value = cell.value / display_unit
 
 
 def _apply_bold_headers(ws, df: pd.DataFrame) -> None:
@@ -230,7 +233,7 @@ def _fit_index_column_widths(ws, n_index_cols: int) -> None:
         ws.column_dimensions[col_letter].width = max_len + 2
 
 
-def _write_inspection_to_excel(inspection_obj: Any, path: str | Path) -> None:
+def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None) -> None:
     """Write all non-None tables in an inspection result to an Excel file.
 
     Each field on ``inspection_obj.data`` that holds a
@@ -285,4 +288,4 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path) -> None:
             _apply_bold_headers(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
-            _apply_number_formats(ws, raw, f.name)
+            _apply_number_formats(ws, raw, f.name, display_unit)

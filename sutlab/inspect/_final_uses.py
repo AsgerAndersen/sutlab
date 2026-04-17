@@ -17,6 +17,7 @@ from sutlab.inspect._shared import _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
+    _make_number_formatter,
     _style_final_use_use_table,
     _style_final_use_use_categories_table,
     _style_final_use_use_products_table,
@@ -114,11 +115,12 @@ class FinalUseInspection:
     """
 
     data: FinalUseInspectionData
+    display_unit: float | None = None
 
     @property
     def use(self) -> Styler:
         """Styled transaction-level use table for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use, _format_number)
+        return _style_final_use_use_table(self.data.use, _make_number_formatter(self.display_unit))
 
     @property
     def use_distribution(self) -> Styler:
@@ -133,7 +135,7 @@ class FinalUseInspection:
     @property
     def use_categories(self) -> Styler:
         """Styled use table (by transaction+category) for display in a Jupyter notebook."""
-        return _style_final_use_use_categories_table(self.data.use_categories, _format_number)
+        return _style_final_use_use_categories_table(self.data.use_categories, _make_number_formatter(self.display_unit))
 
     @property
     def use_categories_distribution(self) -> Styler:
@@ -152,7 +154,7 @@ class FinalUseInspection:
     @property
     def use_products(self) -> Styler:
         """Styled use-detail table (with product breakdown) for display in a Jupyter notebook."""
-        return _style_final_use_use_products_table(self.data.use_products, _format_number)
+        return _style_final_use_use_products_table(self.data.use_products, _make_number_formatter(self.display_unit))
 
     @property
     def use_products_distribution(self) -> Styler:
@@ -171,7 +173,7 @@ class FinalUseInspection:
     @property
     def price_layers(self) -> Styler:
         """Styled price layer decomposition table for display in a Jupyter notebook."""
-        return _style_final_use_price_layers_table(self.data.price_layers, _format_number)
+        return _style_final_use_price_layers_table(self.data.price_layers, _make_number_formatter(self.display_unit))
 
     @property
     def price_layers_rates(self) -> Styler:
@@ -207,7 +209,7 @@ class FinalUseInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def inspect_final_uses(
@@ -217,6 +219,7 @@ def inspect_final_uses(
     categories: str | list[str] | None = None,
     ids=None,
     sort_id=None,
+    display_unit: float | None = None,
 ) -> FinalUseInspection:
     """
     Return inspection tables for one or more final use transactions.
@@ -475,7 +478,7 @@ def inspect_final_uses(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return FinalUseInspection(data=data)
+    return FinalUseInspection(data=data, display_unit=display_unit)
 
 
 # ---------------------------------------------------------------------------

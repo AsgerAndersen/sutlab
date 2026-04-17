@@ -17,6 +17,7 @@ from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
+    _make_number_formatter,
     _style_detail_table,
     _style_industry_balance_table,
     _style_price_layers_table,
@@ -212,18 +213,19 @@ class IndustryInspection:
     data: IndustryInspectionData
     # P1 transaction codes — used by the balance property for colour assignment.
     _p1_trans: frozenset = field(default_factory=frozenset, repr=False)
+    display_unit: float | None = None
 
     @property
     def balance(self) -> Styler:
         """Styled industry balance table for display in a Jupyter notebook."""
-        return _style_industry_balance_table(self.data.balance, self._p1_trans)
+        return _style_industry_balance_table(self.data.balance, self._p1_trans, display_unit=self.display_unit)
 
     @property
     def supply_products(self) -> Styler:
         """Styled product breakdown of industry output for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.supply_products,
-            _format_number,
+            _make_number_formatter(self.display_unit),
             "supply",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -263,6 +265,7 @@ class IndustryInspection:
         return _style_products_summary_table(
             self.data.supply_products_summary,
             "supply",
+            self.display_unit,
         )
 
     @property
@@ -270,7 +273,7 @@ class IndustryInspection:
         """Styled product breakdown of industry input for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.use_products,
-            _format_number,
+            _make_number_formatter(self.display_unit),
             "use",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -323,6 +326,7 @@ class IndustryInspection:
         return _style_products_summary_table(
             self.data.use_products_summary,
             "use",
+            self.display_unit,
         )
 
     @property
@@ -330,7 +334,7 @@ class IndustryInspection:
         """Styled price layer breakdown of industry input for display in a Jupyter notebook."""
         return _style_price_layers_table(
             self.data.price_layers,
-            _format_number,
+            _make_number_formatter(self.display_unit),
             outer_level="industry",
             outer_txt_level="industry_txt",
         )
@@ -463,7 +467,7 @@ class IndustryInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def _keep_products_by_index(
@@ -552,7 +556,7 @@ def _apply_products_filter(
         price_layers_distribution=d.price_layers_distribution,
         price_layers_growth=d.price_layers_growth,
     )
-    return IndustryInspection(data=new_data, _p1_trans=inspection._p1_trans)
+    return IndustryInspection(data=new_data, _p1_trans=inspection._p1_trans, display_unit=inspection.display_unit)
 
 
 def _n_largest_keep_index(products_table: pd.DataFrame, n: int, id_val) -> pd.Index:
@@ -690,6 +694,7 @@ def inspect_industries(
     *,
     percentiles: list[float] = None,
     coverage_thresholds: list[float] = None,
+    display_unit: float | None = None,
 ) -> IndustryInspection:
     """
     Return inspection tables for one or more industries.
@@ -960,7 +965,7 @@ def inspect_industries(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans))
+    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans), display_unit=display_unit)
 
 
 def _build_industry_balance_table(

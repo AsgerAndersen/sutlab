@@ -96,18 +96,19 @@ class UnbalancedTargetsInspection:
     """
 
     data: UnbalancedTargetsData
+    display_unit: float | None = None
 
     def _supply_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a supply-side targets table."""
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply")
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=self.display_unit)
 
     def _use_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a use-side targets table."""
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use")
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=self.display_unit)
 
     @property
     def supply_categories(self) -> Styler:
@@ -160,7 +161,7 @@ class UnbalancedTargetsInspection:
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_targets_summary(self.data.summary)
+        return _style_unbalanced_targets_summary(self.data.summary, display_unit=self.display_unit)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -175,7 +176,7 @@ class UnbalancedTargetsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def inspect_unbalanced_targets(
@@ -183,6 +184,7 @@ def inspect_unbalanced_targets(
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
     sort: bool = False,
+    display_unit: float | None = None,
 ) -> UnbalancedTargetsInspection:
     """
     Return supply and use column totals compared against balancing targets,
@@ -405,7 +407,8 @@ def inspect_unbalanced_targets(
             supply_transactions_violations=supply_transactions_violations,
             use_transactions_violations=use_transactions_violations,
             summary=summary,
-        )
+        ),
+        display_unit=display_unit,
     )
 
 

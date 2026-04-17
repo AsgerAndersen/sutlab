@@ -63,6 +63,7 @@ class AggregatesNominalInspection:
     """
 
     data: AggregatesNominalData
+    display_unit: float | None = None
 
     def write_to_excel(self, path: str | Path) -> None:
         """Write the inspection tables to an Excel file.
@@ -72,12 +73,13 @@ class AggregatesNominalInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def inspect_aggregates_nominal(
     sut: SUT,
     gdp_decomp: pd.DataFrame | None = None,
+    display_unit: float | None = None,
 ) -> AggregatesNominalInspection:
     """
     Build a nominal GDP decomposition table from a supply-use table.
@@ -172,7 +174,7 @@ def inspect_aggregates_nominal(
     index = pd.MultiIndex.from_tuples(index_tuples)
     gdp_df = pd.DataFrame(data_rows, index=index, columns=id_values)
 
-    return AggregatesNominalInspection(data=AggregatesNominalData(gdp=gdp_df))
+    return AggregatesNominalInspection(data=AggregatesNominalData(gdp=gdp_df), display_unit=display_unit)
 
 
 # ---------------------------------------------------------------------------

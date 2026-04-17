@@ -72,6 +72,7 @@ class UnbalancedProductsInspection:
     """
 
     data: UnbalancedProductsData
+    display_unit: float | None = None
 
     @property
     def imbalances(self) -> Styler:
@@ -81,12 +82,12 @@ class UnbalancedProductsInspection:
         use_cols = [c for c in df.columns if c.startswith("use_")]
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
-        return _style_imbalances_table(df, supply_cols, use_cols, rel_col)
+        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_products_summary(self.data.summary)
+        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -101,7 +102,7 @@ class UnbalancedProductsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def inspect_unbalanced_products(
@@ -109,6 +110,7 @@ def inspect_unbalanced_products(
     products: str | list[str] | None = None,
     sort: bool = False,
     tolerance: float = 1,
+    display_unit: float | None = None,
 ) -> UnbalancedProductsInspection:
     """
     Return an imbalances table for products in the active balancing member.
@@ -303,5 +305,6 @@ def inspect_unbalanced_products(
     )
 
     return UnbalancedProductsInspection(
-        data=UnbalancedProductsData(imbalances=result, summary=summary)
+        data=UnbalancedProductsData(imbalances=result, summary=summary),
+        display_unit=display_unit,
     )

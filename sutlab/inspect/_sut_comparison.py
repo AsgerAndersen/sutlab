@@ -130,6 +130,7 @@ class SUTComparisonInspection:
     """
 
     data: SUTComparisonData
+    display_unit: float | None = None
 
     def _rel_col(self, df: pd.DataFrame) -> str:
         return next((c for c in df.columns if c.startswith("rel_")), "")
@@ -138,24 +139,24 @@ class SUTComparisonInspection:
     def supply(self) -> Styler:
         """Styled supply comparison table."""
         df = self.data.supply
-        return _style_comparison_table(df, "supply", self._rel_col(df))
+        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit)
 
     @property
     def use_basic(self) -> Styler:
         """Styled use at basic prices comparison table."""
         df = self.data.use_basic
-        return _style_comparison_table(df, "use", self._rel_col(df))
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit)
 
     @property
     def use_purchasers(self) -> Styler:
         """Styled use at purchasers' prices comparison table."""
         df = self.data.use_purchasers
-        return _style_comparison_table(df, "use", self._rel_col(df))
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit)
 
     @property
     def use_price_layers(self) -> Styler:
         """Styled price layers comparison table."""
-        return _style_comparison_layers_table(self.data.use_price_layers)
+        return _style_comparison_layers_table(self.data.use_price_layers, display_unit=self.display_unit)
 
     @property
     def balancing_targets_supply(self) -> Styler | None:
@@ -163,7 +164,7 @@ class SUTComparisonInspection:
         if self.data.balancing_targets_supply is None:
             return None
         df = self.data.balancing_targets_supply
-        return _style_comparison_table(df, "supply", self._rel_col(df))
+        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit)
 
     @property
     def balancing_targets_use_basic(self) -> Styler | None:
@@ -171,7 +172,7 @@ class SUTComparisonInspection:
         if self.data.balancing_targets_use_basic is None:
             return None
         df = self.data.balancing_targets_use_basic
-        return _style_comparison_table(df, "use", self._rel_col(df))
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit)
 
     @property
     def balancing_targets_use_purchasers(self) -> Styler | None:
@@ -179,14 +180,14 @@ class SUTComparisonInspection:
         if self.data.balancing_targets_use_purchasers is None:
             return None
         df = self.data.balancing_targets_use_purchasers
-        return _style_comparison_table(df, "use", self._rel_col(df))
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit)
 
     @property
     def balancing_targets_use_price_layers(self) -> Styler | None:
         """Styled use balancing targets price layers comparison table, or None."""
         if self.data.balancing_targets_use_price_layers is None:
             return None
-        return _style_comparison_layers_table(self.data.balancing_targets_use_price_layers)
+        return _style_comparison_layers_table(self.data.balancing_targets_use_price_layers, display_unit=self.display_unit)
 
     @property
     def summary(self) -> Styler:
@@ -196,22 +197,22 @@ class SUTComparisonInspection:
     @property
     def supply_products_summary(self) -> Styler:
         """Styled supply-by-product summary table."""
-        return _style_comparison_summary_table(self.data.supply_products_summary, "supply")
+        return _style_comparison_summary_table(self.data.supply_products_summary, "supply", display_unit=self.display_unit)
 
     @property
     def supply_columns_summary(self) -> Styler:
         """Styled supply-by-transaction/category summary table."""
-        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply")
+        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply", display_unit=self.display_unit)
 
     @property
     def use_products_summary(self) -> Styler:
         """Styled use-by-product summary table (purchasers' prices)."""
-        return _style_comparison_summary_table(self.data.use_products_summary, "use")
+        return _style_comparison_summary_table(self.data.use_products_summary, "use", display_unit=self.display_unit)
 
     @property
     def use_columns_summary(self) -> Styler:
         """Styled use-by-transaction/category summary table (purchasers' prices)."""
-        return _style_comparison_summary_table(self.data.use_columns_summary, "use")
+        return _style_comparison_summary_table(self.data.use_columns_summary, "use", display_unit=self.display_unit)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -226,7 +227,7 @@ class SUTComparisonInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit)
 
 
 def inspect_sut_comparison(
@@ -242,6 +243,7 @@ def inspect_sut_comparison(
     filter_nan_as_zero: bool = False,
     sort: bool = False,
     percentiles: list[float] = [0.0, 0.5, 1.0],
+    display_unit: float | None = None,
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -492,7 +494,8 @@ def inspect_sut_comparison(
             supply_columns_summary=supply_columns_summary,
             use_products_summary=use_products_summary,
             use_columns_summary=use_columns_summary,
-        )
+        ),
+        display_unit=display_unit,
     )
 
 
