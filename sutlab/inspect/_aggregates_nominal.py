@@ -69,6 +69,7 @@ class AggregatesNominalInspection:
 
     data: AggregatesNominalData
     display_unit: float | None = None
+    rel_base: int = 100
 
     @property
     def gdp(self) -> Styler:
@@ -83,11 +84,40 @@ class AggregatesNominalInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
 
     def set_display_unit(self, display_unit: float | None) -> "AggregatesNominalInspection":
-        """Return a copy with ``display_unit`` set to the given value."""
+        """Return a copy with ``display_unit`` set to the given value.
+
+        Parameters
+        ----------
+        display_unit : float or None
+            Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
+            disables division.
+        """
+        if display_unit is not None:
+            import math
+            log = math.log10(display_unit) if display_unit > 0 else float("nan")
+            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
+                raise ValueError(
+                    f"display_unit must be a positive power of 10 "
+                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
+                )
         return dataclasses.replace(self, display_unit=display_unit)
+
+    def set_rel_base(self, rel_base: int) -> "AggregatesNominalInspection":
+        """Return a copy with ``rel_base`` set to the given value.
+
+        Parameters
+        ----------
+        rel_base : int
+            Must be 100, 1000, or 10000.
+        """
+        if rel_base not in (100, 1000, 10000):
+            raise ValueError(
+                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
+            )
+        return dataclasses.replace(self, rel_base=rel_base)
 
 
 def inspect_aggregates_nominal(

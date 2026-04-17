@@ -17,6 +17,7 @@ from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
     _make_number_formatter,
+    _make_percentage_formatter,
     _style_balance_table,
     _style_detail_table,
     _style_price_layers_table,
@@ -194,6 +195,7 @@ class ProductInspection:
 
     data: ProductInspectionData
     display_unit: float | None = None
+    rel_base: int = 100
 
     @property
     def balance(self) -> Styler:
@@ -209,27 +211,27 @@ class ProductInspection:
 
     @property
     def balance_distribution(self) -> Styler:
-        return _style_balance_table(self.data.balance_distribution, _format_percentage)
+        return _style_balance_table(self.data.balance_distribution, _make_percentage_formatter(self.rel_base))
 
     @property
     def supply_products_distribution(self) -> Styler:
-        return _style_detail_table(self.data.supply_products_distribution, _format_percentage, "supply")
+        return _style_detail_table(self.data.supply_products_distribution, _make_percentage_formatter(self.rel_base), "supply")
 
     @property
     def use_products_distribution(self) -> Styler:
-        return _style_detail_table(self.data.use_products_distribution, _format_percentage, "use")
+        return _style_detail_table(self.data.use_products_distribution, _make_percentage_formatter(self.rel_base), "use")
 
     @property
     def balance_growth(self) -> Styler:
-        return _style_balance_table(self.data.balance_growth, _format_percentage)
+        return _style_balance_table(self.data.balance_growth, _make_percentage_formatter(self.rel_base))
 
     @property
     def supply_products_growth(self) -> Styler:
-        return _style_detail_table(self.data.supply_products_growth, _format_percentage, "supply")
+        return _style_detail_table(self.data.supply_products_growth, _make_percentage_formatter(self.rel_base), "supply")
 
     @property
     def use_products_growth(self) -> Styler:
-        return _style_detail_table(self.data.use_products_growth, _format_percentage, "use")
+        return _style_detail_table(self.data.use_products_growth, _make_percentage_formatter(self.rel_base), "use")
 
     @property
     def price_layers(self) -> Styler:
@@ -237,15 +239,15 @@ class ProductInspection:
 
     @property
     def price_layers_distribution(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_distribution, _format_percentage)
+        return _style_price_layers_table(self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base))
 
     @property
     def price_layers_growth(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_growth, _format_percentage)
+        return _style_price_layers_table(self.data.price_layers_growth, _make_percentage_formatter(self.rel_base))
 
     @property
     def price_layers_rates(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_rates, _format_percentage)
+        return _style_price_layers_table(self.data.price_layers_rates, _make_percentage_formatter(self.rel_base))
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -260,11 +262,40 @@ class ProductInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
 
     def set_display_unit(self, display_unit: float | None) -> "ProductInspection":
-        """Return a copy with ``display_unit`` set to the given value."""
+        """Return a copy with ``display_unit`` set to the given value.
+
+        Parameters
+        ----------
+        display_unit : float or None
+            Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
+            disables division.
+        """
+        if display_unit is not None:
+            import math
+            log = math.log10(display_unit) if display_unit > 0 else float("nan")
+            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
+                raise ValueError(
+                    f"display_unit must be a positive power of 10 "
+                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
+                )
         return dataclasses.replace(self, display_unit=display_unit)
+
+    def set_rel_base(self, rel_base: int) -> "ProductInspection":
+        """Return a copy with ``rel_base`` set to the given value.
+
+        Parameters
+        ----------
+        rel_base : int
+            Must be 100, 1000, or 10000.
+        """
+        if rel_base not in (100, 1000, 10000):
+            raise ValueError(
+                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
+            )
+        return dataclasses.replace(self, rel_base=rel_base)
 
 
 def inspect_products(
