@@ -22,6 +22,33 @@ def _format_number(value: float) -> str:
     return formatted.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
+def _make_number_formatter(display_unit: float | None):
+    """Return a number formatter that divides by ``display_unit`` before formatting.
+
+    When ``display_unit`` is ``None`` returns :func:`_format_number` unchanged.
+    When set, returns a wrapper that divides the value by ``display_unit``
+    before passing it to :func:`_format_number`.
+
+    Parameters
+    ----------
+    display_unit : float or None
+        Divisor applied to every value before formatting. ``None`` means
+        no division.
+
+    Returns
+    -------
+    callable
+        A function with the same signature as :func:`_format_number`.
+    """
+    if display_unit is None:
+        return _format_number
+    def _fmt(value: float) -> str:
+        if pd.isna(value):
+            return ""
+        return _format_number(value / display_unit)
+    return _fmt
+
+
 def _format_percentage(value: float) -> str:
     """Format a fraction as a European-style percentage string with two decimals.
 
@@ -30,6 +57,34 @@ def _format_percentage(value: float) -> str:
     if pd.isna(value):
         return ""
     return f"{value * 100:.1f}".replace(".", ",") + "%"
+
+
+# Maps rel_base to its display symbol.
+_REL_BASE_SYMBOLS = {100: "%", 1000: "‰", 10000: "‱"}
+
+
+def _make_percentage_formatter(rel_base: int = 100):
+    """Return a percentage formatter for the given relative base.
+
+    Multiplies the fraction value by ``rel_base`` and appends the
+    corresponding symbol: ``%`` for 100, ``‰`` for 1000, ``‱`` for 10000.
+
+    Parameters
+    ----------
+    rel_base : int
+        Must be 100, 1000, or 10000.
+
+    Returns
+    -------
+    callable
+        A function with the same signature as :func:`_format_percentage`.
+    """
+    symbol = _REL_BASE_SYMBOLS[rel_base]
+    def _fmt(value: float) -> str:
+        if pd.isna(value):
+            return ""
+        return f"{value * rel_base:.1f}".replace(".", ",") + symbol
+    return _fmt
 
 
 # Cycling colour palettes for price layer blocks.
@@ -351,24 +406,26 @@ def _style_detail_table(
     return styler
 
 
-def _summary_row_format_func(summary_label: str):
+def _summary_row_format_func(summary_label: str, display_unit: float | None = None, rel_base: int = 100):
     """Return the appropriate format function for a summary row label.
 
-    - ``total_*`` → number
-    - ``n_products`` or ``n_products_*`` → integer (no decimal)
-    - ``value_*`` → number
-    - ``share_*`` → percentage
+    - ``total_*`` → number (divided by ``display_unit`` when set)
+    - ``n_products`` or ``n_products_*`` → integer (no decimal, never divided)
+    - ``value_*`` → number (divided by ``display_unit`` when set)
+    - ``share_*`` → percentage (never divided)
     """
     if summary_label.startswith("n_products"):
         return lambda v: "" if pd.isna(v) else str(int(v))
     if summary_label.startswith("share_"):
-        return _format_percentage
-    return _format_number
+        return _make_percentage_formatter(rel_base)
+    return _make_number_formatter(display_unit)
 
 
 def _style_products_summary_table(
     df: pd.DataFrame,
     color_key: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
 ) -> Styler:
     """Apply per-row formatting, colours, and separators to a products_summary table.
 
@@ -402,7 +459,7 @@ def _style_products_summary_table(
     for label in unique_labels:
         mask = summary_vals == label
         row_positions = [i for i, m in enumerate(mask) if m]
-        fmt = _summary_row_format_func(label)
+        fmt = _summary_row_format_func(label, display_unit, rel_base)
         styler = styler.format(fmt, na_rep="", subset=(df.index[row_positions], df.columns))
 
     if df.empty:
@@ -613,6 +670,8 @@ def _style_industry_balance_table(
     df: pd.DataFrame,
     p1_trans: frozenset,
     format_func=None,
+    display_unit: float | None = None,
+    rel_base: int = 100,
 ) -> Styler:
     """Apply colours, bold, and industry separators to the industry balance table.
 
@@ -654,13 +713,14 @@ def _style_industry_balance_table(
         coeff_mask = df.index.get_level_values("transaction_txt") == "Input coefficient"
         non_coeff_idx = df.index[~coeff_mask]
         coeff_idx = df.index[coeff_mask]
+        number_fmt = _make_number_formatter(display_unit)
         if len(non_coeff_idx) > 0:
             styler = styler.format(
-                _format_number, na_rep="", subset=pd.IndexSlice[non_coeff_idx, :]
+                number_fmt, na_rep="", subset=pd.IndexSlice[non_coeff_idx, :]
             )
         if len(coeff_idx) > 0:
             styler = styler.format(
-                _format_percentage, na_rep="", subset=pd.IndexSlice[coeff_idx, :]
+                _make_percentage_formatter(rel_base), na_rep="", subset=pd.IndexSlice[coeff_idx, :]
             )
 
     if df.empty:
@@ -1185,6 +1245,8 @@ def _style_imbalances_table(
     supply_cols: list[str],
     use_cols: list[str],
     rel_col: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
 ) -> Styler:
     """Apply column-group colours and formatting to the imbalances table.
 
@@ -1215,12 +1277,13 @@ def _style_imbalances_table(
     rel_col : str
         Name of the relative-difference column, formatted as a percentage.
     """
+    number_fmt = _make_number_formatter(display_unit)
     styler = df.style
     non_rel_cols = [c for c in df.columns if c != rel_col]
     if non_rel_cols:
-        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+        styler = styler.format(number_fmt, na_rep="", subset=non_rel_cols)
     if rel_col in df.columns:
-        styler = styler.format(_format_percentage, na_rep="", subset=[rel_col])
+        styler = styler.format(_make_percentage_formatter(rel_base), na_rep="", subset=[rel_col])
 
     if df.empty:
         return styler
@@ -1269,6 +1332,8 @@ def _style_balancing_targets_table(
     price_col: str,
     rel_col: str,
     palette: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
 ) -> Styler:
     """Apply column-group colours and formatting to a balancing targets table.
 
@@ -1294,12 +1359,13 @@ def _style_balancing_targets_table(
         Colour palette for the price and target columns. Either
         ``"supply"`` (green) or ``"use"`` (blue).
     """
+    number_fmt = _make_number_formatter(display_unit)
     styler = df.style
     non_rel_cols = [c for c in df.columns if c != rel_col]
     if non_rel_cols:
-        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+        styler = styler.format(number_fmt, na_rep="", subset=non_rel_cols)
     if rel_col in df.columns:
-        styler = styler.format(_format_percentage, na_rep="", subset=[rel_col])
+        styler = styler.format(_make_percentage_formatter(rel_base), na_rep="", subset=[rel_col])
 
     if df.empty:
         return styler
@@ -1390,6 +1456,8 @@ def _style_comparison_table(
     df: pd.DataFrame,
     palette: str,
     rel_col: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
 ) -> Styler:
     """Apply colours and formatting to a scalar comparison table.
 
@@ -1423,12 +1491,13 @@ def _style_comparison_table(
         Name of the relative-difference column, formatted as a percentage.
         Pass an empty string when no rel column is present.
     """
+    number_fmt = _make_number_formatter(display_unit)
     non_rel_cols = [c for c in df.columns if c != rel_col]
     styler = df.style
     if non_rel_cols:
-        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+        styler = styler.format(number_fmt, na_rep="", subset=non_rel_cols)
     if rel_col and rel_col in df.columns:
-        styler = styler.format(_format_percentage, na_rep="", subset=[rel_col])
+        styler = styler.format(_make_percentage_formatter(rel_base), na_rep="", subset=[rel_col])
 
     if df.empty:
         return styler
@@ -1487,7 +1556,7 @@ def _style_comparison_table(
     return styler
 
 
-def _style_comparison_layers_table(df: pd.DataFrame) -> Styler:
+def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None = None, rel_base: int = 100) -> Styler:
     """Apply colours and formatting to a price-layers comparison table.
 
     Used for ``use_price_layers`` and
@@ -1513,12 +1582,13 @@ def _style_comparison_layers_table(df: pd.DataFrame) -> Styler:
         Price-layers comparison table with ``price_layer`` as the last
         index level. Columns: ``before``, ``after``, ``diff``, ``rel``.
     """
+    number_fmt = _make_number_formatter(display_unit)
     non_rel_cols = [c for c in df.columns if c != "rel"]
     styler = df.style
     if non_rel_cols:
-        styler = styler.format(_format_number, na_rep="", subset=non_rel_cols)
+        styler = styler.format(number_fmt, na_rep="", subset=non_rel_cols)
     if "rel" in df.columns:
-        styler = styler.format(_format_percentage, na_rep="", subset=["rel"])
+        styler = styler.format(_make_percentage_formatter(rel_base), na_rep="", subset=["rel"])
 
     if df.empty:
         return styler
@@ -1687,7 +1757,7 @@ def _style_summary_table(df: pd.DataFrame) -> Styler:
     return styler
 
 
-def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
+def _style_unbalanced_targets_summary(df: pd.DataFrame, display_unit: float | None = None) -> Styler:
     """Apply row colours and block separator to the unbalanced-targets summary table.
 
     Colour scheme:
@@ -1708,12 +1778,14 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
         Summary DataFrame with ``table`` as the index name and columns
         ``n_unbalanced`` and ``largest_diff``.
     """
+    number_fmt = _make_number_formatter(display_unit)
+
     def _format_cell(v, col):
         if pd.isna(v):
             return ""
         if col == "n_unbalanced":
             return str(int(v))
-        return f"{v:,.1f}"
+        return number_fmt(v)
 
     styler = df.style.format(
         {col: (lambda v, c=col: _format_cell(v, c)) for col in df.columns},
@@ -1764,7 +1836,7 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame) -> Styler:
     return styler
 
 
-def _style_comparison_summary_table(df: pd.DataFrame, palette: str) -> Styler:
+def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit: float | None = None, rel_base: int = 100) -> Styler:
     """Apply colours and formatting to a comparison summary table.
 
     Used for ``supply_products_summary``, ``supply_columns_summary``,
@@ -1796,15 +1868,16 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str) -> Styler:
     diff_cols = [c for c in df.columns if c == "diff_norm" or c.startswith("diff_")]
     rel_cols = [c for c in df.columns if c.startswith("rel_")]
 
+    number_fmt = _make_number_formatter(display_unit)
     styler = df.style.format(na_rep="")
     if n_changes_cols:
         styler = styler.format(
             lambda v: "" if pd.isna(v) else str(int(v)), subset=n_changes_cols
         )
     if diff_cols:
-        styler = styler.format(_format_number, na_rep="", subset=diff_cols)
+        styler = styler.format(number_fmt, na_rep="", subset=diff_cols)
     if rel_cols:
-        styler = styler.format(_format_percentage, na_rep="", subset=rel_cols)
+        styler = styler.format(_make_percentage_formatter(rel_base), na_rep="", subset=rel_cols)
 
     if df.empty:
         return styler
@@ -1850,7 +1923,167 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str) -> Styler:
     return styler
 
 
-def _style_unbalanced_products_summary(df: pd.DataFrame) -> Styler:
+def _style_aggregates_nominal_table(
+    df: pd.DataFrame,
+    display_unit: float | None = None,
+) -> Styler:
+    """Apply colours, borders, and text styles to the GDP aggregates table.
+
+    The table has a 2-level MultiIndex: level 0 is the block name
+    (``"Production"``, ``"Expenditure"``, or ``"Balance"``), level 1 is the
+    component label.
+
+    Colour scheme:
+
+    - Production rows → alternating green (``supply`` palette). Inner index
+      (level 1) cells use the more saturated ``_INDEX_COLORS["supply"]``.
+    - Expenditure rows → alternating blue (``use`` palette). Inner index uses
+      ``_INDEX_COLORS["use"]``.
+    - Balance rows → alternating grey (``balance`` palette). Inner index uses
+      ``_INDEX_COLORS["balance"]``.
+    - Outer index (level 0) → unstyled (no background), but carries the thick
+      block-separator border.
+
+    Borders:
+
+    - Thick ``2px solid #999`` border between blocks (placed on the last data
+      row and inner index cell of each non-last block; on the first row of each
+      non-last block for the merged outer index cell).
+    - Thin ``1px solid #ccc`` borders above and below derived summary rows:
+      ``"Gross Value Added"`` and ``"Total product taxes, netto"`` in the
+      Production block; ``"Domestic final expenditure"`` and
+      ``"Export, netto"`` in the Expenditure block.
+
+    Font styles:
+
+    - ``"GDP"`` rows in Production and Expenditure → bold.
+    - ``"Gross Value Added"``, ``"Total product taxes, netto"``,
+      ``"Domestic final expenditure"``, ``"Export, netto"`` → italic.
+
+    All values are formatted as numbers.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        GDP aggregates table from :func:`inspect_aggregates_nominal`.
+    display_unit : float or None, optional
+        Divisor applied to all values before formatting.
+    """
+    number_fmt = _make_number_formatter(display_unit)
+    styler = df.style.format(number_fmt, na_rep="")
+    if df.empty:
+        return styler
+
+    n = len(df)
+    block_vals = df.index.get_level_values(0)
+    label_vals = df.index.get_level_values(1)
+
+    # Colour palettes per block.
+    _block_data_colors = {
+        "Production": _DATA_COLORS["supply"],
+        "Expenditure": _DATA_COLORS["use"],
+        "Balance":     _DATA_COLORS["balance"],
+    }
+    _block_index_colors = {
+        "Production": _INDEX_COLORS["supply"],
+        "Expenditure": _INDEX_COLORS["use"],
+        "Balance":     _INDEX_COLORS["balance"],
+    }
+
+    # Labels that receive italic formatting.
+    _italic_labels = {
+        "Production":  {"Gross Value Added", "Total product taxes, netto"},
+        "Expenditure": {"Domestic final expenditure", "Export, netto"},
+    }
+    # Labels that receive bold formatting.
+    _bold_labels = {
+        "Production":  {"GDP"},
+        "Expenditure": {"GDP"},
+    }
+    # Labels that get thin borders above and below.
+    _thin_border_labels = {
+        "Production":  {"Gross Value Added", "Total product taxes, netto"},
+        "Expenditure": {"Domestic final expenditure", "Export, netto"},
+    }
+
+    # Last row of each non-last block → thick border on data and inner index.
+    block_end_rows = {i for i in range(n - 1) if block_vals[i] != block_vals[i + 1]}
+
+    # First row of each non-last block → thick border on outer index (merged cell).
+    blocks_ordered = list(dict.fromkeys(block_vals))
+    non_last_blocks = set(blocks_ordered[:-1])
+    block_first_rows: dict[str, int] = {}
+    for i in range(n):
+        b = block_vals[i]
+        if b not in block_first_rows:
+            block_first_rows[b] = i
+    outer_border_rows = {block_first_rows[b] for b in non_last_blocks}
+
+    # Rows needing a thin border below themselves (the derived row).
+    thin_below_rows = {
+        i for i in range(n)
+        if label_vals[i] in _thin_border_labels.get(block_vals[i], set())
+    }
+    # Rows needing a thin border below because the next row wants a line above.
+    thin_above_next_rows = {
+        i for i in range(n - 1)
+        if label_vals[i + 1] in _thin_border_labels.get(block_vals[i + 1], set())
+    }
+
+    data_css = [""] * n
+    inner_css = [""] * n
+    outer_css = [""] * n
+
+    block_counters: dict = {}
+
+    for i in range(n):
+        block = block_vals[i]
+        label = label_vals[i]
+
+        if block not in block_counters:
+            block_counters[block] = 0
+        row_pos = block_counters[block]
+        block_counters[block] += 1
+
+        bg_data = _block_data_colors.get(block, _DATA_COLORS["balance"])[row_pos % 2]
+        bg_idx  = _block_index_colors.get(block, _INDEX_COLORS["balance"])[row_pos % 2]
+
+        # Border priority: thick block separator > thin below > thin above next.
+        if i in block_end_rows:
+            sep = "; border-bottom: 2px solid #999"
+        elif i in thin_below_rows:
+            sep = "; border-bottom: 1px solid #ccc"
+        elif i in thin_above_next_rows:
+            sep = "; border-bottom: 1px solid #ccc"
+        else:
+            sep = ""
+
+        is_bold   = label in _bold_labels.get(block, set())
+        is_italic = label in _italic_labels.get(block, set())
+        font_css  = ""
+        if is_bold:
+            font_css += "; font-weight: bold"
+        if is_italic:
+            font_css += "; font-style: italic"
+
+        data_css[i]  = f"background-color: {bg_data}{sep}{font_css}"
+        inner_css[i] = f"background-color: {bg_idx}{sep}{font_css}"
+
+        # Outer index (level 0): no background, just carry the thick border.
+        # Merged cells take CSS from the first row of their span.
+        if i in outer_border_rows:
+            outer_css[i] = "border-bottom: 2px solid #999"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=inner_css: css, level=1, axis=0)
+    styler = styler.apply_index(lambda s, css=outer_css: css, level=0, axis=0)
+    return styler
+
+
+def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | None = None) -> Styler:
     """Apply neutral grey colours to the unbalanced-products summary table.
 
     Colour scheme:
@@ -1866,12 +2099,14 @@ def _style_unbalanced_products_summary(df: pd.DataFrame) -> Styler:
         Summary DataFrame with ``table`` as the index name and columns
         ``n_unbalanced`` and ``largest_diff``.
     """
+    number_fmt = _make_number_formatter(display_unit)
+
     def _format_cell(v, col):
         if pd.isna(v):
             return ""
         if col == "n_unbalanced":
             return str(int(v))
-        return f"{v:,.1f}"
+        return number_fmt(v)
 
     styler = df.style.format(
         {col: (lambda v, c=col: _format_cell(v, c)) for col in df.columns},

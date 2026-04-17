@@ -306,6 +306,26 @@ class TestLoadMetadataClassificationsFromExcel:
         assert "extra_col" not in result.products.columns
         assert list(result.products.columns) == ["nrnr", "nrnr_txt"]
 
+    def test_gdp_decomp_column_loaded_when_present(self, tmp_path):
+        transactions = pd.DataFrame({
+            "trans":      ["0100",          "0700",    "2000"],
+            "trans_txt":  ["Output",        "Imports", "Intermediate"],
+            "table":      ["supply",        "supply",  "use"],
+            "esa_code":   ["P1",            "P7",      "P2"],
+            "gdp_decomp": ["Market output", "Imports", "Intermediate consumption"],
+        })
+        path = write_classifications_file(tmp_path, {"transactions": transactions})
+        result = _load_metadata_classifications_from_excel(path, minimal_columns())
+        assert "gdp_decomp" in result.transactions.columns
+        assert result.transactions["gdp_decomp"].tolist() == [
+            "Market output", "Imports", "Intermediate consumption"
+        ]
+
+    def test_gdp_decomp_column_absent_when_not_in_sheet(self, tmp_path):
+        path = write_classifications_file(tmp_path, {"transactions": minimal_transactions_df()})
+        result = _load_metadata_classifications_from_excel(path, minimal_columns())
+        assert "gdp_decomp" not in result.transactions.columns
+
     def test_strips_whitespace_from_all_sheets(self, tmp_path):
         transactions = pd.DataFrame({
             "trans":     ["  0100  "],

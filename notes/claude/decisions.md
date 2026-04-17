@@ -875,3 +875,12 @@ Append-only. Each entry: date, decision, brief rationale.
   - Future `inspect_aggregates_real` will chain-link rows independently (chain-linking is
     not additive). A shared private helper will define row structure separately from value
     computation, reused by both nominal and real functions.
+
+- **2026-04-17**: Added `display_unit: float | None = None` to all 7 inspect functions
+  and their result classes. When set, number-formatted values (not percentages, not
+  integers) are divided by `display_unit` at display time — both in Jupyter Styler
+  properties and `write_to_excel`. Raw `.data` DataFrames are always unchanged. Default
+  `None` disables division. Implemented via `_make_number_formatter(display_unit)` in
+  `_style.py` and in-place cell value division in `_apply_number_formats` in `_shared.py`.
+  `IndustryInspection._apply_products_filter` preserves `display_unit` on the returned
+  object.

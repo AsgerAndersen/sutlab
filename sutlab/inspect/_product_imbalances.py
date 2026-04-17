@@ -4,6 +4,7 @@ inspect_unbalanced_products: imbalance table for the active balancing member.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import pandas as pd
@@ -72,6 +73,8 @@ class UnbalancedProductsInspection:
     """
 
     data: UnbalancedProductsData
+    display_unit: float | None = None
+    rel_base: int = 100
 
     @property
     def imbalances(self) -> Styler:
@@ -81,12 +84,12 @@ class UnbalancedProductsInspection:
         use_cols = [c for c in df.columns if c.startswith("use_")]
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
-        return _style_imbalances_table(df, supply_cols, use_cols, rel_col)
+        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit, rel_base=self.rel_base)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_products_summary(self.data.summary)
+        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -101,7 +104,40 @@ class UnbalancedProductsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+
+    def set_display_unit(self, display_unit: float | None) -> "UnbalancedProductsInspection":
+        """Return a copy with ``display_unit`` set to the given value.
+
+        Parameters
+        ----------
+        display_unit : float or None
+            Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
+            disables division.
+        """
+        if display_unit is not None:
+            import math
+            log = math.log10(display_unit) if display_unit > 0 else float("nan")
+            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
+                raise ValueError(
+                    f"display_unit must be a positive power of 10 "
+                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
+                )
+        return dataclasses.replace(self, display_unit=display_unit)
+
+    def set_rel_base(self, rel_base: int) -> "UnbalancedProductsInspection":
+        """Return a copy with ``rel_base`` set to the given value.
+
+        Parameters
+        ----------
+        rel_base : int
+            Must be 100, 1000, or 10000.
+        """
+        if rel_base not in (100, 1000, 10000):
+            raise ValueError(
+                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
+            )
+        return dataclasses.replace(self, rel_base=rel_base)
 
 
 def inspect_unbalanced_products(
@@ -303,5 +339,5 @@ def inspect_unbalanced_products(
     )
 
     return UnbalancedProductsInspection(
-        data=UnbalancedProductsData(imbalances=result, summary=summary)
+        data=UnbalancedProductsData(imbalances=result, summary=summary),
     )

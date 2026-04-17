@@ -13,6 +13,8 @@ import openpyxl.utils
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from sutlab.inspect._style import _REL_BASE_SYMBOLS
+
 
 def _sort_by_id_value(
     df: pd.DataFrame,
@@ -112,6 +114,8 @@ def _apply_number_formats(
     ws,
     df: pd.DataFrame,
     field_name: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
 ) -> None:
     """Apply Excel number formats to the data cells of a written worksheet.
 
@@ -160,9 +164,16 @@ def _apply_number_formats(
             if not isinstance(cell.value, (int, float)):
                 continue
             if is_all_percentage or col_offset in rel_col_positions:
-                cell.number_format = _EXCEL_PERCENTAGE_FORMAT
+                if rel_base == 100:
+                    cell.number_format = _EXCEL_PERCENTAGE_FORMAT  # Excel auto-multiplies by 100
+                else:
+                    symbol = _REL_BASE_SYMBOLS[rel_base]
+                    cell.value = cell.value * rel_base
+                    cell.number_format = f'0.0"{symbol}"'
             else:
                 cell.number_format = _EXCEL_NUMBER_FORMAT
+                if display_unit is not None:
+                    cell.value = cell.value / display_unit
 
 
 def _apply_bold_headers(ws, df: pd.DataFrame) -> None:
@@ -230,7 +241,7 @@ def _fit_index_column_widths(ws, n_index_cols: int) -> None:
         ws.column_dimensions[col_letter].width = max_len + 2
 
 
-def _write_inspection_to_excel(inspection_obj: Any, path: str | Path) -> None:
+def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None, rel_base: int = 100) -> None:
     """Write all non-None tables in an inspection result to an Excel file.
 
     Each field on ``inspection_obj.data`` that holds a
@@ -285,4 +296,4 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path) -> None:
             _apply_bold_headers(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
-            _apply_number_formats(ws, raw, f.name)
+            _apply_number_formats(ws, raw, f.name, display_unit, rel_base)

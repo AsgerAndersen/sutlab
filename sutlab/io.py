@@ -303,7 +303,10 @@ def _load_metadata_classifications_from_excel(
                 f"Invalid values in 'esa_code' column of 'transactions' sheet: {invalid_str}. "
                 f"Valid values are: {valid_str}."
             )
-        transactions = df[[trans_col, trans_txt_col, "table", "esa_code"]].copy()
+        keep_cols = [trans_col, trans_txt_col, "table", "esa_code"]
+        if "gdp_decomp" in df.columns:
+            keep_cols.append("gdp_decomp")
+        transactions = df[keep_cols].copy()
 
     industries = None
     if "industries" in all_sheets:
