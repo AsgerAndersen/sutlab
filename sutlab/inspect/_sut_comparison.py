@@ -229,6 +229,10 @@ class SUTComparisonInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "SUTComparisonInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def inspect_sut_comparison(
     before: SUT,
@@ -243,7 +247,6 @@ def inspect_sut_comparison(
     filter_nan_as_zero: bool = False,
     sort: bool = False,
     percentiles: list[float] = [0.0, 0.5, 1.0],
-    display_unit: float | None = None,
 ) -> SUTComparisonInspection:
     """
     Return a row-level comparison between two SUT objects.
@@ -495,7 +498,6 @@ def inspect_sut_comparison(
             use_products_summary=use_products_summary,
             use_columns_summary=use_columns_summary,
         ),
-        display_unit=display_unit,
     )
 
 

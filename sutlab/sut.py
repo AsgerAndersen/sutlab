@@ -514,22 +514,20 @@ class SUT:
         products: str | list[str],
         ids=None,
         sort_id=None,
-        display_unit: float | None = None,
     ) -> ProductInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_products`."""
         from sutlab.inspect import inspect_products
-        return inspect_products(self, products, ids=ids, sort_id=sort_id, display_unit=display_unit)
+        return inspect_products(self, products, ids=ids, sort_id=sort_id)
 
     def inspect_industries(
         self,
         industries: str | list[str],
         ids=None,
         sort_id=None,
-        display_unit: float | None = None,
     ) -> IndustryInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_industries`."""
         from sutlab.inspect import inspect_industries
-        return inspect_industries(self, industries, ids=ids, sort_id=sort_id, display_unit=display_unit)
+        return inspect_industries(self, industries, ids=ids, sort_id=sort_id)
 
     def inspect_final_uses(
         self,
@@ -538,22 +536,20 @@ class SUT:
         categories: str | list[str] | None = None,
         ids=None,
         sort_id=None,
-        display_unit: float | None = None,
     ) -> FinalUseInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_final_uses`."""
         from sutlab.inspect import inspect_final_uses
-        return inspect_final_uses(self, transactions, categories=categories, ids=ids, sort_id=sort_id, display_unit=display_unit)
+        return inspect_final_uses(self, transactions, categories=categories, ids=ids, sort_id=sort_id)
 
     def inspect_unbalanced_products(
         self,
         products: str | list[str] | None = None,
         sort: bool = False,
         tolerance: float = 1,
-        display_unit: float | None = None,
     ) -> UnbalancedProductsInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_unbalanced_products`."""
         from sutlab.inspect import inspect_unbalanced_products
-        return inspect_unbalanced_products(self, products, sort=sort, tolerance=tolerance, display_unit=display_unit)
+        return inspect_unbalanced_products(self, products, sort=sort, tolerance=tolerance)
 
     def balance_columns(
         self,
@@ -590,11 +586,10 @@ class SUT:
         transactions: str | list[str] | None = None,
         categories: str | list[str] | None = None,
         sort: bool = False,
-        display_unit: float | None = None,
     ) -> UnbalancedTargetsInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_unbalanced_targets`."""
         from sutlab.inspect import inspect_unbalanced_targets
-        return inspect_unbalanced_targets(self, transactions=transactions, categories=categories, sort=sort, display_unit=display_unit)
+        return inspect_unbalanced_targets(self, transactions=transactions, categories=categories, sort=sort)
 
     def inspect_sut_comparison(
         self,
@@ -609,7 +604,6 @@ class SUT:
         filter_nan_as_zero: bool = False,
         sort: bool = False,
         percentiles: list[float] = [0.0, 0.5, 1.0],
-        display_unit: float | None = None,
     ) -> SUTComparisonInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_sut_comparison`."""
         from sutlab.inspect import inspect_sut_comparison
@@ -618,17 +612,16 @@ class SUT:
             ids=ids, products=products, transactions=transactions, categories=categories,
             diff_tolerance=diff_tolerance, rel_tolerance=rel_tolerance,
             filter_nan_as_zero=filter_nan_as_zero, sort=sort,
-            percentiles=percentiles, display_unit=display_unit,
+            percentiles=percentiles,
         )
 
     def inspect_aggregates_nominal(
         self,
         gdp_decomp: pd.DataFrame | None = None,
-        display_unit: float | None = None,
     ) -> AggregatesNominalInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_aggregates_nominal`."""
         from sutlab.inspect import inspect_aggregates_nominal
-        return inspect_aggregates_nominal(self, gdp_decomp=gdp_decomp, display_unit=display_unit)
+        return inspect_aggregates_nominal(self, gdp_decomp=gdp_decomp)
 
     def adjust_add_sut(self, adjustments: SUT) -> SUT:
         """Delegates to :func:`~sutlab.adjust.adjust_add_sut`."""

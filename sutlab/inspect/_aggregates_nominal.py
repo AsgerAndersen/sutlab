@@ -4,6 +4,7 @@ inspect_aggregates_nominal: nominal GDP decomposition from a supply-use table.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,11 +85,14 @@ class AggregatesNominalInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "AggregatesNominalInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def inspect_aggregates_nominal(
     sut: SUT,
     gdp_decomp: pd.DataFrame | None = None,
-    display_unit: float | None = None,
 ) -> AggregatesNominalInspection:
     """
     Build a nominal GDP decomposition table from a supply-use table.
@@ -190,7 +194,7 @@ def inspect_aggregates_nominal(
     index = pd.MultiIndex.from_tuples(index_tuples)
     gdp_df = pd.DataFrame(data_rows, index=index, columns=id_values)
 
-    return AggregatesNominalInspection(data=AggregatesNominalData(gdp=gdp_df), display_unit=display_unit)
+    return AggregatesNominalInspection(data=AggregatesNominalData(gdp=gdp_df))
 
 
 # ---------------------------------------------------------------------------

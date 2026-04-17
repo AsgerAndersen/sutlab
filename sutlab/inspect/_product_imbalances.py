@@ -4,6 +4,7 @@ inspect_unbalanced_products: imbalance table for the active balancing member.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import pandas as pd
@@ -104,13 +105,16 @@ class UnbalancedProductsInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "UnbalancedProductsInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def inspect_unbalanced_products(
     sut: SUT,
     products: str | list[str] | None = None,
     sort: bool = False,
     tolerance: float = 1,
-    display_unit: float | None = None,
 ) -> UnbalancedProductsInspection:
     """
     Return an imbalances table for products in the active balancing member.
@@ -306,5 +310,4 @@ def inspect_unbalanced_products(
 
     return UnbalancedProductsInspection(
         data=UnbalancedProductsData(imbalances=result, summary=summary),
-        display_unit=display_unit,
     )

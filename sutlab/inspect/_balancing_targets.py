@@ -5,6 +5,7 @@ filtered to rows where the absolute difference exceeds 1.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 import pandas as pd
@@ -178,13 +179,16 @@ class UnbalancedTargetsInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "UnbalancedTargetsInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def inspect_unbalanced_targets(
     sut: SUT,
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
     sort: bool = False,
-    display_unit: float | None = None,
 ) -> UnbalancedTargetsInspection:
     """
     Return supply and use column totals compared against balancing targets,
@@ -408,7 +412,6 @@ def inspect_unbalanced_targets(
             use_transactions_violations=use_transactions_violations,
             summary=summary,
         ),
-        display_unit=display_unit,
     )
 
 

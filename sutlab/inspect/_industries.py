@@ -469,6 +469,10 @@ class IndustryInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "IndustryInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def _keep_products_by_index(
     table: pd.DataFrame,
@@ -694,7 +698,6 @@ def inspect_industries(
     *,
     percentiles: list[float] = None,
     coverage_thresholds: list[float] = None,
-    display_unit: float | None = None,
 ) -> IndustryInspection:
     """
     Return inspection tables for one or more industries.
@@ -965,7 +968,7 @@ def inspect_industries(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans), display_unit=display_unit)
+    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans))
 
 
 def _build_industry_balance_table(

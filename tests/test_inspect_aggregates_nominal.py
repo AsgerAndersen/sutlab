@@ -568,7 +568,7 @@ def test_gdp_styler_has_correct_shape(sut):
 
 def test_gdp_styler_with_display_unit(sut):
     from pandas.io.formats.style import Styler
-    result = inspect_aggregates_nominal(sut, display_unit=1e6)
+    result = inspect_aggregates_nominal(sut).set_display_unit(1e6)
     assert isinstance(result.gdp, Styler)
 
 

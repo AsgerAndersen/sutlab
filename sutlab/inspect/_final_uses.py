@@ -211,6 +211,10 @@ class FinalUseInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "FinalUseInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def inspect_final_uses(
     sut: SUT,
@@ -219,7 +223,6 @@ def inspect_final_uses(
     categories: str | list[str] | None = None,
     ids=None,
     sort_id=None,
-    display_unit: float | None = None,
 ) -> FinalUseInspection:
     """
     Return inspection tables for one or more final use transactions.
@@ -478,7 +481,7 @@ def inspect_final_uses(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return FinalUseInspection(data=data, display_unit=display_unit)
+    return FinalUseInspection(data=data)
 
 
 # ---------------------------------------------------------------------------

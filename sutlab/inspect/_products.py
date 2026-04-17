@@ -4,6 +4,7 @@ inspect_products: inspection tables for one or more products.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -261,13 +262,16 @@ class ProductInspection:
         """
         _write_inspection_to_excel(self, path, self.display_unit)
 
+    def set_display_unit(self, display_unit: float | None) -> "ProductInspection":
+        """Return a copy with ``display_unit`` set to the given value."""
+        return dataclasses.replace(self, display_unit=display_unit)
+
 
 def inspect_products(
     sut: SUT,
     products: str | list[str],
     ids=None,
     sort_id=None,
-    display_unit: float | None = None,
 ) -> ProductInspection:
     """
     Return inspection tables for one or more products.
@@ -469,7 +473,7 @@ def inspect_products(
         price_layers_growth=price_layers_growth,
         price_layers_rates=price_layers_rates,
     )
-    return ProductInspection(data=data, display_unit=display_unit)
+    return ProductInspection(data=data)
 
 
 def _build_category_names_by_trans(
