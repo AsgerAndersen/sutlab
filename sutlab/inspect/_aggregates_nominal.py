@@ -9,8 +9,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from pandas.io.formats.style import Styler
+
 from sutlab.sut import SUT
 from sutlab.inspect._shared import _write_inspection_to_excel
+from sutlab.inspect._style import _style_aggregates_nominal_table
 
 
 # --- Block names ---
@@ -65,6 +68,11 @@ class AggregatesNominalInspection:
 
     data: AggregatesNominalData
     display_unit: float | None = None
+
+    @property
+    def gdp(self) -> Styler:
+        """Styled GDP decomposition table for display in a Jupyter notebook."""
+        return _style_aggregates_nominal_table(self.data.gdp, display_unit=self.display_unit)
 
     def write_to_excel(self, path: str | Path) -> None:
         """Write the inspection tables to an Excel file.

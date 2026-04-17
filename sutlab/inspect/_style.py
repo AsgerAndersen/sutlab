@@ -1890,6 +1890,166 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit
     return styler
 
 
+def _style_aggregates_nominal_table(
+    df: pd.DataFrame,
+    display_unit: float | None = None,
+) -> Styler:
+    """Apply colours, borders, and text styles to the GDP aggregates table.
+
+    The table has a 2-level MultiIndex: level 0 is the block name
+    (``"Production"``, ``"Expenditure"``, or ``"Balance"``), level 1 is the
+    component label.
+
+    Colour scheme:
+
+    - Production rows → alternating green (``supply`` palette). Inner index
+      (level 1) cells use the more saturated ``_INDEX_COLORS["supply"]``.
+    - Expenditure rows → alternating blue (``use`` palette). Inner index uses
+      ``_INDEX_COLORS["use"]``.
+    - Balance rows → alternating grey (``balance`` palette). Inner index uses
+      ``_INDEX_COLORS["balance"]``.
+    - Outer index (level 0) → unstyled (no background), but carries the thick
+      block-separator border.
+
+    Borders:
+
+    - Thick ``2px solid #999`` border between blocks (placed on the last data
+      row and inner index cell of each non-last block; on the first row of each
+      non-last block for the merged outer index cell).
+    - Thin ``1px solid #ccc`` borders above and below derived summary rows:
+      ``"Gross Value Added"`` and ``"Total product taxes, netto"`` in the
+      Production block; ``"Domestic final expenditure"`` and
+      ``"Export, netto"`` in the Expenditure block.
+
+    Font styles:
+
+    - ``"GDP"`` rows in Production and Expenditure → bold.
+    - ``"Gross Value Added"``, ``"Total product taxes, netto"``,
+      ``"Domestic final expenditure"``, ``"Export, netto"`` → italic.
+
+    All values are formatted as numbers.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        GDP aggregates table from :func:`inspect_aggregates_nominal`.
+    display_unit : float or None, optional
+        Divisor applied to all values before formatting.
+    """
+    number_fmt = _make_number_formatter(display_unit)
+    styler = df.style.format(number_fmt, na_rep="")
+    if df.empty:
+        return styler
+
+    n = len(df)
+    block_vals = df.index.get_level_values(0)
+    label_vals = df.index.get_level_values(1)
+
+    # Colour palettes per block.
+    _block_data_colors = {
+        "Production": _DATA_COLORS["supply"],
+        "Expenditure": _DATA_COLORS["use"],
+        "Balance":     _DATA_COLORS["balance"],
+    }
+    _block_index_colors = {
+        "Production": _INDEX_COLORS["supply"],
+        "Expenditure": _INDEX_COLORS["use"],
+        "Balance":     _INDEX_COLORS["balance"],
+    }
+
+    # Labels that receive italic formatting.
+    _italic_labels = {
+        "Production":  {"Gross Value Added", "Total product taxes, netto"},
+        "Expenditure": {"Domestic final expenditure", "Export, netto"},
+    }
+    # Labels that receive bold formatting.
+    _bold_labels = {
+        "Production":  {"GDP"},
+        "Expenditure": {"GDP"},
+    }
+    # Labels that get thin borders above and below.
+    _thin_border_labels = {
+        "Production":  {"Gross Value Added", "Total product taxes, netto"},
+        "Expenditure": {"Domestic final expenditure", "Export, netto"},
+    }
+
+    # Last row of each non-last block → thick border on data and inner index.
+    block_end_rows = {i for i in range(n - 1) if block_vals[i] != block_vals[i + 1]}
+
+    # First row of each non-last block → thick border on outer index (merged cell).
+    blocks_ordered = list(dict.fromkeys(block_vals))
+    non_last_blocks = set(blocks_ordered[:-1])
+    block_first_rows: dict[str, int] = {}
+    for i in range(n):
+        b = block_vals[i]
+        if b not in block_first_rows:
+            block_first_rows[b] = i
+    outer_border_rows = {block_first_rows[b] for b in non_last_blocks}
+
+    # Rows needing a thin border below themselves (the derived row).
+    thin_below_rows = {
+        i for i in range(n)
+        if label_vals[i] in _thin_border_labels.get(block_vals[i], set())
+    }
+    # Rows needing a thin border below because the next row wants a line above.
+    thin_above_next_rows = {
+        i for i in range(n - 1)
+        if label_vals[i + 1] in _thin_border_labels.get(block_vals[i + 1], set())
+    }
+
+    data_css = [""] * n
+    inner_css = [""] * n
+    outer_css = [""] * n
+
+    block_counters: dict = {}
+
+    for i in range(n):
+        block = block_vals[i]
+        label = label_vals[i]
+
+        if block not in block_counters:
+            block_counters[block] = 0
+        row_pos = block_counters[block]
+        block_counters[block] += 1
+
+        bg_data = _block_data_colors.get(block, _DATA_COLORS["balance"])[row_pos % 2]
+        bg_idx  = _block_index_colors.get(block, _INDEX_COLORS["balance"])[row_pos % 2]
+
+        # Border priority: thick block separator > thin below > thin above next.
+        if i in block_end_rows:
+            sep = "; border-bottom: 2px solid #999"
+        elif i in thin_below_rows:
+            sep = "; border-bottom: 1px solid #ccc"
+        elif i in thin_above_next_rows:
+            sep = "; border-bottom: 1px solid #ccc"
+        else:
+            sep = ""
+
+        is_bold   = label in _bold_labels.get(block, set())
+        is_italic = label in _italic_labels.get(block, set())
+        font_css  = ""
+        if is_bold:
+            font_css += "; font-weight: bold"
+        if is_italic:
+            font_css += "; font-style: italic"
+
+        data_css[i]  = f"background-color: {bg_data}{sep}{font_css}"
+        inner_css[i] = f"background-color: {bg_idx}{sep}{font_css}"
+
+        # Outer index (level 0): no background, just carry the thick border.
+        # Merged cells take CSS from the first row of their span.
+        if i in outer_border_rows:
+            outer_css[i] = "border-bottom: 2px solid #999"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=inner_css: css, level=1, axis=0)
+    styler = styler.apply_index(lambda s, css=outer_css: css, level=0, axis=0)
+    return styler
+
+
 def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | None = None) -> Styler:
     """Apply neutral grey colours to the unbalanced-products summary table.
 

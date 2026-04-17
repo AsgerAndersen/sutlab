@@ -550,6 +550,29 @@ def test_multiple_transactions_same_label_are_summed(supply, use, cols):
 
 
 # ---------------------------------------------------------------------------
+# Styling
+# ---------------------------------------------------------------------------
+
+
+def test_gdp_property_returns_styler(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut)
+    assert isinstance(result.gdp, Styler)
+
+
+def test_gdp_styler_has_correct_shape(sut):
+    result = inspect_aggregates_nominal(sut)
+    styler = result.gdp
+    assert styler.data.shape == result.data.gdp.shape
+
+
+def test_gdp_styler_with_display_unit(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut, display_unit=1e6)
+    assert isinstance(result.gdp, Styler)
+
+
+# ---------------------------------------------------------------------------
 # SUT delegate method
 # ---------------------------------------------------------------------------
 
