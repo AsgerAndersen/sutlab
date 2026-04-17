@@ -884,3 +884,15 @@ Append-only. Each entry: date, decision, brief rationale.
   `_style.py` and in-place cell value division in `_apply_number_formats` in `_shared.py`.
   `IndustryInspection._apply_products_filter` preserves `display_unit` on the returned
   object.
+
+- **2026-04-17**: Moved `display_unit` from inspect function argument to a mutable field
+  on result classes. Set via `set_display_unit(value)` which returns a new copy (immutable
+  pattern, consistent with SUT). Inspect functions no longer accept `display_unit`.
+  `set_display_unit` validates that the value is a positive power of 10 (or `None`).
+
+- **2026-04-17**: Added `rel_base: int = 100` field to all 7 inspection result classes,
+  with `set_rel_base(value)` returning a new copy. Validates value is in `{100, 1000,
+  10000}` and maps to symbols `%`, `‰`, `‱` respectively. `_make_percentage_formatter(
+  rel_base)` in `_style.py` replaces hardcoded `_format_percentage` calls throughout.
+  Excel output uses the standard `%` format for `rel_base=100`; for 1000/10000 it
+  multiplies cell values and applies a custom format string with the symbol.
