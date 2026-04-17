@@ -32,6 +32,11 @@ from sutlab.inspect._sut_comparison import (
     SUTComparisonInspection,
     SUTComparisonData,
 )
+from sutlab.inspect._aggregates_nominal import (
+    inspect_aggregates_nominal,
+    AggregatesNominalInspection,
+    AggregatesNominalData,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -67,4 +72,7 @@ __all__ = [
     "inspect_sut_comparison",
     "SUTComparisonInspection",
     "SUTComparisonData",
+    "inspect_aggregates_nominal",
+    "AggregatesNominalInspection",
+    "AggregatesNominalData",
 ]

@@ -55,7 +55,7 @@ One DataFrame with columns = id values (years) and a 2-level MultiIndex on rows:
 | `gdp_decomp` values for P1 transactions | `sut.supply`, basic prices | as-is |
 | `gdp_decomp` values for P2 transactions | `sut.use`, purchasers' prices | × −1 |
 | `"Gross Value Added"` | sum of all Production rows above | derived |
-| one row per present price layer column | sum across all products/use rows | as-is |
+| actual column name of each present price layer column | sum across all products/use rows | as-is |
 | `"Import duties"` (if D2121 present) | sum of D2121 rows in `sut.supply` | as-is |
 | `"Total product taxes, netto"` | sum of price layer + import duties rows | derived |
 | `"GDP"` | GVA + Total product taxes, netto | derived |
@@ -71,7 +71,7 @@ One DataFrame with columns = id values (years) and a 2-level MultiIndex on rows:
 | `"Export, netto"` | sum of P6 and P7 rows | derived |
 | `"GDP"` | Domestic final expenditure + Export, netto | derived |
 
-"Domestic final use" = all use-side ESA transactions except P2. Since P7 is supply-side, it is never in `sut.use` and cannot appear here.
+"Domestic final use" = all use-side ESA transactions except P2 and P6. P6 (exports) is handled separately in the Export, netto block. Since P7 is supply-side, it is never in `sut.use` and cannot appear here.
 
 ## Sign convention
 
