@@ -14,6 +14,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes
 from sutlab.inspect._style import _style_balancing_targets_table, _style_unbalanced_targets_summary
 from sutlab.inspect._shared import _write_inspection_to_excel
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
 @dataclass
@@ -99,18 +100,19 @@ class UnbalancedTargetsInspection:
     data: UnbalancedTargetsData
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     def _supply_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a supply-side targets table."""
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     def _use_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a use-side targets table."""
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def supply_categories(self) -> Styler:
@@ -163,7 +165,7 @@ class UnbalancedTargetsInspection:
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_targets_summary(self.data.summary, display_unit=self.display_unit)
+        return _style_unbalanced_targets_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -212,6 +214,51 @@ class UnbalancedTargetsInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "UnbalancedTargetsInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`UnbalancedTargetsInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join.
+
+        Parameters
+        ----------
+        other : UnbalancedTargetsInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as
+            :class:`UnbalancedTargetsInspection` instances.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`UnbalancedTargetsInspection`.
+        """
+        if not isinstance(other, UnbalancedTargetsInspection):
+            raise TypeError(
+                f"Expected UnbalancedTargetsInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = UnbalancedTargetsInspection(
+            data=UnbalancedTargetsData(**diff_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = UnbalancedTargetsInspection(
+            data=UnbalancedTargetsData(**rel_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def inspect_unbalanced_targets(

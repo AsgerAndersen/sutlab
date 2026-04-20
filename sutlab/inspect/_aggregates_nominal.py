@@ -19,6 +19,7 @@ from sutlab.inspect._style import (
     _make_percentage_formatter,
     _style_aggregates_nominal_table,
 )
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
 # --- Block names ---
@@ -88,12 +89,18 @@ class AggregatesNominalInspection:
     data: AggregatesNominalData
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = dataclasses.field(default=False, repr=False)
+
+    def _number_fmt(self):
+        if self._all_rel:
+            return _make_percentage_formatter(self.rel_base)
+        return _make_number_formatter(self.display_unit)
 
     @property
     def gdp(self) -> Styler:
         """Styled GDP decomposition table for display in a Jupyter notebook."""
         return _style_aggregates_nominal_table(
-            self.data.gdp, _make_number_formatter(self.display_unit)
+            self.data.gdp, self._number_fmt()
         )
 
     @property
@@ -152,6 +159,51 @@ class AggregatesNominalInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "AggregatesNominalInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`AggregatesNominalInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join.
+
+        Parameters
+        ----------
+        other : AggregatesNominalInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as
+            :class:`AggregatesNominalInspection` instances.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`AggregatesNominalInspection`.
+        """
+        if not isinstance(other, AggregatesNominalInspection):
+            raise TypeError(
+                f"Expected AggregatesNominalInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = AggregatesNominalInspection(
+            data=AggregatesNominalData(**diff_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = AggregatesNominalInspection(
+            data=AggregatesNominalData(**rel_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def inspect_aggregates_nominal(

@@ -14,6 +14,7 @@ from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._shared import _build_growth_table, _write_inspection_to_excel
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -118,11 +119,17 @@ class FinalUseInspection:
     data: FinalUseInspectionData
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = field(default=False, repr=False)
+
+    def _number_fmt(self):
+        if self._all_rel:
+            return _make_percentage_formatter(self.rel_base)
+        return _make_number_formatter(self.display_unit)
 
     @property
     def use(self) -> Styler:
         """Styled transaction-level use table for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use, _make_number_formatter(self.display_unit))
+        return _style_final_use_use_table(self.data.use, self._number_fmt())
 
     @property
     def use_distribution(self) -> Styler:
@@ -137,7 +144,7 @@ class FinalUseInspection:
     @property
     def use_categories(self) -> Styler:
         """Styled use table (by transaction+category) for display in a Jupyter notebook."""
-        return _style_final_use_use_categories_table(self.data.use_categories, _make_number_formatter(self.display_unit))
+        return _style_final_use_use_categories_table(self.data.use_categories, self._number_fmt())
 
     @property
     def use_categories_distribution(self) -> Styler:
@@ -156,7 +163,7 @@ class FinalUseInspection:
     @property
     def use_products(self) -> Styler:
         """Styled use-detail table (with product breakdown) for display in a Jupyter notebook."""
-        return _style_final_use_use_products_table(self.data.use_products, _make_number_formatter(self.display_unit))
+        return _style_final_use_use_products_table(self.data.use_products, self._number_fmt())
 
     @property
     def use_products_distribution(self) -> Styler:
@@ -175,7 +182,7 @@ class FinalUseInspection:
     @property
     def price_layers(self) -> Styler:
         """Styled price layer decomposition table for display in a Jupyter notebook."""
-        return _style_final_use_price_layers_table(self.data.price_layers, _make_number_formatter(self.display_unit))
+        return _style_final_use_price_layers_table(self.data.price_layers, self._number_fmt())
 
     @property
     def price_layers_rates(self) -> Styler:
@@ -245,6 +252,51 @@ class FinalUseInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "FinalUseInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`FinalUseInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join.
+
+        Parameters
+        ----------
+        other : FinalUseInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as :class:`FinalUseInspection`
+            instances.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`FinalUseInspection`.
+        """
+        if not isinstance(other, FinalUseInspection):
+            raise TypeError(
+                f"Expected FinalUseInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = FinalUseInspection(
+            data=FinalUseInspectionData(**diff_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = FinalUseInspection(
+            data=FinalUseInspectionData(**rel_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def inspect_final_uses(
