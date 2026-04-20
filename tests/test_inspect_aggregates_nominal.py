@@ -589,3 +589,139 @@ def test_sut_delegate_method_with_override(sut, cols):
     })
     result = sut.inspect_aggregates_nominal(gdp_decomp=override)
     assert isinstance(result, AggregatesNominalInspection)
+
+
+# ---------------------------------------------------------------------------
+# gdp_growth table
+# ---------------------------------------------------------------------------
+
+
+def test_gdp_growth_excludes_balance_block(sut):
+    result = inspect_aggregates_nominal(sut)
+    blocks = result.data.gdp_growth.index.get_level_values(0).unique().tolist()
+    assert "Balance" not in blocks
+
+
+def test_gdp_growth_has_production_and_expenditure_blocks(sut):
+    result = inspect_aggregates_nominal(sut)
+    blocks = result.data.gdp_growth.index.get_level_values(0).unique().tolist()
+    assert "Production" in blocks
+    assert "Expenditure" in blocks
+
+
+def test_gdp_growth_first_column_is_nan(sut):
+    result = inspect_aggregates_nominal(sut)
+    first_col = result.data.gdp_growth.columns[0]
+    assert result.data.gdp_growth[first_col].isna().all()
+
+
+def test_gdp_growth_computes_year_on_year_rates(sut):
+    # Production GDP: 2021=111.0, 2022=122.1 → growth = (122.1-111.0)/111.0
+    result = inspect_aggregates_nominal(sut)
+    prod_gdp_growth = result.data.gdp_growth.loc[("Production", "GDP"), 2022]
+    expected = (122.1 - 111.0) / 111.0
+    assert prod_gdp_growth == pytest.approx(expected)
+
+
+def test_gdp_growth_same_rows_as_gdp_without_balance(sut):
+    result = inspect_aggregates_nominal(sut)
+    gdp_no_balance = result.data.gdp[
+        result.data.gdp.index.get_level_values(0) != "Balance"
+    ]
+    assert result.data.gdp_growth.index.equals(gdp_no_balance.index)
+    assert list(result.data.gdp_growth.columns) == list(result.data.gdp.columns)
+
+
+def test_gdp_growth_property_returns_styler(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut)
+    assert isinstance(result.gdp_growth, Styler)
+
+
+def test_gdp_growth_styler_has_correct_shape(sut):
+    result = inspect_aggregates_nominal(sut)
+    styler = result.gdp_growth
+    assert styler.data.shape == result.data.gdp_growth.shape
+
+
+def test_gdp_growth_styler_with_rel_base(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut).set_rel_base(1000)
+    assert isinstance(result.gdp_growth, Styler)
+
+
+# ---------------------------------------------------------------------------
+# gdp_distribution table
+# ---------------------------------------------------------------------------
+
+
+def test_gdp_distribution_excludes_balance_block(sut):
+    result = inspect_aggregates_nominal(sut)
+    blocks = result.data.gdp_distribution.index.get_level_values(0).unique().tolist()
+    assert "Balance" not in blocks
+
+
+def test_gdp_distribution_has_production_and_expenditure_blocks(sut):
+    result = inspect_aggregates_nominal(sut)
+    blocks = result.data.gdp_distribution.index.get_level_values(0).unique().tolist()
+    assert "Production" in blocks
+    assert "Expenditure" in blocks
+
+
+def test_gdp_distribution_same_rows_as_gdp_without_balance(sut):
+    result = inspect_aggregates_nominal(sut)
+    gdp_no_balance = result.data.gdp[
+        result.data.gdp.index.get_level_values(0) != "Balance"
+    ]
+    assert result.data.gdp_distribution.index.equals(gdp_no_balance.index)
+    assert list(result.data.gdp_distribution.columns) == list(result.data.gdp.columns)
+
+
+def test_gdp_distribution_gdp_row_equals_one(sut):
+    result = inspect_aggregates_nominal(sut)
+    for block in ("Production", "Expenditure"):
+        gdp_row = result.data.gdp_distribution.loc[(block, "GDP")]
+        for val in gdp_row:
+            assert val == pytest.approx(1.0)
+
+
+def test_gdp_distribution_production_shares_sum_correctly(sut):
+    # Production GDP 2021=111.0; GVA=87.0 → share=87/111
+    result = inspect_aggregates_nominal(sut)
+    gva_share = result.data.gdp_distribution.loc[("Production", "Gross Value Added"), 2021]
+    expected = 87.0 / 111.0
+    assert gva_share == pytest.approx(expected)
+
+
+def test_gdp_distribution_expenditure_shares_sum_correctly(sut):
+    # Expenditure GDP 2021=9.0; Domestic final expenditure=69.0 → share=69/9
+    result = inspect_aggregates_nominal(sut)
+    dfe_share = result.data.gdp_distribution.loc[("Expenditure", "Domestic final expenditure"), 2021]
+    expected = 69.0 / 9.0
+    assert dfe_share == pytest.approx(expected)
+
+
+def test_gdp_distribution_production_uses_production_gdp_not_expenditure(sut):
+    # Production GDP (111) ≠ Expenditure GDP (9), so the denominator matters.
+    result = inspect_aggregates_nominal(sut)
+    gva_share = result.data.gdp_distribution.loc[("Production", "Gross Value Added"), 2021]
+    # If denominator were Expenditure GDP (9) the share would be ~9.67, not ~0.78
+    assert gva_share == pytest.approx(87.0 / 111.0)
+    assert gva_share != pytest.approx(87.0 / 9.0)
+
+
+def test_gdp_distribution_property_returns_styler(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut)
+    assert isinstance(result.gdp_distribution, Styler)
+
+
+def test_gdp_distribution_styler_has_correct_shape(sut):
+    result = inspect_aggregates_nominal(sut)
+    assert result.gdp_distribution.data.shape == result.data.gdp_distribution.shape
+
+
+def test_gdp_distribution_styler_with_rel_base(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut).set_rel_base(1000)
+    assert isinstance(result.gdp_distribution, Styler)

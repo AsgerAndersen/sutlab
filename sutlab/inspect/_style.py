@@ -1925,7 +1925,7 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit
 
 def _style_aggregates_nominal_table(
     df: pd.DataFrame,
-    display_unit: float | None = None,
+    formatter,
 ) -> Styler:
     """Apply colours, borders, and text styles to the GDP aggregates table.
 
@@ -1960,17 +1960,16 @@ def _style_aggregates_nominal_table(
     - ``"Gross Value Added"``, ``"Total product taxes, netto"``,
       ``"Domestic final expenditure"``, ``"Export, netto"`` → italic.
 
-    All values are formatted as numbers.
-
     Parameters
     ----------
     df : pd.DataFrame
         GDP aggregates table from :func:`inspect_aggregates_nominal`.
-    display_unit : float or None, optional
-        Divisor applied to all values before formatting.
+    formatter : callable
+        Value formatter passed to ``df.style.format``. Use
+        ``_make_number_formatter`` for the nominal table and
+        ``_make_percentage_formatter`` for the growth table.
     """
-    number_fmt = _make_number_formatter(display_unit)
-    styler = df.style.format(number_fmt, na_rep="")
+    styler = df.style.format(formatter, na_rep="")
     if df.empty:
         return styler
 

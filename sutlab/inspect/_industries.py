@@ -10,7 +10,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
-from sutlab.inspect._shared import _sort_by_id_value, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _sort_by_id_value, _write_inspection_to_excel
 import dataclasses
 
 from sutlab.derive import compute_price_layer_rates
@@ -1871,24 +1871,6 @@ def _build_price_layers_distribution(price_layers: pd.DataFrame) -> pd.DataFrame
         )
 
     return result_data
-
-
-def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Build year-on-year growth table: change relative to the previous year.
-
-    Each value is ``(current - previous) / previous``, so a 5% increase gives
-    ``0.05``. The first id column is ``NaN`` throughout. Division by zero also
-    yields ``NaN``. Infinite values (from dividing a non-zero change by zero)
-    are replaced with ``NaN``.
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    floats = df.astype(float)
-    previous = floats.shift(axis=1)
-    growth = (floats - previous).div(previous)
-    growth = growth.replace([float("inf"), float("-inf")], float("nan"))
-    return growth
 
 
 def _percentile_label(p: float) -> str:

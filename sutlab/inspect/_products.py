@@ -12,7 +12,7 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key, filter_rows
 from sutlab.derive import compute_price_layer_rates
-from sutlab.inspect._shared import _sort_by_id_value, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _sort_by_id_value, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -464,6 +464,9 @@ def inspect_products(
     supply_products_distribution = _build_detail_distribution(supply_products)
     use_products_distribution = _build_detail_distribution(use_products)
     balance_growth = _build_growth_table(balance)
+    if "transaction_txt" in balance_growth.index.names:
+        _balance_mask = balance_growth.index.get_level_values("transaction_txt") == "Balance"
+        balance_growth = balance_growth[~_balance_mask]
     supply_products_growth = _build_growth_table(supply_products)
     use_products_growth = _build_growth_table(use_products)
     price_layers = _build_price_layers_table(
@@ -866,29 +869,6 @@ def _build_balance_distribution(balance: pd.DataFrame) -> pd.DataFrame:
 
     balance_mask = trans_txt_vals == "Balance"
     return dist[~balance_mask]
-
-
-def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Build year-on-year growth table: change relative to the previous year.
-
-    Each value is ``(current - previous) / previous``, so a 5% increase gives
-    ``0.05``. The first year column is ``NaN`` throughout. Division by zero
-    also yields ``NaN``. For balance-shaped tables the "Balance" row is
-    excluded — growth of an imbalance is not meaningful.
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    floats = df.astype(float)
-    previous = floats.shift(axis=1)
-    growth = (floats - previous).div(previous)
-    growth = growth.replace([float("inf"), float("-inf")], float("nan"))
-
-    if "transaction_txt" in growth.index.names:
-        balance_mask = growth.index.get_level_values("transaction_txt") == "Balance"
-        growth = growth[~balance_mask]
-
-    return growth
 
 
 def _get_price_layer_columns(cols, use_df: pd.DataFrame) -> list[str]:
