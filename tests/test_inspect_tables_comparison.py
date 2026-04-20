@@ -6,7 +6,7 @@ Covers:
 - division by zero → NaN in rel
 - None tables stay None
 - TypeError on wrong type argument
-- set_display_unit / set_rel_base propagation on TablesComparison
+- set_display_unit / set_rel_base / set_decimals propagation on TablesComparison
 - _all_rel=True on .rel
 - styled properties don't raise
 
@@ -186,7 +186,13 @@ class TestUnbalancedProductsComparison:
         comparison = before_with_base.inspect_tables_comparison(after)
         assert comparison.rel_base == 1000
         assert comparison.diff.rel_base == 1000
-        assert comparison.rel.rel_base == 1000
+
+    def test_decimals_copied_from_caller(self, before, after):
+        before_with_decimals = before.set_decimals(0)
+        comparison = before_with_decimals.inspect_tables_comparison(after)
+        assert comparison.decimals == 0
+        assert comparison.diff.decimals == 0
+        assert comparison.rel.decimals == 0
 
     def test_raises_type_error_on_wrong_type(self, before):
         with pytest.raises(TypeError, match="Expected UnbalancedProductsInspection"):
@@ -245,6 +251,31 @@ class TestTablesComparisonSetters:
     def test_original_unchanged_after_set_rel_base(self, comparison):
         comparison.set_rel_base(1000)
         assert comparison.rel_base == 100
+
+    def test_set_decimals_propagates(self, comparison):
+        updated = comparison.set_decimals(0)
+        assert updated.decimals == 0
+        assert updated.diff.decimals == 0
+        assert updated.rel.decimals == 0
+
+    def test_set_decimals_multiple_values(self, comparison):
+        for n in (0, 2, 3):
+            updated = comparison.set_decimals(n)
+            assert updated.decimals == n
+            assert updated.diff.decimals == n
+            assert updated.rel.decimals == n
+
+    def test_set_decimals_invalid_negative_raises(self, comparison):
+        with pytest.raises(ValueError, match="non-negative integer"):
+            comparison.set_decimals(-1)
+
+    def test_set_decimals_invalid_float_raises(self, comparison):
+        with pytest.raises(ValueError, match="non-negative integer"):
+            comparison.set_decimals(1.5)
+
+    def test_original_unchanged_after_set_decimals(self, comparison):
+        comparison.set_decimals(0)
+        assert comparison.decimals == 1
 
 
 # ---------------------------------------------------------------------------

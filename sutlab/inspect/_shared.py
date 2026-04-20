@@ -100,9 +100,25 @@ def _make_sheet_name(field_name: str) -> str:
 # should be displayed as percentages in Excel (0.05 → 5.0 %).
 _PERCENTAGE_FIELD_SUFFIXES = ("_distribution", "_rates", "_growth")
 
-# Excel number format strings used for data cells.
+# Default Excel number format strings (1 decimal place).
 _EXCEL_NUMBER_FORMAT = "#,##0.0"
 _EXCEL_PERCENTAGE_FORMAT = "0.0%"
+
+
+def _excel_number_format(decimals: int) -> str:
+    """Return an Excel number format string for the given decimal count."""
+    decimal_part = "0" * decimals
+    if decimal_part:
+        return f"#,##0.{decimal_part}"
+    return "#,##0"
+
+
+def _excel_percentage_format(decimals: int) -> str:
+    """Return an Excel percentage format string for the given decimal count."""
+    decimal_part = "0" * decimals
+    if decimal_part:
+        return f"0.{decimal_part}%"
+    return "0%"
 
 # Default width applied to value (non-index) columns.  Wide enough to
 # comfortably show a formatted number like "1,234,567.8" (11 chars) plus
@@ -117,6 +133,7 @@ def _apply_number_formats(
     display_unit: float | None = None,
     rel_base: int = 100,
     all_rel: bool = False,
+    decimals: int = 1,
 ) -> None:
     """Apply Excel number formats to the data cells of a written worksheet.
 
@@ -171,13 +188,15 @@ def _apply_number_formats(
                 continue
             if is_all_percentage or col_offset in rel_col_positions:
                 if rel_base == 100:
-                    cell.number_format = _EXCEL_PERCENTAGE_FORMAT  # Excel auto-multiplies by 100
+                    cell.number_format = _excel_percentage_format(decimals)  # Excel auto-multiplies by 100
                 else:
                     symbol = _REL_BASE_SYMBOLS[rel_base]
+                    decimal_part = "0" * decimals
+                    fmt_str = f"0.{decimal_part}" if decimal_part else "0"
                     cell.value = cell.value * rel_base
-                    cell.number_format = f'0.0"{symbol}"'
+                    cell.number_format = f'{fmt_str}"{symbol}"'
             else:
-                cell.number_format = _EXCEL_NUMBER_FORMAT
+                cell.number_format = _excel_number_format(decimals)
                 if display_unit is not None:
                     cell.value = cell.value / display_unit
 
@@ -277,7 +296,7 @@ def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
     return growth
 
 
-def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None, rel_base: int = 100) -> None:
+def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None, rel_base: int = 100, decimals: int = 1) -> None:
     """Write all non-None tables in an inspection result to an Excel file.
 
     Each field on ``inspection_obj.data`` that holds a
@@ -333,4 +352,4 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
             _apply_bold_headers(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
-            _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel)
+            _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel, decimals)

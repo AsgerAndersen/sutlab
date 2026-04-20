@@ -11,41 +11,41 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 
-def _format_number(value: float) -> str:
-    """Format a raw value with European thousands separator and one decimal.
+def _format_number(value: float, decimals: int = 1) -> str:
+    """Format a raw value with European thousands separator and configurable decimals.
 
-    Example: 1234567.8 → "1.234.567,8"
+    Example (decimals=1): 1234567.8 → "1.234.567,8"
     """
     if pd.isna(value):
         return ""
-    formatted = f"{value:,.1f}"
+    formatted = f"{value:,.{decimals}f}"
     return formatted.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
-def _make_number_formatter(display_unit: float | None):
+def _make_number_formatter(display_unit: float | None, decimals: int = 1):
     """Return a number formatter that divides by ``display_unit`` before formatting.
-
-    When ``display_unit`` is ``None`` returns :func:`_format_number` unchanged.
-    When set, returns a wrapper that divides the value by ``display_unit``
-    before passing it to :func:`_format_number`.
 
     Parameters
     ----------
     display_unit : float or None
         Divisor applied to every value before formatting. ``None`` means
         no division.
+    decimals : int
+        Number of decimal places in the formatted output.
 
     Returns
     -------
     callable
-        A function with the same signature as :func:`_format_number`.
+        A function that formats a single numeric value.
     """
     if display_unit is None:
-        return _format_number
+        def _fmt(value: float) -> str:
+            return _format_number(value, decimals)
+        return _fmt
     def _fmt(value: float) -> str:
         if pd.isna(value):
             return ""
-        return _format_number(value / display_unit)
+        return _format_number(value / display_unit, decimals)
     return _fmt
 
 
@@ -63,7 +63,7 @@ def _format_percentage(value: float) -> str:
 _REL_BASE_SYMBOLS = {100: "%", 1000: "‰", 10000: "‱"}
 
 
-def _make_percentage_formatter(rel_base: int = 100):
+def _make_percentage_formatter(rel_base: int = 100, decimals: int = 1):
     """Return a percentage formatter for the given relative base.
 
     Multiplies the fraction value by ``rel_base`` and appends the
@@ -73,17 +73,19 @@ def _make_percentage_formatter(rel_base: int = 100):
     ----------
     rel_base : int
         Must be 100, 1000, or 10000.
+    decimals : int
+        Number of decimal places in the formatted output.
 
     Returns
     -------
     callable
-        A function with the same signature as :func:`_format_percentage`.
+        A function that formats a single fractional value as a percentage string.
     """
     symbol = _REL_BASE_SYMBOLS[rel_base]
     def _fmt(value: float) -> str:
         if pd.isna(value):
             return ""
-        return f"{value * rel_base:.1f}".replace(".", ",") + symbol
+        return f"{value * rel_base:.{decimals}f}".replace(".", ",") + symbol
     return _fmt
 
 
@@ -406,7 +408,7 @@ def _style_detail_table(
     return styler
 
 
-def _summary_row_format_func(summary_label: str, display_unit: float | None = None, rel_base: int = 100):
+def _summary_row_format_func(summary_label: str, display_unit: float | None = None, rel_base: int = 100, decimals: int = 1):
     """Return the appropriate format function for a summary row label.
 
     - ``total_*`` → number (divided by ``display_unit`` when set)
@@ -417,8 +419,8 @@ def _summary_row_format_func(summary_label: str, display_unit: float | None = No
     if summary_label.startswith("n_products"):
         return lambda v: "" if pd.isna(v) else str(int(v))
     if summary_label.startswith("share_"):
-        return _make_percentage_formatter(rel_base)
-    return _make_number_formatter(display_unit)
+        return _make_percentage_formatter(rel_base, decimals)
+    return _make_number_formatter(display_unit, decimals)
 
 
 def _style_products_summary_table(
@@ -427,6 +429,7 @@ def _style_products_summary_table(
     display_unit: float | None = None,
     rel_base: int = 100,
     all_rel: bool = False,
+    decimals: int = 1,
 ) -> Styler:
     """Apply per-row formatting, colours, and separators to a products_summary table.
 
@@ -462,12 +465,12 @@ def _style_products_summary_table(
     # Apply per-row formatting based on the summary label.
     summary_vals = df.index.get_level_values("summary")
     unique_labels = list(dict.fromkeys(summary_vals))
-    pct_fmt = _make_percentage_formatter(rel_base)
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
     styler = df.style.format(na_rep="")
     for label in unique_labels:
         mask = summary_vals == label
         row_positions = [i for i, m in enumerate(mask) if m]
-        fmt = pct_fmt if all_rel else _summary_row_format_func(label, display_unit, rel_base)
+        fmt = pct_fmt if all_rel else _summary_row_format_func(label, display_unit, rel_base, decimals)
         styler = styler.format(fmt, na_rep="", subset=(df.index[row_positions], df.columns))
 
     if df.empty:
@@ -680,6 +683,7 @@ def _style_industry_balance_table(
     format_func=None,
     display_unit: float | None = None,
     rel_base: int = 100,
+    decimals: int = 1,
 ) -> Styler:
     """Apply colours, bold, and industry separators to the industry balance table.
 
@@ -721,14 +725,14 @@ def _style_industry_balance_table(
         coeff_mask = df.index.get_level_values("transaction_txt") == "Input coefficient"
         non_coeff_idx = df.index[~coeff_mask]
         coeff_idx = df.index[coeff_mask]
-        number_fmt = _make_number_formatter(display_unit)
+        number_fmt = _make_number_formatter(display_unit, decimals)
         if len(non_coeff_idx) > 0:
             styler = styler.format(
                 number_fmt, na_rep="", subset=pd.IndexSlice[non_coeff_idx, :]
             )
         if len(coeff_idx) > 0:
             styler = styler.format(
-                _make_percentage_formatter(rel_base), na_rep="", subset=pd.IndexSlice[coeff_idx, :]
+                _make_percentage_formatter(rel_base, decimals), na_rep="", subset=pd.IndexSlice[coeff_idx, :]
             )
 
     if df.empty:
@@ -1256,6 +1260,7 @@ def _style_imbalances_table(
     display_unit: float | None = None,
     rel_base: int = 100,
     all_rel: bool = False,
+    decimals: int = 1,
 ) -> Styler:
     """Apply column-group colours and formatting to the imbalances table.
 
@@ -1289,8 +1294,8 @@ def _style_imbalances_table(
     all_rel : bool, optional
         When ``True``, all columns are formatted as percentages. Default ``False``.
     """
-    pct_fmt = _make_percentage_formatter(rel_base)
-    number_fmt = _make_number_formatter(display_unit)
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
+    number_fmt = _make_number_formatter(display_unit, decimals)
     styler = df.style
     non_rel_cols = [c for c in df.columns if c != rel_col]
     if all_rel:
@@ -1351,6 +1356,7 @@ def _style_balancing_targets_table(
     display_unit: float | None = None,
     rel_base: int = 100,
     all_rel: bool = False,
+    decimals: int = 1,
 ) -> Styler:
     """Apply column-group colours and formatting to a balancing targets table.
 
@@ -1379,8 +1385,8 @@ def _style_balancing_targets_table(
     all_rel : bool, optional
         When ``True``, all columns are formatted as percentages. Default ``False``.
     """
-    pct_fmt = _make_percentage_formatter(rel_base)
-    number_fmt = _make_number_formatter(display_unit)
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
+    number_fmt = _make_number_formatter(display_unit, decimals)
     styler = df.style
     non_rel_cols = [c for c in df.columns if c != rel_col]
     if all_rel:
@@ -1483,6 +1489,7 @@ def _style_comparison_table(
     display_unit: float | None = None,
     rel_base: int = 100,
     all_rel: bool = False,
+    decimals: int = 1,
 ) -> Styler:
     """Apply colours and formatting to a scalar comparison table.
 
@@ -1518,8 +1525,8 @@ def _style_comparison_table(
     all_rel : bool, optional
         When ``True``, all columns are formatted as percentages. Default ``False``.
     """
-    pct_fmt = _make_percentage_formatter(rel_base)
-    number_fmt = _make_number_formatter(display_unit)
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
+    number_fmt = _make_number_formatter(display_unit, decimals)
     non_rel_cols = [c for c in df.columns if c != rel_col]
     styler = df.style
     if all_rel:
@@ -1587,7 +1594,7 @@ def _style_comparison_table(
     return styler
 
 
-def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None = None, rel_base: int = 100, all_rel: bool = False) -> Styler:
+def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None = None, rel_base: int = 100, all_rel: bool = False, decimals: int = 1) -> Styler:
     """Apply colours and formatting to a price-layers comparison table.
 
     Used for ``use_price_layers`` and
@@ -1615,8 +1622,8 @@ def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None 
     all_rel : bool, optional
         When ``True``, all columns are formatted as percentages. Default ``False``.
     """
-    pct_fmt = _make_percentage_formatter(rel_base)
-    number_fmt = _make_number_formatter(display_unit)
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
+    number_fmt = _make_number_formatter(display_unit, decimals)
     non_rel_cols = [c for c in df.columns if c != "rel"]
     styler = df.style
     if all_rel:
@@ -1705,7 +1712,7 @@ def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None 
     return styler
 
 
-def _style_summary_table(df: pd.DataFrame, all_rel: bool = False) -> Styler:
+def _style_summary_table(df: pd.DataFrame, all_rel: bool = False, decimals: int = 1) -> Styler:
     """Apply row colours and block separators to the comparison summary table.
 
     Colour scheme:
@@ -1735,7 +1742,7 @@ def _style_summary_table(df: pd.DataFrame, all_rel: bool = False) -> Styler:
         ``n_changes`` as the sole column.
     """
     if all_rel:
-        styler = df.style.format(_make_percentage_formatter(100), na_rep="")
+        styler = df.style.format(_make_percentage_formatter(100, decimals), na_rep="")
     else:
         styler = df.style.format(
             lambda v: "" if pd.isna(v) else str(int(v)), na_rep=""
@@ -1797,7 +1804,7 @@ def _style_summary_table(df: pd.DataFrame, all_rel: bool = False) -> Styler:
     return styler
 
 
-def _style_unbalanced_targets_summary(df: pd.DataFrame, display_unit: float | None = None, all_rel: bool = False) -> Styler:
+def _style_unbalanced_targets_summary(df: pd.DataFrame, display_unit: float | None = None, all_rel: bool = False, decimals: int = 1) -> Styler:
     """Apply row colours and block separator to the unbalanced-targets summary table.
 
     Colour scheme:
@@ -1818,8 +1825,8 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame, display_unit: float | No
         Summary DataFrame with ``table`` as the index name and columns
         ``n_unbalanced`` and ``largest_diff``.
     """
-    pct_fmt = _make_percentage_formatter(100)
-    number_fmt = _make_number_formatter(display_unit)
+    pct_fmt = _make_percentage_formatter(100, decimals)
+    number_fmt = _make_number_formatter(display_unit, decimals)
 
     def _format_cell(v, col):
         if pd.isna(v):
@@ -1880,7 +1887,7 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame, display_unit: float | No
     return styler
 
 
-def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit: float | None = None, rel_base: int = 100, all_rel: bool = False) -> Styler:
+def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit: float | None = None, rel_base: int = 100, all_rel: bool = False, decimals: int = 1) -> Styler:
     """Apply colours and formatting to a comparison summary table.
 
     Used for ``supply_products_summary``, ``supply_columns_summary``,
@@ -1912,12 +1919,12 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit
     all_rel : bool, optional
         When ``True``, all columns are formatted as percentages. Default ``False``.
     """
-    pct_fmt = _make_percentage_formatter(rel_base)
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
     n_changes_cols = [c for c in df.columns if c == "n_changes"]
     diff_cols = [c for c in df.columns if c == "diff_norm" or c.startswith("diff_")]
     rel_cols = [c for c in df.columns if c.startswith("rel_")]
 
-    number_fmt = _make_number_formatter(display_unit)
+    number_fmt = _make_number_formatter(display_unit, decimals)
     styler = df.style.format(na_rep="")
     if all_rel:
         styler = styler.format(pct_fmt, na_rep="")
@@ -2134,7 +2141,7 @@ def _style_aggregates_nominal_table(
     return styler
 
 
-def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | None = None, all_rel: bool = False) -> Styler:
+def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | None = None, all_rel: bool = False, decimals: int = 1) -> Styler:
     """Apply neutral grey colours to the unbalanced-products summary table.
 
     Colour scheme:
@@ -2150,8 +2157,8 @@ def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | N
         Summary DataFrame with ``table`` as the index name and columns
         ``n_unbalanced`` and ``largest_diff``.
     """
-    pct_fmt = _make_percentage_formatter(100)
-    number_fmt = _make_number_formatter(display_unit)
+    pct_fmt = _make_percentage_formatter(100, decimals)
+    number_fmt = _make_number_formatter(display_unit, decimals)
 
     def _format_cell(v, col):
         if pd.isna(v):

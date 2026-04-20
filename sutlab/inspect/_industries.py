@@ -217,21 +217,22 @@ class IndustryInspection:
     _p1_trans: frozenset = field(default_factory=frozenset, repr=False)
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
     _all_rel: bool = field(default=False, repr=False)
 
     def _number_fmt(self):
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base)
-        return _make_number_formatter(self.display_unit)
+            return _make_percentage_formatter(self.rel_base, self.decimals)
+        return _make_number_formatter(self.display_unit, self.decimals)
 
     @property
     def balance(self) -> Styler:
         """Styled industry balance table for display in a Jupyter notebook."""
         if self._all_rel:
-            fmt = _make_percentage_formatter(self.rel_base)
+            fmt = _make_percentage_formatter(self.rel_base, self.decimals)
         else:
             fmt = None  # mixed: number for most rows, percentage for Input coefficient
-        return _style_industry_balance_table(self.data.balance, self._p1_trans, format_func=fmt, display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_industry_balance_table(self.data.balance, self._p1_trans, format_func=fmt, display_unit=self.display_unit, rel_base=self.rel_base, decimals=self.decimals)
 
     @property
     def supply_products(self) -> Styler:
@@ -251,7 +252,7 @@ class IndustryInspection:
         """Styled product-share distribution of industry output for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.supply_products_distribution,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             "supply",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -264,7 +265,7 @@ class IndustryInspection:
         """Styled year-on-year growth of industry output detail for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.supply_products_growth,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             "supply",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -281,6 +282,7 @@ class IndustryInspection:
             self.display_unit,
             self.rel_base,
             all_rel=self._all_rel,
+            decimals=self.decimals,
         )
 
     @property
@@ -301,7 +303,7 @@ class IndustryInspection:
         """Styled product-share distribution of industry input for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.use_products_distribution,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             "use",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -314,7 +316,7 @@ class IndustryInspection:
         """Styled input coefficients by product for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.use_products_coefficients,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             "use",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -327,7 +329,7 @@ class IndustryInspection:
         """Styled year-on-year growth of industry input detail for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.use_products_growth,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             "use",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -344,6 +346,7 @@ class IndustryInspection:
             self.display_unit,
             self.rel_base,
             all_rel=self._all_rel,
+            decimals=self.decimals,
         )
 
     @property
@@ -361,7 +364,7 @@ class IndustryInspection:
         """Styled price layer rates for industry input for display in a Jupyter notebook."""
         return _style_price_layers_table(
             self.data.price_layers_rates,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             outer_level="industry",
             outer_txt_level="industry_txt",
         )
@@ -371,7 +374,7 @@ class IndustryInspection:
         """Styled price layer distribution of industry input for display in a Jupyter notebook."""
         return _style_price_layers_table(
             self.data.price_layers_distribution,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             outer_level="industry",
             outer_txt_level="industry_txt",
         )
@@ -381,7 +384,7 @@ class IndustryInspection:
         """Styled year-on-year growth of price layers for display in a Jupyter notebook."""
         return _style_price_layers_table(
             self.data.price_layers_growth,
-            _make_percentage_formatter(self.rel_base),
+            _make_percentage_formatter(self.rel_base, self.decimals),
             outer_level="industry",
             outer_txt_level="industry_txt",
         )
@@ -393,7 +396,7 @@ class IndustryInspection:
         All values are formatted as percentages.
         """
         return _style_industry_balance_table(
-            self.data.balance_growth, self._p1_trans, format_func=_make_percentage_formatter(self.rel_base)
+            self.data.balance_growth, self._p1_trans, format_func=_make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     def display_products_n_largest(self, n: int, id) -> "IndustryInspection":
@@ -484,7 +487,7 @@ class IndustryInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "IndustryInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -519,6 +522,21 @@ class IndustryInspection:
             )
         return dataclasses.replace(self, rel_base=rel_base)
 
+    def set_decimals(self, decimals: int) -> "IndustryInspection":
+        """Return a copy with ``decimals`` set to the given value.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        return dataclasses.replace(self, decimals=decimals)
+
     def inspect_tables_comparison(self, other: "IndustryInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`IndustryInspection`.
 
@@ -551,12 +569,14 @@ class IndustryInspection:
             _p1_trans=self._p1_trans,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
         rel = IndustryInspection(
             data=IndustryInspectionData(**rel_fields),
             _p1_trans=self._p1_trans,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
             _all_rel=True,
         )
         return TablesComparison(
@@ -564,6 +584,7 @@ class IndustryInspection:
             rel=rel,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
 
 

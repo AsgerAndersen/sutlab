@@ -48,12 +48,16 @@ class TablesComparison:
     rel_base : int
         Relative-value display base (100, 1000, or 10000). Copied from
         the object ``inspect_tables_comparison`` was called on.
+    decimals : int
+        Number of decimal places in formatted numbers and percentages.
+        Copied from the object ``inspect_tables_comparison`` was called on.
     """
 
     diff: Any
     rel: Any
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
 
     def set_display_unit(self, display_unit: float | None) -> "TablesComparison":
         """Return a copy with ``display_unit`` updated on this object and both inner objects.
@@ -94,6 +98,23 @@ class TablesComparison:
         new_diff = dataclasses.replace(self.diff, rel_base=rel_base)
         new_rel = dataclasses.replace(self.rel, rel_base=rel_base)
         return dataclasses.replace(self, diff=new_diff, rel=new_rel, rel_base=rel_base)
+
+    def set_decimals(self, decimals: int) -> "TablesComparison":
+        """Return a copy with ``decimals`` updated on this object and both inner objects.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        new_diff = dataclasses.replace(self.diff, decimals=decimals)
+        new_rel = dataclasses.replace(self.rel, decimals=decimals)
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, decimals=decimals)
 
 
 def _compute_comparison_table_fields(

@@ -89,12 +89,13 @@ class AggregatesNominalInspection:
     data: AggregatesNominalData
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     def _number_fmt(self):
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base)
-        return _make_number_formatter(self.display_unit)
+            return _make_percentage_formatter(self.rel_base, self.decimals)
+        return _make_number_formatter(self.display_unit, self.decimals)
 
     @property
     def gdp(self) -> Styler:
@@ -107,14 +108,14 @@ class AggregatesNominalInspection:
     def gdp_growth(self) -> Styler:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
         return _style_aggregates_nominal_table(
-            self.data.gdp_growth, _make_percentage_formatter(self.rel_base)
+            self.data.gdp_growth, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
     def gdp_distribution(self) -> Styler:
         """Styled GDP share table for display in a Jupyter notebook."""
         return _style_aggregates_nominal_table(
-            self.data.gdp_distribution, _make_percentage_formatter(self.rel_base)
+            self.data.gdp_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     def write_to_excel(self, path: str | Path) -> None:
@@ -125,7 +126,7 @@ class AggregatesNominalInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "AggregatesNominalInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -160,6 +161,21 @@ class AggregatesNominalInspection:
             )
         return dataclasses.replace(self, rel_base=rel_base)
 
+    def set_decimals(self, decimals: int) -> "AggregatesNominalInspection":
+        """Return a copy with ``decimals`` set to the given value.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        return dataclasses.replace(self, decimals=decimals)
+
     def inspect_tables_comparison(self, other: "AggregatesNominalInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`AggregatesNominalInspection`.
 
@@ -191,11 +207,13 @@ class AggregatesNominalInspection:
             data=AggregatesNominalData(**diff_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
         rel = AggregatesNominalInspection(
             data=AggregatesNominalData(**rel_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
             _all_rel=True,
         )
         return TablesComparison(
@@ -203,6 +221,7 @@ class AggregatesNominalInspection:
             rel=rel,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
 
 

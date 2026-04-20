@@ -100,19 +100,20 @@ class UnbalancedTargetsInspection:
     data: UnbalancedTargetsData
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     def _supply_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a supply-side targets table."""
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
 
     def _use_styler(self, df: pd.DataFrame) -> Styler:
         """Return a styled Styler for a use-side targets table."""
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
 
     @property
     def supply_categories(self) -> Styler:
@@ -165,7 +166,7 @@ class UnbalancedTargetsInspection:
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_targets_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel)
+        return _style_unbalanced_targets_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel, decimals=self.decimals)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -180,7 +181,7 @@ class UnbalancedTargetsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "UnbalancedTargetsInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -215,6 +216,21 @@ class UnbalancedTargetsInspection:
             )
         return dataclasses.replace(self, rel_base=rel_base)
 
+    def set_decimals(self, decimals: int) -> "UnbalancedTargetsInspection":
+        """Return a copy with ``decimals`` set to the given value.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        return dataclasses.replace(self, decimals=decimals)
+
     def inspect_tables_comparison(self, other: "UnbalancedTargetsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedTargetsInspection`.
 
@@ -246,11 +262,13 @@ class UnbalancedTargetsInspection:
             data=UnbalancedTargetsData(**diff_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
         rel = UnbalancedTargetsInspection(
             data=UnbalancedTargetsData(**rel_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
             _all_rel=True,
         )
         return TablesComparison(
@@ -258,6 +276,7 @@ class UnbalancedTargetsInspection:
             rel=rel,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
 
 

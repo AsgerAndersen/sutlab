@@ -119,12 +119,13 @@ class FinalUseInspection:
     data: FinalUseInspectionData
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
     _all_rel: bool = field(default=False, repr=False)
 
     def _number_fmt(self):
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base)
-        return _make_number_formatter(self.display_unit)
+            return _make_percentage_formatter(self.rel_base, self.decimals)
+        return _make_number_formatter(self.display_unit, self.decimals)
 
     @property
     def use(self) -> Styler:
@@ -134,12 +135,12 @@ class FinalUseInspection:
     @property
     def use_distribution(self) -> Styler:
         """Styled transaction-level share distribution for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use_distribution, _make_percentage_formatter(self.rel_base))
+        return _style_final_use_use_table(self.data.use_distribution, _make_percentage_formatter(self.rel_base, self.decimals))
 
     @property
     def use_growth(self) -> Styler:
         """Styled transaction-level year-on-year growth for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use_growth, _make_percentage_formatter(self.rel_base))
+        return _style_final_use_use_table(self.data.use_growth, _make_percentage_formatter(self.rel_base, self.decimals))
 
     @property
     def use_categories(self) -> Styler:
@@ -150,14 +151,14 @@ class FinalUseInspection:
     def use_categories_distribution(self) -> Styler:
         """Styled category share distribution for display in a Jupyter notebook."""
         return _style_final_use_use_categories_table(
-            self.data.use_categories_distribution, _make_percentage_formatter(self.rel_base)
+            self.data.use_categories_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
     def use_categories_growth(self) -> Styler:
         """Styled category year-on-year growth for display in a Jupyter notebook."""
         return _style_final_use_use_categories_table(
-            self.data.use_categories_growth, _make_percentage_formatter(self.rel_base)
+            self.data.use_categories_growth, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
@@ -169,14 +170,14 @@ class FinalUseInspection:
     def use_products_distribution(self) -> Styler:
         """Styled use-products distribution table for display in a Jupyter notebook."""
         return _style_final_use_use_products_table(
-            self.data.use_products_distribution, _make_percentage_formatter(self.rel_base)
+            self.data.use_products_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
     def use_products_growth(self) -> Styler:
         """Styled use-products year-on-year growth table for display in a Jupyter notebook."""
         return _style_final_use_use_products_table(
-            self.data.use_products_growth, _make_percentage_formatter(self.rel_base)
+            self.data.use_products_growth, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
@@ -188,21 +189,21 @@ class FinalUseInspection:
     def price_layers_rates(self) -> Styler:
         """Styled step-wise price layer rates for display in a Jupyter notebook."""
         return _style_final_use_price_layers_table(
-            self.data.price_layers_rates, _make_percentage_formatter(self.rel_base)
+            self.data.price_layers_rates, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
     def price_layers_distribution(self) -> Styler:
         """Styled price layer distribution table for display in a Jupyter notebook."""
         return _style_final_use_price_layers_table(
-            self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base)
+            self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     @property
     def price_layers_growth(self) -> Styler:
         """Styled price layer year-on-year growth table for display in a Jupyter notebook."""
         return _style_final_use_price_layers_table(
-            self.data.price_layers_growth, _make_percentage_formatter(self.rel_base)
+            self.data.price_layers_growth, _make_percentage_formatter(self.rel_base, self.decimals)
         )
 
     def write_to_excel(self, path) -> None:
@@ -218,7 +219,7 @@ class FinalUseInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "FinalUseInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -253,6 +254,21 @@ class FinalUseInspection:
             )
         return dataclasses.replace(self, rel_base=rel_base)
 
+    def set_decimals(self, decimals: int) -> "FinalUseInspection":
+        """Return a copy with ``decimals`` set to the given value.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        return dataclasses.replace(self, decimals=decimals)
+
     def inspect_tables_comparison(self, other: "FinalUseInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`FinalUseInspection`.
 
@@ -284,11 +300,13 @@ class FinalUseInspection:
             data=FinalUseInspectionData(**diff_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
         rel = FinalUseInspection(
             data=FinalUseInspectionData(**rel_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
             _all_rel=True,
         )
         return TablesComparison(
@@ -296,6 +314,7 @@ class FinalUseInspection:
             rel=rel,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
 
 

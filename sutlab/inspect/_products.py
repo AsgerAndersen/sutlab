@@ -197,12 +197,13 @@ class ProductInspection:
     data: ProductInspectionData
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
     _all_rel: bool = field(default=False, repr=False)
 
     def _number_fmt(self):
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base)
-        return _make_number_formatter(self.display_unit)
+            return _make_percentage_formatter(self.rel_base, self.decimals)
+        return _make_number_formatter(self.display_unit, self.decimals)
 
     @property
     def balance(self) -> Styler:
@@ -218,27 +219,27 @@ class ProductInspection:
 
     @property
     def balance_distribution(self) -> Styler:
-        return _style_balance_table(self.data.balance_distribution, _make_percentage_formatter(self.rel_base))
+        return _style_balance_table(self.data.balance_distribution, _make_percentage_formatter(self.rel_base, self.decimals))
 
     @property
     def supply_products_distribution(self) -> Styler:
-        return _style_detail_table(self.data.supply_products_distribution, _make_percentage_formatter(self.rel_base), "supply")
+        return _style_detail_table(self.data.supply_products_distribution, _make_percentage_formatter(self.rel_base, self.decimals), "supply")
 
     @property
     def use_products_distribution(self) -> Styler:
-        return _style_detail_table(self.data.use_products_distribution, _make_percentage_formatter(self.rel_base), "use")
+        return _style_detail_table(self.data.use_products_distribution, _make_percentage_formatter(self.rel_base, self.decimals), "use")
 
     @property
     def balance_growth(self) -> Styler:
-        return _style_balance_table(self.data.balance_growth, _make_percentage_formatter(self.rel_base))
+        return _style_balance_table(self.data.balance_growth, _make_percentage_formatter(self.rel_base, self.decimals))
 
     @property
     def supply_products_growth(self) -> Styler:
-        return _style_detail_table(self.data.supply_products_growth, _make_percentage_formatter(self.rel_base), "supply")
+        return _style_detail_table(self.data.supply_products_growth, _make_percentage_formatter(self.rel_base, self.decimals), "supply")
 
     @property
     def use_products_growth(self) -> Styler:
-        return _style_detail_table(self.data.use_products_growth, _make_percentage_formatter(self.rel_base), "use")
+        return _style_detail_table(self.data.use_products_growth, _make_percentage_formatter(self.rel_base, self.decimals), "use")
 
     @property
     def price_layers(self) -> Styler:
@@ -246,15 +247,15 @@ class ProductInspection:
 
     @property
     def price_layers_distribution(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base))
+        return _style_price_layers_table(self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base, self.decimals))
 
     @property
     def price_layers_growth(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_growth, _make_percentage_formatter(self.rel_base))
+        return _style_price_layers_table(self.data.price_layers_growth, _make_percentage_formatter(self.rel_base, self.decimals))
 
     @property
     def price_layers_rates(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_rates, _make_percentage_formatter(self.rel_base))
+        return _style_price_layers_table(self.data.price_layers_rates, _make_percentage_formatter(self.rel_base, self.decimals))
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -269,7 +270,7 @@ class ProductInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "ProductInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -304,6 +305,21 @@ class ProductInspection:
             )
         return dataclasses.replace(self, rel_base=rel_base)
 
+    def set_decimals(self, decimals: int) -> "ProductInspection":
+        """Return a copy with ``decimals`` set to the given value.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        return dataclasses.replace(self, decimals=decimals)
+
     def inspect_tables_comparison(self, other: "ProductInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`ProductInspection`.
 
@@ -337,11 +353,13 @@ class ProductInspection:
             data=ProductInspectionData(**diff_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
         rel = ProductInspection(
             data=ProductInspectionData(**rel_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
             _all_rel=True,
         )
         return TablesComparison(
@@ -349,6 +367,7 @@ class ProductInspection:
             rel=rel,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
 
 

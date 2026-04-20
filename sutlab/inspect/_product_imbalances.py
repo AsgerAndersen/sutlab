@@ -76,6 +76,7 @@ class UnbalancedProductsInspection:
     data: UnbalancedProductsData
     display_unit: float | None = None
     rel_base: int = 100
+    decimals: int = 1
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     @property
@@ -86,12 +87,12 @@ class UnbalancedProductsInspection:
         use_cols = [c for c in df.columns if c.startswith("use_")]
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
-        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
+        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel)
+        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel, decimals=self.decimals)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -106,7 +107,7 @@ class UnbalancedProductsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base)
+        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "UnbalancedProductsInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -141,6 +142,21 @@ class UnbalancedProductsInspection:
             )
         return dataclasses.replace(self, rel_base=rel_base)
 
+    def set_decimals(self, decimals: int) -> "UnbalancedProductsInspection":
+        """Return a copy with ``decimals`` set to the given value.
+
+        Parameters
+        ----------
+        decimals : int
+            Number of decimal places in formatted numbers and percentages.
+            Must be a non-negative integer.
+        """
+        if not isinstance(decimals, int) or decimals < 0:
+            raise ValueError(
+                f"decimals must be a non-negative integer. Got {decimals!r}."
+            )
+        return dataclasses.replace(self, decimals=decimals)
+
     def inspect_tables_comparison(self, other: "UnbalancedProductsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedProductsInspection`.
 
@@ -172,11 +188,13 @@ class UnbalancedProductsInspection:
             data=UnbalancedProductsData(**diff_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
         rel = UnbalancedProductsInspection(
             data=UnbalancedProductsData(**rel_fields),
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
             _all_rel=True,
         )
         return TablesComparison(
@@ -184,6 +202,7 @@ class UnbalancedProductsInspection:
             rel=rel,
             display_unit=self.display_unit,
             rel_base=self.rel_base,
+            decimals=self.decimals,
         )
 
 

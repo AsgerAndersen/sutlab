@@ -725,3 +725,38 @@ def test_gdp_distribution_styler_with_rel_base(sut):
     from pandas.io.formats.style import Styler
     result = inspect_aggregates_nominal(sut).set_rel_base(1000)
     assert isinstance(result.gdp_distribution, Styler)
+
+
+# ---------------------------------------------------------------------------
+# set_decimals
+# ---------------------------------------------------------------------------
+
+
+def test_set_decimals_default(sut):
+    result = inspect_aggregates_nominal(sut)
+    assert result.decimals == 1
+
+
+def test_set_decimals_returns_new_copy(sut):
+    result = inspect_aggregates_nominal(sut)
+    updated = result.set_decimals(0)
+    assert updated.decimals == 0
+    assert result.decimals == 1
+
+
+def test_set_decimals_styled_properties_do_not_raise(sut):
+    from pandas.io.formats.style import Styler
+    result = inspect_aggregates_nominal(sut).set_decimals(0)
+    assert isinstance(result.gdp, Styler)
+    assert isinstance(result.gdp_growth, Styler)
+    assert isinstance(result.gdp_distribution, Styler)
+
+
+def test_set_decimals_invalid_negative_raises(sut):
+    with pytest.raises(ValueError, match="non-negative integer"):
+        inspect_aggregates_nominal(sut).set_decimals(-1)
+
+
+def test_set_decimals_invalid_float_raises(sut):
+    with pytest.raises(ValueError, match="non-negative integer"):
+        inspect_aggregates_nominal(sut).set_decimals(1.5)
