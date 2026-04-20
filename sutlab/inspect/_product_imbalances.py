@@ -1,5 +1,5 @@
 """
-inspect_unbalanced_products: imbalance table for the active balancing member.
+inspect_unbalanced_products: imbalance table across selected ids.
 """
 
 from __future__ import annotations
@@ -40,21 +40,19 @@ class UnbalancedProductsInspection:
     Attributes
     ----------
     imbalances : pd.DataFrame
-        One row per product whose supply and use at basic prices differ by
-        more than the tolerance threshold.
+        One row per (id, product) whose supply and use at basic prices differ
+        by more than the tolerance threshold.
 
-        Index is the product code column (e.g. ``nrnr``) when no product
-        classification is loaded. When a product classification is available,
-        the index is a two-level MultiIndex with levels named after the
-        product column and its ``_txt`` counterpart
-        (e.g. ``nrnr`` and ``nrnr_txt``).
+        Index is a MultiIndex with ``id`` as the outermost level, followed by
+        the product code column (e.g. ``nrnr``). When a product classification
+        is available, a third level with the product label (e.g. ``nrnr_txt``)
+        is also present.
 
         Columns use the actual data column names from ``SUTColumns``,
         prefixed with ``supply_``, ``use_``, ``diff_``, or ``rel_``:
 
         - ``supply_{price_basic}`` — total supply for the product at basic
-          prices, summed across all transactions and categories in the active
-          balancing member.
+          prices, summed across all transactions and categories for the id.
         - ``use_{price_basic}`` — total use for the product at basic prices.
         - ``diff_{price_basic}`` — ``supply_{price_basic} - use_{price_basic}``.
         - ``rel_{price_basic}`` — ``supply_{price_basic} / use_{price_basic} - 1``.
@@ -62,15 +60,16 @@ class UnbalancedProductsInspection:
         - One ``use_{layer}`` column per price layer present in the data
           (e.g. ``use_vat``, ``use_transport_margins``), using the actual
           column names from ``SUTColumns``. Each value is the total of that
-          layer summed across all use rows for the product in the active
-          balancing member. Provided as context for diagnosing the imbalance.
+          layer summed across all use rows for the product in the id.
+          Provided as context for diagnosing the imbalance.
         - ``use_{price_purchasers}`` — total use at purchasers' prices.
 
     summary : pd.DataFrame
-        One row summarising the imbalances table. Index is ``"imbalances"``;
-        columns are ``n_unbalanced`` (number of rows in the imbalances table)
-        and ``largest_diff`` (the signed diff value whose absolute value
-        is largest; ``NaN`` when the imbalances table is empty).
+        One row summarising the imbalances table across all ids. Index is
+        ``"imbalances"``; columns are ``n_unbalanced`` (total number of rows
+        in the imbalances table across all ids) and ``largest_diff`` (the
+        signed diff value whose absolute value is largest across all ids;
+        ``NaN`` when the imbalances table is empty).
     """
 
     data: UnbalancedProductsData
@@ -209,11 +208,12 @@ class UnbalancedProductsInspection:
 def inspect_unbalanced_products(
     sut: SUT,
     products: str | list[str] | None = None,
+    ids: str | int | list[str | int] | None = None,
     sort: bool = False,
     tolerance: float = 1,
 ) -> UnbalancedProductsInspection:
     """
-    Return an imbalances table for products in the active balancing member.
+    Return an imbalances table for products across selected ids.
 
     Only products whose absolute difference between supply and use at basic
     prices exceeds ``tolerance`` are included.
@@ -221,16 +221,21 @@ def inspect_unbalanced_products(
     Parameters
     ----------
     sut : SUT
-        The SUT collection. Must have ``balancing_id`` and ``metadata`` set.
+        The SUT collection. Must have ``metadata`` set.
     products : str, list of str, or None, optional
         Product codes to check. Accepts the same pattern syntax as
         :func:`~sutlab.sut.filter_rows`: exact codes, wildcards (``*``),
         ranges (``:``), and negation (``~``). ``None`` (the default) checks
-        all products present in the balancing member.
+        all products present in the data.
+    ids : str, int, list of str or int, or None, optional
+        Id values to include. Accepts the same pattern syntax as
+        :func:`~sutlab.sut.filter_rows`. ``None`` (the default) includes
+        all ids present in the SUT.
     sort : bool, optional
         When ``True``, rows are sorted by the absolute value of
-        ``diff_{price_basic}`` in descending order (largest imbalance first).
-        Default ``False`` preserves natural sort order of product codes.
+        ``diff_{price_basic}`` in descending order (largest imbalance first)
+        within each id. Default ``False`` preserves natural sort order of
+        product codes.
     tolerance : float, optional
         Products are considered unbalanced when
         ``abs(supply_{price_basic} - use_{price_basic}) > tolerance``.
@@ -240,25 +245,18 @@ def inspect_unbalanced_products(
     -------
     UnbalancedProductsInspection
         A dataclass whose ``.data.imbalances`` is a DataFrame of unbalanced
-        products. See :class:`UnbalancedProductsInspection` for the table
-        structure.
+        products indexed by (id, product). See :class:`UnbalancedProductsInspection`
+        for the table structure.
 
     Raises
     ------
     ValueError
         If ``sut.metadata`` is ``None``.
-    ValueError
-        If ``sut.balancing_id`` is ``None``.
     """
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call inspect_unbalanced_products. "
             "Provide a SUTMetadata with column name mappings."
-        )
-    if sut.balancing_id is None:
-        raise ValueError(
-            "sut.balancing_id is not set. Call set_balancing_id first to "
-            "identify which member to inspect."
         )
 
     cols = sut.metadata.columns
@@ -274,11 +272,107 @@ def inspect_unbalanced_products(
     rel_name = f"rel_{price_basic_col}"
     use_purchasers_name = f"use_{price_purchasers_col}"
 
-    # Filter to the active balancing member
-    member_supply = sut.supply[sut.supply[id_col] == sut.balancing_id]
-    member_use = sut.use[sut.use[id_col] == sut.balancing_id]
+    classifications = sut.metadata.classifications
 
-    # Resolve which products to check
+    # Compute margin codes once — these are always excluded
+    if classifications is not None and classifications.margin_products is not None:
+        margin_codes = set(classifications.margin_products[prod_col].tolist())
+    else:
+        margin_codes = set()
+
+    # Resolve which ids to process
+    all_supply_ids = sut.supply[id_col].unique().tolist()
+    all_use_ids = sut.use[id_col].unique().tolist()
+    all_id_values = sorted(
+        set(all_supply_ids) | set(all_use_ids),
+        key=lambda v: str(v),
+    )
+
+    if ids is None:
+        matched_ids = all_id_values
+    else:
+        if isinstance(ids, (str, int)):
+            id_patterns = [str(ids)]
+        else:
+            id_patterns = [str(v) for v in ids]
+        all_id_strs = [str(v) for v in all_id_values]
+        matched_strs = set(_match_codes(all_id_strs, id_patterns))
+        matched_ids = [v for v in all_id_values if str(v) in matched_strs]
+
+    # Build imbalances for each id and prepend the id index level
+    per_id_frames = []
+    for id_value in matched_ids:
+        member_supply = sut.supply[sut.supply[id_col] == id_value]
+        member_use = sut.use[sut.use[id_col] == id_value]
+        id_df = _build_imbalances_for_id(
+            member_supply=member_supply,
+            member_use=member_use,
+            products=products,
+            sort=sort,
+            tolerance=tolerance,
+            prod_col=prod_col,
+            price_basic_col=price_basic_col,
+            price_purchasers_col=price_purchasers_col,
+            cols=cols,
+            classifications=classifications,
+            margin_codes=margin_codes,
+        )
+        id_df = _prepend_id_level(id_df, id_value, id_col)
+        per_id_frames.append(id_df)
+
+    if per_id_frames:
+        result = pd.concat(per_id_frames)
+    else:
+        # Empty result with correct columns
+        result = pd.DataFrame(columns=[diff_name, rel_name, supply_basic_name, use_basic_name, use_purchasers_name])
+        result.index = pd.MultiIndex.from_tuples([], names=[id_col, prod_col])
+
+    # Build summary: total n_unbalanced and max-abs largest_diff across all ids
+    n_unbalanced = len(result)
+    if n_unbalanced > 0 and diff_name in result.columns:
+        largest_diff = result[diff_name].loc[result[diff_name].abs().idxmax()]
+    else:
+        largest_diff = float("nan")
+    summary = pd.DataFrame(
+        {"n_unbalanced": [n_unbalanced], "largest_diff": [largest_diff]},
+        index=pd.Index(["imbalances"], name="table"),
+    )
+
+    return UnbalancedProductsInspection(
+        data=UnbalancedProductsData(imbalances=result, summary=summary),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_imbalances_for_id(
+    member_supply: pd.DataFrame,
+    member_use: pd.DataFrame,
+    products: str | list[str] | None,
+    sort: bool,
+    tolerance: float,
+    prod_col: str,
+    price_basic_col: str,
+    price_purchasers_col: str,
+    cols,
+    classifications,
+    margin_codes: set,
+) -> pd.DataFrame:
+    """Build the imbalances DataFrame for a single id value.
+
+    Returns a DataFrame indexed by product code (and optionally product label),
+    with no id level — that is prepended by the caller.
+    """
+    supply_basic_name = f"supply_{price_basic_col}"
+    use_basic_name = f"use_{price_basic_col}"
+    diff_name = f"diff_{price_basic_col}"
+    rel_name = f"rel_{price_basic_col}"
+    use_purchasers_name = f"use_{price_purchasers_col}"
+
+    # Resolve which products to check for this member
     supply_codes = member_supply[prod_col].dropna().unique().tolist()
     use_codes = member_use[prod_col].dropna().unique().tolist()
     all_codes = sorted(set(supply_codes) | set(use_codes), key=_natural_sort_key)
@@ -292,11 +386,8 @@ def inspect_unbalanced_products(
             patterns = list(products)
         matched_products = _match_codes(all_codes, patterns)
 
-    # Exclude margin products (their supply-use balance is governed differently)
-    classifications = sut.metadata.classifications
-    if classifications is not None and classifications.margin_products is not None:
-        margin_codes = set(classifications.margin_products[prod_col].tolist())
-        matched_products = [p for p in matched_products if p not in margin_codes]
+    # Exclude margin products
+    matched_products = [p for p in matched_products if p not in margin_codes]
 
     # Restrict both tables to matched products
     matched_supply = member_supply[member_supply[prod_col].isin(matched_products)]
@@ -318,7 +409,7 @@ def inspect_unbalanced_products(
         .rename(use_basic_name)
     )
 
-    # Sum each price layer per product
+    # Sum each price layer per product (uses member_use to detect present layers)
     layer_cols = _get_price_layer_columns(cols, member_use)
     layer_totals = {}
     for layer_col in layer_cols:
@@ -393,17 +484,16 @@ def inspect_unbalanced_products(
             names=[prod_col, prod_txt_col],
         )
 
-    # Build summary: one row with n_unbalanced and largest_diff.
-    n_unbalanced = len(result)
-    if n_unbalanced > 0:
-        largest_diff = result[diff_name].loc[result[diff_name].abs().idxmax()]
-    else:
-        largest_diff = float("nan")
-    summary = pd.DataFrame(
-        {"n_unbalanced": [n_unbalanced], "largest_diff": [largest_diff]},
-        index=pd.Index(["imbalances"], name="table"),
-    )
+    return result
 
-    return UnbalancedProductsInspection(
-        data=UnbalancedProductsData(imbalances=result, summary=summary),
+
+def _prepend_id_level(df: pd.DataFrame, id_value, id_col: str) -> pd.DataFrame:
+    """Prepend the id as the outermost index level to a per-id DataFrame."""
+    existing_arrays = [df.index.get_level_values(i) for i in range(df.index.nlevels)]
+    new_index = pd.MultiIndex.from_arrays(
+        [pd.Index([id_value] * len(df), name=id_col)] + existing_arrays,
+        names=[id_col] + list(df.index.names),
     )
+    result = df.copy()
+    result.index = new_index
+    return result

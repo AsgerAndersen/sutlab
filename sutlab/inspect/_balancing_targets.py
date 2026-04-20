@@ -48,13 +48,13 @@ class UnbalancedTargetsInspection:
     Attributes
     ----------
     supply_categories : pd.DataFrame
-        One row per (transaction, category) in the supply balancing targets
-        for the active balancing member, where ``abs(diff_{price_basic}) > 1``.
+        One row per (id, transaction, category) in the supply balancing
+        targets for the selected ids, where ``abs(diff_{price_basic}) > 1``.
         Columns: ``{price_basic}``, ``target_{price_basic}``,
         ``diff_{price_basic}``, ``rel_{price_basic}``, ``tol_{price_basic}``,
         ``violation_{price_basic}``.
-        Row index: two-level ``(transaction, category)`` MultiIndex, or
-        four-level with label columns when classifications are loaded.
+        Row index: three-level ``(id, transaction, category)`` MultiIndex, or
+        five-level with label columns when classifications are loaded.
 
     use_categories : pd.DataFrame
         Same structure as ``supply_categories`` but for the use side,
@@ -71,13 +71,13 @@ class UnbalancedTargetsInspection:
         ``target_tolerances`` configured.
 
     supply_transactions : pd.DataFrame
-        One row per transaction in the supply targets, where
+        One row per (id, transaction) in the supply targets, where
         ``abs(diff_{price_basic}) > 1``. Targets and actuals are aggregated
         by summing over all categories. Columns same as ``supply_categories``
         minus the category index level. Tolerances use transaction-level
         ``rel`` from the config; the absolute component is scaled by the
         number of categories per transaction.
-        Row index: single-level transaction (or two-level with label).
+        Row index: two-level ``(id, transaction)`` MultiIndex (or with label).
 
     use_transactions : pd.DataFrame
         Same structure as ``supply_transactions`` for the use side.
@@ -91,10 +91,11 @@ class UnbalancedTargetsInspection:
         ``None`` when no ``target_tolerances`` configured.
 
     summary : pd.DataFrame
-        One row per non-``None`` table. Index is the table name; column is
-        ``n_unbalanced`` (the number of rows in that table, i.e. rows where
-        ``abs(diff_*) > 1``). Violations tables are omitted when no
-        ``target_tolerances`` are configured.
+        One row per non-``None`` table. Index is the table name; columns are
+        ``n_unbalanced`` (total number of rows across all ids) and
+        ``largest_diff`` (the signed value with largest absolute value across
+        all ids). Violations tables are omitted when no ``target_tolerances``
+        are configured.
     """
 
     data: UnbalancedTargetsData
@@ -284,6 +285,7 @@ def inspect_unbalanced_targets(
     sut: SUT,
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
+    ids: str | int | list[str | int] | None = None,
     sort: bool = False,
 ) -> UnbalancedTargetsInspection:
     """
@@ -293,7 +295,7 @@ def inspect_unbalanced_targets(
     Produces eight tables: category-level and transaction-level views for
     supply and use, each with a corresponding violations subset.
 
-    The category-level tables show one row per (transaction, category)
+    The category-level tables show one row per (id, transaction, category)
     combination. The transaction-level tables aggregate targets and actuals
     by summing over categories, with tolerances scaled accordingly.
 
@@ -302,8 +304,8 @@ def inspect_unbalanced_targets(
     Parameters
     ----------
     sut : SUT
-        The SUT collection. Must have ``balancing_id``, ``metadata``, and
-        ``balancing_targets`` set.
+        The SUT collection. Must have ``metadata`` and ``balancing_targets``
+        set.
     transactions : str, list of str, or None, optional
         Transaction codes to include. Accepts the same pattern syntax as
         :func:`~sutlab.sut.filter_rows`. ``None`` includes all transactions.
@@ -313,9 +315,14 @@ def inspect_unbalanced_targets(
         ``None`` includes all categories.
         Applied to the category-level tables only; the transaction-level
         tables always aggregate over all categories.
+    ids : str, int, list of str or int, or None, optional
+        Id values to include. Accepts the same pattern syntax as
+        :func:`~sutlab.sut.filter_rows`. ``None`` (the default) includes
+        all ids present in the SUT.
     sort : bool, optional
-        When ``True``, rows are sorted by ``abs(diff_*)`` descending.
-        Default ``False`` preserves the order from the targets DataFrame.
+        When ``True``, rows are sorted by ``abs(diff_*)`` descending within
+        each id. Default ``False`` preserves the order from the targets
+        DataFrame.
 
     Returns
     -------
@@ -327,19 +334,12 @@ def inspect_unbalanced_targets(
     ValueError
         If ``sut.metadata`` is ``None``.
     ValueError
-        If ``sut.balancing_id`` is ``None``.
-    ValueError
         If ``sut.balancing_targets`` is ``None``.
     """
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call inspect_unbalanced_targets. "
             "Provide a SUTMetadata with column name mappings."
-        )
-    if sut.balancing_id is None:
-        raise ValueError(
-            "sut.balancing_id is not set. Call set_balancing_id first to "
-            "identify which member to inspect."
         )
     if sut.balancing_targets is None:
         raise ValueError(
@@ -348,6 +348,7 @@ def inspect_unbalanced_targets(
         )
 
     cols = sut.metadata.columns
+    id_col = cols.id
     has_tolerances = (
         sut.balancing_config is not None
         and sut.balancing_config.target_tolerances is not None
@@ -377,72 +378,105 @@ def inspect_unbalanced_targets(
     cat_names = _build_combined_category_names(classifications, cols.category)
     has_labels = bool(trans_names or cat_names)
 
-    supply_categories = _build_categories_table(
-        sut=working_sut,
-        data_df=working_sut.supply,
-        targets_df=working_sut.balancing_targets.supply,
-        price_col=cols.price_basic,
-        id_col=cols.id,
-        trans_col=cols.transaction,
-        cat_col=cols.category,
-        transactions_filter=transactions,
-        categories_filter=categories,
-        has_tolerances=has_tolerances,
-        sort=sort,
-        trans_names=trans_names,
-        cat_names=cat_names,
-        has_labels=has_labels,
+    # Resolve which ids to process
+    all_supply_ids = working_sut.supply[id_col].unique().tolist()
+    all_use_ids = working_sut.use[id_col].unique().tolist()
+    all_id_values = sorted(
+        set(all_supply_ids) | set(all_use_ids),
+        key=lambda v: str(v),
     )
 
-    use_categories = _build_categories_table(
-        sut=working_sut,
-        data_df=working_sut.use,
-        targets_df=working_sut.balancing_targets.use,
-        price_col=cols.price_purchasers,
-        id_col=cols.id,
-        trans_col=cols.transaction,
-        cat_col=cols.category,
-        transactions_filter=transactions,
-        categories_filter=categories,
-        has_tolerances=has_tolerances,
-        sort=sort,
-        trans_names=trans_names,
-        cat_names=cat_names,
-        has_labels=has_labels,
-    )
+    if ids is None:
+        matched_ids = all_id_values
+    else:
+        if isinstance(ids, (str, int)):
+            id_patterns = [str(ids)]
+        else:
+            id_patterns = [str(v) for v in ids]
+        all_id_strs = [str(v) for v in all_id_values]
+        matched_strs = set(_match_codes(all_id_strs, id_patterns))
+        matched_ids = [v for v in all_id_values if str(v) in matched_strs]
 
-    supply_transactions = _build_transactions_table(
-        sut=working_sut,
-        data_df=working_sut.supply,
-        targets_df=working_sut.balancing_targets.supply,
-        price_col=cols.price_basic,
-        id_col=cols.id,
-        trans_col=cols.transaction,
-        cat_col=cols.category,
-        transactions_filter=transactions,
-        has_tolerances=has_tolerances,
-        tolerances=tolerances,
-        sort=sort,
-        trans_names=trans_names,
-        has_labels=has_labels,
-    )
+    # Build per-id tables and concatenate
+    supply_cat_frames = []
+    use_cat_frames = []
+    supply_trans_frames = []
+    use_trans_frames = []
 
-    use_transactions = _build_transactions_table(
-        sut=working_sut,
-        data_df=working_sut.use,
-        targets_df=working_sut.balancing_targets.use,
-        price_col=cols.price_purchasers,
-        id_col=cols.id,
-        trans_col=cols.transaction,
-        cat_col=cols.category,
-        transactions_filter=transactions,
-        has_tolerances=has_tolerances,
-        tolerances=tolerances,
-        sort=sort,
-        trans_names=trans_names,
-        has_labels=has_labels,
-    )
+    for id_value in matched_ids:
+        sc = _build_categories_table(
+            id_value=id_value,
+            data_df=working_sut.supply,
+            targets_df=working_sut.balancing_targets.supply,
+            price_col=cols.price_basic,
+            id_col=id_col,
+            trans_col=cols.transaction,
+            cat_col=cols.category,
+            transactions_filter=transactions,
+            categories_filter=categories,
+            has_tolerances=has_tolerances,
+            sort=sort,
+            trans_names=trans_names,
+            cat_names=cat_names,
+            has_labels=has_labels,
+        )
+        uc = _build_categories_table(
+            id_value=id_value,
+            data_df=working_sut.use,
+            targets_df=working_sut.balancing_targets.use,
+            price_col=cols.price_purchasers,
+            id_col=id_col,
+            trans_col=cols.transaction,
+            cat_col=cols.category,
+            transactions_filter=transactions,
+            categories_filter=categories,
+            has_tolerances=has_tolerances,
+            sort=sort,
+            trans_names=trans_names,
+            cat_names=cat_names,
+            has_labels=has_labels,
+        )
+        st = _build_transactions_table(
+            id_value=id_value,
+            data_df=working_sut.supply,
+            targets_df=working_sut.balancing_targets.supply,
+            price_col=cols.price_basic,
+            id_col=id_col,
+            trans_col=cols.transaction,
+            cat_col=cols.category,
+            transactions_filter=transactions,
+            has_tolerances=has_tolerances,
+            tolerances=tolerances,
+            sort=sort,
+            trans_names=trans_names,
+            has_labels=has_labels,
+        )
+        ut = _build_transactions_table(
+            id_value=id_value,
+            data_df=working_sut.use,
+            targets_df=working_sut.balancing_targets.use,
+            price_col=cols.price_purchasers,
+            id_col=id_col,
+            trans_col=cols.transaction,
+            cat_col=cols.category,
+            transactions_filter=transactions,
+            has_tolerances=has_tolerances,
+            tolerances=tolerances,
+            sort=sort,
+            trans_names=trans_names,
+            has_labels=has_labels,
+        )
+        supply_cat_frames.append(_prepend_id_level(sc, id_value, id_col))
+        use_cat_frames.append(_prepend_id_level(uc, id_value, id_col))
+        supply_trans_frames.append(_prepend_id_level(st, id_value, id_col))
+        use_trans_frames.append(_prepend_id_level(ut, id_value, id_col))
 
+    supply_categories = pd.concat(supply_cat_frames) if supply_cat_frames else pd.DataFrame()
+    use_categories = pd.concat(use_cat_frames) if use_cat_frames else pd.DataFrame()
+    supply_transactions = pd.concat(supply_trans_frames) if supply_trans_frames else pd.DataFrame()
+    use_transactions = pd.concat(use_trans_frames) if use_trans_frames else pd.DataFrame()
+
+    # Build violations by filtering the full concatenated tables
     if has_tolerances:
         supply_viol_col = f"violation_{cols.price_basic}"
         supply_cat_viol_mask = supply_categories[supply_viol_col].notna() & (supply_categories[supply_viol_col] != 0)
@@ -516,8 +550,20 @@ def inspect_unbalanced_targets(
 # ---------------------------------------------------------------------------
 
 
+def _prepend_id_level(df: pd.DataFrame, id_value, id_col: str) -> pd.DataFrame:
+    """Prepend the id as the outermost index level to a per-id DataFrame."""
+    existing_arrays = [df.index.get_level_values(i) for i in range(df.index.nlevels)]
+    new_index = pd.MultiIndex.from_arrays(
+        [pd.Index([id_value] * len(df), name=id_col)] + existing_arrays,
+        names=[id_col] + list(df.index.names),
+    )
+    result = df.copy()
+    result.index = new_index
+    return result
+
+
 def _build_categories_table(
-    sut: SUT,
+    id_value,
     data_df: pd.DataFrame,
     targets_df: pd.DataFrame,
     price_col: str,
@@ -532,15 +578,15 @@ def _build_categories_table(
     cat_names: dict[str, str],
     has_labels: bool,
 ) -> pd.DataFrame:
-    """Build supply or use comparison table at (transaction, category) level."""
+    """Build supply or use comparison table at (transaction, category) level for one id."""
     tol_col = f"tol_{price_col}"
     violation_col = f"violation_{price_col}"
     target_col = f"target_{price_col}"
     diff_col = f"diff_{price_col}"
     rel_col = f"rel_{price_col}"
 
-    # Filter targets to the active balancing member.
-    member_targets = targets_df[targets_df[id_col] == sut.balancing_id].copy()
+    # Filter targets to this id.
+    member_targets = targets_df[targets_df[id_col] == id_value].copy()
 
     # Apply transactions and categories filters.
     if transactions_filter is not None:
@@ -563,8 +609,8 @@ def _build_categories_table(
         matched_cats = _match_codes(all_cats, patterns)
         member_targets = member_targets[member_targets[cat_col].isin(matched_cats)]
 
-    # Aggregate actual column totals from the data for the active member.
-    member_data = data_df[data_df[id_col] == sut.balancing_id]
+    # Aggregate actual column totals from the data for this id.
+    member_data = data_df[data_df[id_col] == id_value]
     actuals = (
         member_data
         .groupby([trans_col, cat_col], dropna=False)[price_col]
@@ -634,7 +680,7 @@ def _build_categories_table(
 
 
 def _build_transactions_table(
-    sut: SUT,
+    id_value,
     data_df: pd.DataFrame,
     targets_df: pd.DataFrame,
     price_col: str,
@@ -648,7 +694,7 @@ def _build_transactions_table(
     trans_names: dict[str, str],
     has_labels: bool,
 ) -> pd.DataFrame:
-    """Build supply or use comparison table aggregated to transaction level.
+    """Build supply or use comparison table aggregated to transaction level for one id.
 
     Targets and actuals are summed over all categories. The ``categories``
     filter is intentionally not applied — the transaction-level table always
@@ -662,8 +708,8 @@ def _build_transactions_table(
     rel_col = f"rel_{price_col}"
     n_cat_col = "_n_categories"
 
-    # Filter targets to the active balancing member.
-    member_targets = targets_df[targets_df[id_col] == sut.balancing_id].copy()
+    # Filter targets to this id.
+    member_targets = targets_df[targets_df[id_col] == id_value].copy()
 
     # Apply transactions filter.
     if transactions_filter is not None:
@@ -695,7 +741,7 @@ def _build_transactions_table(
     )
 
     # Aggregate actuals to transaction level.
-    member_data = data_df[data_df[id_col] == sut.balancing_id]
+    member_data = data_df[data_df[id_col] == id_value]
     actuals = (
         member_data
         .groupby(trans_col, dropna=False)[price_col]

@@ -37,6 +37,9 @@ With tolerances (transaction-level; categories override 3110/HH):
     supply 0100: diff=-60, tol=10  → violation=-50
     use   3110:  diff=-12, tol=2.7 → violation=-12+2.7=-9.3
     use   2000:  diff=-8,  tol=1.6 → violation=-6.4
+
+Targets exist only for 2021. With ids=None (default), id=2020 produces empty
+per-id tables (no targets), so row counts are unchanged.
 """
 
 import numpy as np
@@ -176,12 +179,21 @@ def sut_with_tol(supply_df, use_df, cols, targets, tolerances):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+#
+# Index structure (no labels):
+#   supply/use_categories: (year, trans, brch)  → nlevels=3
+#   supply/use_transactions: (year, trans)       → nlevels=2
+#
+# Index structure (with labels):
+#   supply/use_categories: (year, trans, trans_txt, brch, brch_txt) → nlevels=5
+#   supply/use_transactions: (year, trans, trans_txt)               → nlevels=3
 
 
 def _get_row_cat(df, trans, brch):
-    """Return a single row from a (trans, brch) MultiIndex DataFrame."""
-    cat_level_idx = 2 if df.index.nlevels == 4 else 1
-    trans_vals = pd.Series(df.index.get_level_values(0), index=range(len(df)))
+    """Return a single row from a (year, trans, brch, ...) MultiIndex DataFrame."""
+    # Level 0 = year (id), level 1 = trans, level 2 = brch (no labels) or 3 (with labels)
+    cat_level_idx = 3 if df.index.nlevels == 5 else 2
+    trans_vals = pd.Series(df.index.get_level_values(1), index=range(len(df)))
     cat_vals = pd.Series(df.index.get_level_values(cat_level_idx), index=range(len(df)))
     mask = (trans_vals == trans) & (cat_vals == brch)
     rows = df.iloc[mask.values]
@@ -190,8 +202,9 @@ def _get_row_cat(df, trans, brch):
 
 
 def _get_row_trans(df, trans):
-    """Return a single row from a transaction-level index DataFrame."""
-    trans_vals = pd.Series(df.index.get_level_values(0), index=range(len(df)))
+    """Return a single row from a (year, trans, ...) MultiIndex DataFrame."""
+    # Level 0 = year (id), level 1 = trans
+    trans_vals = pd.Series(df.index.get_level_values(1), index=range(len(df)))
     mask = trans_vals == trans
     rows = df.iloc[mask.values]
     assert len(rows) == 1, f"Expected 1 row, got {len(rows)} for trans={trans!r}"
@@ -246,7 +259,8 @@ class TestDiffFilter:
 
     def test_supply_categories_excludes_nan_diff(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol)
-        trans_vals = result.data.supply_categories.index.get_level_values(0)
+        # trans is at level 1 in the new (year, trans, brch) index
+        trans_vals = result.data.supply_categories.index.get_level_values(1)
         assert "0700" not in trans_vals
 
     def test_use_categories_row_count(self, sut_no_tol):
@@ -299,7 +313,8 @@ class TestCategoryValues:
         assert row["diff_koeb"] == pytest.approx(-8.0)
 
     def test_only_active_id_used(self, sut_no_tol):
-        row = _get_row_cat(inspect_unbalanced_targets(sut_no_tol).data.supply_categories, "0100", "X")
+        # With ids=2021, supply 0100/X actual is 300 (only 2021 rows)
+        row = _get_row_cat(inspect_unbalanced_targets(sut_no_tol, ids=2021).data.supply_categories, "0100", "X")
         assert row["bas"] == pytest.approx(300.0)
 
 
@@ -417,7 +432,8 @@ class TestCategoryTolerances:
 
     def test_supply_categories_violations_contains_0100(self, sut_with_tol):
         violations = inspect_unbalanced_targets(sut_with_tol).data.supply_categories_violations
-        assert "0100" in violations.index.get_level_values(0)
+        # trans is at level 1 in (year, trans, brch)
+        assert "0100" in violations.index.get_level_values(1)
 
     def test_tol_already_resolved_not_called_twice(self, sut_with_tol):
         from sutlab.balancing import resolve_target_tolerances
@@ -473,11 +489,13 @@ class TestTransactionTolerances:
 
     def test_supply_transactions_violations_contains_0100(self, sut_with_tol):
         violations = inspect_unbalanced_targets(sut_with_tol).data.supply_transactions_violations
-        assert "0100" in violations.index.get_level_values(0)
+        # trans is at level 1 in (year, trans) index
+        assert "0100" in violations.index.get_level_values(1)
 
     def test_use_transactions_violations_contains_both(self, sut_with_tol):
         violations = inspect_unbalanced_targets(sut_with_tol).data.use_transactions_violations
-        trans_vals = violations.index.get_level_values(0).tolist()
+        # trans is at level 1 in (year, trans) index
+        trans_vals = violations.index.get_level_values(1).tolist()
         assert "3110" in trans_vals
         assert "2000" in trans_vals
 
@@ -542,24 +560,28 @@ class TestFilters:
     def test_transactions_filter_categories_table(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol, transactions="0100")
         assert len(result.data.supply_categories) == 1
-        assert result.data.supply_categories.index.get_level_values(0)[0] == "0100"
+        # trans is at level 1 in (year, trans, brch)
+        assert result.data.supply_categories.index.get_level_values(1)[0] == "0100"
 
     def test_transactions_filter_transactions_table(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol, transactions="0100")
         assert len(result.data.supply_transactions) == 1
-        assert result.data.supply_transactions.index.get_level_values(0)[0] == "0100"
+        # trans is at level 1 in (year, trans)
+        assert result.data.supply_transactions.index.get_level_values(1)[0] == "0100"
 
     def test_categories_filter_applies_to_categories_table(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol, categories="HH")
         assert len(result.data.use_categories) == 1
-        cat_level = 2 if result.data.use_categories.index.nlevels == 4 else 1
+        # cat level: 3 if 5 levels (with labels), 2 if 3 levels (no labels)
+        cat_level = 3 if result.data.use_categories.index.nlevels == 5 else 2
         assert result.data.use_categories.index.get_level_values(cat_level)[0] == "HH"
 
     def test_categories_filter_does_not_apply_to_transactions_table(self, sut_no_tol):
         # With categories="HH", use_categories has only 3110/HH.
         # use_transactions should still include both 3110 and 2000.
         result = inspect_unbalanced_targets(sut_no_tol, categories="HH")
-        trans_vals = result.data.use_transactions.index.get_level_values(0).tolist()
+        # trans is at level 1 in (year, trans)
+        trans_vals = result.data.use_transactions.index.get_level_values(1).tolist()
         assert "3110" in trans_vals
         assert "2000" in trans_vals
 
@@ -572,17 +594,17 @@ class TestFilters:
 class TestSort:
     def test_sort_supply_categories_by_abs_diff(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol, sort=True)
-        # Only 0100/X remains after filter; first row must be 0100.
-        assert result.data.supply_categories.index.get_level_values(0)[0] == "0100"
+        # Only 0100/X remains after filter; first row must be 0100 (at level 1).
+        assert result.data.supply_categories.index.get_level_values(1)[0] == "0100"
 
     def test_sort_use_categories_by_abs_diff(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol, sort=True)
         # 3110/HH diff=-12 (abs 12) > 2000/X diff=-8 (abs 8).
-        assert result.data.use_categories.index.get_level_values(0)[0] == "3110"
+        assert result.data.use_categories.index.get_level_values(1)[0] == "3110"
 
     def test_sort_use_transactions_by_abs_diff(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol, sort=True)
-        assert result.data.use_transactions.index.get_level_values(0)[0] == "3110"
+        assert result.data.use_transactions.index.get_level_values(1)[0] == "3110"
 
 
 # ---------------------------------------------------------------------------
@@ -591,25 +613,29 @@ class TestSort:
 
 
 class TestMultiIndex:
-    def test_supply_categories_two_level_index(self, sut_no_tol):
+    def test_supply_categories_three_level_index(self, sut_no_tol):
+        # (year, trans, brch) = 3 levels
         result = inspect_unbalanced_targets(sut_no_tol)
-        assert result.data.supply_categories.index.nlevels == 2
+        assert result.data.supply_categories.index.nlevels == 3
 
     def test_supply_categories_index_names(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol)
-        assert list(result.data.supply_categories.index.names) == ["trans", "brch"]
+        assert list(result.data.supply_categories.index.names) == ["year", "trans", "brch"]
 
-    def test_supply_transactions_single_level_index(self, sut_no_tol):
+    def test_supply_transactions_two_level_index(self, sut_no_tol):
+        # (year, trans) = 2 levels
         result = inspect_unbalanced_targets(sut_no_tol)
-        assert result.data.supply_transactions.index.nlevels == 1
+        assert result.data.supply_transactions.index.nlevels == 2
+        assert isinstance(result.data.supply_transactions.index, pd.MultiIndex)
 
-    def test_supply_transactions_index_name(self, sut_no_tol):
+    def test_supply_transactions_index_names(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol)
-        assert result.data.supply_transactions.index.name == "trans"
+        assert "trans" in result.data.supply_transactions.index.names
+        assert "year" in result.data.supply_transactions.index.names
 
-    def test_use_transactions_single_level_index(self, sut_no_tol):
+    def test_use_transactions_two_level_index(self, sut_no_tol):
         result = inspect_unbalanced_targets(sut_no_tol)
-        assert result.data.use_transactions.index.nlevels == 1
+        assert result.data.use_transactions.index.nlevels == 2
 
 
 # ---------------------------------------------------------------------------
@@ -627,18 +653,6 @@ class TestRaises:
             balancing_targets=targets,
         )
         with pytest.raises(ValueError, match="metadata"):
-            inspect_unbalanced_targets(sut)
-
-    def test_raises_no_balancing_id(self, supply_df, use_df, cols, targets):
-        metadata = SUTMetadata(columns=cols)
-        sut = SUT(
-            price_basis="current_year",
-            supply=supply_df,
-            use=use_df,
-            balancing_targets=targets,
-            metadata=metadata,
-        )
-        with pytest.raises(ValueError, match="balancing_id"):
             inspect_unbalanced_targets(sut)
 
     def test_raises_no_balancing_targets(self, supply_df, use_df, cols):
@@ -812,3 +826,35 @@ class TestStyling:
 
     def test_use_transactions_violations_returns_none_when_no_tolerances(self, sut_no_tol):
         assert inspect_unbalanced_targets(sut_no_tol).use_transactions_violations is None
+
+
+# ---------------------------------------------------------------------------
+# ids parameter: multi-id behaviour
+# ---------------------------------------------------------------------------
+
+
+class TestMultipleIds:
+    def test_ids_none_same_row_count_as_ids_2021(self, sut_no_tol):
+        # Targets only exist for 2021; 2020 produces empty per-id tables.
+        # So ids=None gives the same rows as ids=2021.
+        result_all = inspect_unbalanced_targets(sut_no_tol)
+        result_2021 = inspect_unbalanced_targets(sut_no_tol, ids=2021)
+        assert len(result_all.data.supply_categories) == len(result_2021.data.supply_categories)
+        assert len(result_all.data.use_categories) == len(result_2021.data.use_categories)
+        assert len(result_all.data.supply_transactions) == len(result_2021.data.supply_transactions)
+        assert len(result_all.data.use_transactions) == len(result_2021.data.use_transactions)
+
+    def test_ids_2021_explicit_matches_default(self, sut_no_tol):
+        result_2021 = inspect_unbalanced_targets(sut_no_tol, ids=2021)
+        assert len(result_2021.data.supply_categories) == 1
+        assert len(result_2021.data.use_categories) == 2
+        assert len(result_2021.data.supply_transactions) == 1
+        assert len(result_2021.data.use_transactions) == 2
+
+    def test_ids_2020_gives_empty_tables(self, sut_no_tol):
+        # No targets exist for 2020, so all result tables are empty.
+        result_2020 = inspect_unbalanced_targets(sut_no_tol, ids=2020)
+        assert len(result_2020.data.supply_categories) == 0
+        assert len(result_2020.data.use_categories) == 0
+        assert len(result_2020.data.supply_transactions) == 0
+        assert len(result_2020.data.use_transactions) == 0

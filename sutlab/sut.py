@@ -544,12 +544,13 @@ class SUT:
     def inspect_unbalanced_products(
         self,
         products: str | list[str] | None = None,
+        ids: str | int | list[str | int] | None = None,
         sort: bool = False,
         tolerance: float = 1,
     ) -> UnbalancedProductsInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_unbalanced_products`."""
         from sutlab.inspect import inspect_unbalanced_products
-        return inspect_unbalanced_products(self, products, sort=sort, tolerance=tolerance)
+        return inspect_unbalanced_products(self, products, ids=ids, sort=sort, tolerance=tolerance)
 
     def balance_columns(
         self,
@@ -585,11 +586,12 @@ class SUT:
         self,
         transactions: str | list[str] | None = None,
         categories: str | list[str] | None = None,
+        ids: str | int | list[str | int] | None = None,
         sort: bool = False,
     ) -> UnbalancedTargetsInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_unbalanced_targets`."""
         from sutlab.inspect import inspect_unbalanced_targets
-        return inspect_unbalanced_targets(self, transactions=transactions, categories=categories, sort=sort)
+        return inspect_unbalanced_targets(self, transactions=transactions, categories=categories, ids=ids, sort=sort)
 
     def inspect_sut_comparison(
         self,
