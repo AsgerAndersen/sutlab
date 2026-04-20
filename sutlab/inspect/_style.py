@@ -1313,8 +1313,26 @@ def _style_imbalances_table(
     supply_col_set = set(supply_cols)
     use_col_set = set(use_cols)
 
+    # Identify id block boundaries when the outermost index level is the id.
+    # Merged <th> cells (outermost level) take CSS from their first row, so the
+    # border goes there.  Data cells and inner index levels are not merged, so
+    # their border goes on the last row of each block.
+    _SEP = "; border-bottom: 2px solid #999"
+    id_block_first_rows: set[int] = set()   # outermost index level
+    id_block_last_rows: set[int] = set()    # data cells + inner index levels
+
+    if isinstance(df.index, pd.MultiIndex):
+        id_vals = df.index.get_level_values(0)
+        unique_ids = list(dict.fromkeys(id_vals))
+        for idx, id_val in enumerate(unique_ids):
+            positions = [i for i, v in enumerate(id_vals) if v == id_val]
+            if idx < len(unique_ids) - 1:   # not the last block
+                id_block_first_rows.add(positions[0])
+                id_block_last_rows.add(positions[-1])
+
     # Build per-cell CSS: column group determines the colour palette,
-    # row position determines which alternating shade to use.
+    # row position determines the alternating shade; last row of each
+    # non-last id block gets a thick bottom border.
     css_data = {}
     for col in df.columns:
         col_css = []
@@ -1326,24 +1344,38 @@ def _style_imbalances_table(
                 bg = _DATA_COLORS["use"][shade]
             else:
                 bg = _DATA_COLORS["balance"][shade]
-            col_css.append(f"background-color: {bg}")
+            sep = _SEP if i in id_block_last_rows else ""
+            col_css.append(f"background-color: {bg}{sep}")
         css_data[col] = col_css
 
     css_df = pd.DataFrame(css_data, index=df.index)
     styler = styler.apply(lambda d: css_df, axis=None)
 
-    # Index: alternating neutral grey, slightly more saturated than data cells.
-    index_css = [
-        f"background-color: {_INDEX_COLORS['balance'][i % 2]}" for i in range(n)
-    ]
+    # Index styling: alternating neutral grey.
+    # Outermost level (id): border on the first row of each non-last block
+    # (merged cell — CSS applied at first row of span).
+    # Inner levels (product, label): border on the last row of each non-last block.
+    base_bg = [f"background-color: {_INDEX_COLORS['balance'][i % 2]}" for i in range(n)]
 
     if isinstance(df.index, pd.MultiIndex):
-        for level in df.index.names:
-            styler = styler.apply_index(
-                lambda s, css=index_css: css, level=level, axis=0
-            )
+        names = df.index.names
+
+        # Level 0: separator at first row of each non-last block
+        level0_css = [
+            bg + (_SEP if i in id_block_first_rows else "")
+            for i, bg in enumerate(base_bg)
+        ]
+        styler = styler.apply_index(lambda s, css=level0_css: css, level=names[0], axis=0)
+
+        # Levels 1+: separator at last row of each non-last block
+        inner_css = [
+            bg + (_SEP if i in id_block_last_rows else "")
+            for i, bg in enumerate(base_bg)
+        ]
+        for level_name in names[1:]:
+            styler = styler.apply_index(lambda s, css=inner_css: css, level=level_name, axis=0)
     else:
-        styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+        styler = styler.apply_index(lambda s, css=base_bg: css, axis=0)
 
     return styler
 
