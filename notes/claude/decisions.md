@@ -896,3 +896,23 @@ Append-only. Each entry: date, decision, brief rationale.
   rel_base)` in `_style.py` replaces hardcoded `_format_percentage` calls throughout.
   Excel output uses the standard `%` format for `rel_base=100`; for 1000/10000 it
   multiplies cell values and applies a custom format string with the symbol.
+
+- **2026-04-20**: Added `gdp_growth` and `gdp_distribution` to `AggregatesNominalInspection`.
+  `gdp_growth`: year-on-year growth rates; Balance block excluded (growth of a discrepancy
+  is not meaningful). `gdp_distribution`: shares of GDP per block — Production rows divided
+  by Production GDP, Expenditure rows divided by Expenditure GDP; Balance block excluded.
+  Both have styled properties using `_make_percentage_formatter(rel_base)` and are written
+  to Excel with percentage formatting automatically via the `_distribution`/`_growth` suffix
+  detection in `_shared.py`.
+
+- **2026-04-20**: Consolidated `_build_growth_table` into `_shared.py`. Previously
+  duplicated identically in `_products.py`, `_industries.py`, and `_final_uses.py`. The
+  shared version is pure math only (no row filtering). The Balance-row exclusion that was
+  baked into the `_products.py` copy is now done inline at the call site. New callers
+  (aggregates nominal) filter rows before calling the shared function.
+
+- **2026-04-20**: Refactored `_style_aggregates_nominal_table` to accept a `formatter`
+  callable instead of `display_unit`, consistent with the pattern of other style functions
+  (`_style_balance_table`, `_style_detail_table`, etc.). The `.gdp` property now passes
+  `_make_number_formatter(display_unit)`; `.gdp_growth` and `.gdp_distribution` pass
+  `_make_percentage_formatter(rel_base)`.
