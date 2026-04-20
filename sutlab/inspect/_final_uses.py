@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._shared import _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -792,23 +792,6 @@ def _build_final_use_use_distribution(use: pd.DataFrame) -> pd.DataFrame:
     grand_total = use.iloc[-1]
     denom = grand_total.where(grand_total != 0)
     return use.div(denom, axis=1)
-
-
-def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Build year-on-year growth table: change relative to the previous year.
-
-    Each value is ``(current - previous) / previous``, so a 5% increase
-    gives ``0.05``. The first id column is ``NaN`` throughout. Division by
-    zero also yields ``NaN``. Infinite values are replaced with ``NaN``.
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    floats = df.astype(float)
-    previous = floats.shift(axis=1)
-    growth = (floats - previous).div(previous)
-    growth = growth.replace([float("inf"), float("-inf")], float("nan"))
-    return growth
 
 
 def _get_product_names(classifications, prod_col: str) -> dict[str, str]:

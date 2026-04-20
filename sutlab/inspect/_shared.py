@@ -241,6 +241,36 @@ def _fit_index_column_widths(ws, n_index_cols: int) -> None:
         ws.column_dimensions[col_letter].width = max_len + 2
 
 
+def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Build year-on-year growth table: change relative to the previous year.
+
+    Each value is ``(current - previous) / previous``, so a 5% increase gives
+    ``0.05``. The first id column is ``NaN`` throughout. Division by zero also
+    yields ``NaN``. Infinite values (from dividing a non-zero change by zero)
+    are replaced with ``NaN``.
+
+    Row filtering (e.g. dropping Balance rows) is the caller's responsibility.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Wide-format table with id values as columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same shape as ``df`` with growth rates. Empty if ``df`` is empty.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    floats = df.astype(float)
+    previous = floats.shift(axis=1)
+    growth = (floats - previous).div(previous)
+    growth = growth.replace([float("inf"), float("-inf")], float("nan"))
+    return growth
+
+
 def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None, rel_base: int = 100) -> None:
     """Write all non-None tables in an inspection result to an Excel file.
 

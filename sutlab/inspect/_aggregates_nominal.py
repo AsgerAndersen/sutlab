@@ -13,8 +13,12 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
-from sutlab.inspect._shared import _write_inspection_to_excel
-from sutlab.inspect._style import _style_aggregates_nominal_table
+from sutlab.inspect._shared import _build_growth_table, _write_inspection_to_excel
+from sutlab.inspect._style import (
+    _make_number_formatter,
+    _make_percentage_formatter,
+    _style_aggregates_nominal_table,
+)
 
 
 # --- Block names ---
@@ -48,6 +52,8 @@ class AggregatesNominalData:
     """
 
     gdp: pd.DataFrame
+    gdp_growth: pd.DataFrame
+    gdp_distribution: pd.DataFrame
 
 
 @dataclass
@@ -65,6 +71,18 @@ class AggregatesNominalInspection:
         (``"Production"`` or ``"Expenditure"``), level 1 is the component
         label. Derived rows (GVA, GDP, etc.) appear inline after their
         components.
+    data.gdp_growth : pd.DataFrame
+        Year-on-year growth rates for each row in ``data.gdp``. Same
+        structure as ``data.gdp`` but without the Balance block (growth of
+        a statistical discrepancy is not meaningful). Values are fractions
+        (e.g. ``0.05`` for a 5% increase). The first id column is ``NaN``
+        throughout.
+    data.gdp_distribution : pd.DataFrame
+        Shares of GDP for each row. Same structure as ``data.gdp`` but
+        without the Balance block. Production block rows are expressed as
+        shares of Production GDP; Expenditure block rows as shares of
+        Expenditure GDP. Values are fractions (e.g. ``0.10`` for 10%).
+        The GDP rows themselves are included and always equal 1.0.
     """
 
     data: AggregatesNominalData
@@ -74,7 +92,23 @@ class AggregatesNominalInspection:
     @property
     def gdp(self) -> Styler:
         """Styled GDP decomposition table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(self.data.gdp, display_unit=self.display_unit)
+        return _style_aggregates_nominal_table(
+            self.data.gdp, _make_number_formatter(self.display_unit)
+        )
+
+    @property
+    def gdp_growth(self) -> Styler:
+        """Styled year-on-year growth table for display in a Jupyter notebook."""
+        return _style_aggregates_nominal_table(
+            self.data.gdp_growth, _make_percentage_formatter(self.rel_base)
+        )
+
+    @property
+    def gdp_distribution(self) -> Styler:
+        """Styled GDP share table for display in a Jupyter notebook."""
+        return _style_aggregates_nominal_table(
+            self.data.gdp_distribution, _make_percentage_formatter(self.rel_base)
+        )
 
     def write_to_excel(self, path: str | Path) -> None:
         """Write the inspection tables to an Excel file.
@@ -224,7 +258,19 @@ def inspect_aggregates_nominal(
     index = pd.MultiIndex.from_tuples(index_tuples)
     gdp_df = pd.DataFrame(data_rows, index=index, columns=id_values)
 
-    return AggregatesNominalInspection(data=AggregatesNominalData(gdp=gdp_df))
+    # Growth and distribution tables: drop the Balance block.
+    gdp_without_balance = gdp_df[gdp_df.index.get_level_values(0) != _BALANCE_BLOCK]
+
+    gdp_growth_df = _build_growth_table(gdp_without_balance)
+    gdp_distribution_df = _build_gdp_distribution(gdp_without_balance)
+
+    return AggregatesNominalInspection(
+        data=AggregatesNominalData(
+            gdp=gdp_df,
+            gdp_growth=gdp_growth_df,
+            gdp_distribution=gdp_distribution_df,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -610,3 +656,39 @@ def _build_expenditure_rows(
     rows.append((_LABEL_GDP, gdp_values))
 
     return rows
+
+
+def _build_gdp_distribution(gdp_without_balance: pd.DataFrame) -> pd.DataFrame:
+    """Build GDP share table from a gdp DataFrame with Balance block already removed.
+
+    Each row in the Production block is divided by the Production GDP row;
+    each row in the Expenditure block is divided by the Expenditure GDP row.
+    Division by zero or NaN denominators yields NaN via pandas.
+
+    Parameters
+    ----------
+    gdp_without_balance : pd.DataFrame
+        The ``gdp`` DataFrame with the Balance block rows removed. Must have
+        a 2-level MultiIndex with block name at level 0 and component label
+        at level 1. Columns are id values.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same shape and index as ``gdp_without_balance``, with fractional
+        share values.
+    """
+    blocks = []
+    for block, label_gdp in [
+        (_PRODUCTION_BLOCK, _LABEL_GDP),
+        (_EXPENDITURE_BLOCK, _LABEL_GDP),
+    ]:
+        block_df = gdp_without_balance.loc[block]
+        denominator = block_df.loc[label_gdp].astype(float)
+        block_dist = block_df.astype(float).div(denominator)
+        blocks.append((block, block_dist))
+
+    return pd.concat(
+        [df for _, df in blocks],
+        keys=[block for block, _ in blocks],
+    )
