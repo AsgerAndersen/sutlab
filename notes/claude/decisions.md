@@ -933,4 +933,34 @@ Append-only. Each entry: date, decision, brief rationale.
   - `display_unit` and `rel_base` copied from the calling object at construction time.
   - `TablesComparison` exported from `sutlab/inspect/__init__.py`.
 
+- **2026-04-20**: Fixed stale references: `inspect_balancing_targets` / `BalancingTargetsInspection`
+  renamed to `inspect_unbalanced_targets` / `UnbalancedTargetsInspection` in CLAUDE.md and
+  decisions.md (code was already correct).
+
+- **2026-04-20**: Added `ids: str | int | list[str | int] | None = None` to both
+  `inspect_unbalanced_products` and `inspect_unbalanced_targets`.
+  - `ids=None` computes across all ids in the SUT (union of supply and use ids, sorted).
+  - `ids=...` restricts to the matched subset using the same `_match_codes`-based
+    pattern API as `filter_rows` (convert to strings for matching, keep original types).
+  - `balancing_id` requirement removed from both functions.
+  - All non-summary tables have the id column as the outermost index level (always
+    a MultiIndex, even when one id selected). Categories tables: (id, trans, cat) or
+    (id, trans, trans_txt, cat, cat_txt) with labels. Transactions tables: (id, trans)
+    or (id, trans, trans_txt) with labels. Imbalances table: (id, product) or
+    (id, product, label) with labels.
+  - Summary collapses across all selected ids: `n_unbalanced` = total count,
+    `largest_diff` = max-abs across all ids.
+  - Diff filter (`abs(diff) > 1` for targets, `abs(diff) > tolerance` for products)
+    applied independently per id.
+  - Empty ids or ids with no data/targets produce empty tables silently (no error).
+  - `_build_imbalances_for_id` extracted as private helper in `_product_imbalances.py`.
+  - `_build_categories_table` and `_build_transactions_table` now take `id_value`
+    explicitly instead of using `sut.balancing_id`.
+  - `_resolve_ids` and `_prepend_id_level` defined as private helpers in each module.
+  - SUT delegate methods updated to accept and pass through `ids`.
+  - `_style_imbalances_table` draws `border-bottom: 2px solid #999` between id blocks:
+    outermost level (merged cells) gets border on first row of block; data cells and
+    inner index levels get border on last row of block. Consistent with other separator
+    patterns in the codebase.
+
 - **2026-04-20**: Added `set_decimals(n: int)` to all 7 inspection classes and `TablesComparison`. Controls decimal places in both number and percentage formatting (Jupyter display and Excel). Validates: non-negative int. Default 1 (existing behaviour preserved). Threads through all `_style.py` formatter factories and `_apply_number_formats` in `_shared.py`. Propagates via `inspect_tables_comparison` and `TablesComparison.set_decimals` the same way as `set_display_unit`/`set_rel_base`.
