@@ -14,6 +14,7 @@ from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary
 from sutlab.inspect._shared import _write_inspection_to_excel
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
 @dataclass
@@ -75,6 +76,7 @@ class UnbalancedProductsInspection:
     data: UnbalancedProductsData
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     @property
     def imbalances(self) -> Styler:
@@ -84,12 +86,12 @@ class UnbalancedProductsInspection:
         use_cols = [c for c in df.columns if c.startswith("use_")]
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
-        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit)
+        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -138,6 +140,51 @@ class UnbalancedProductsInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "UnbalancedProductsInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`UnbalancedProductsInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join.
+
+        Parameters
+        ----------
+        other : UnbalancedProductsInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as
+            :class:`UnbalancedProductsInspection` instances.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`UnbalancedProductsInspection`.
+        """
+        if not isinstance(other, UnbalancedProductsInspection):
+            raise TypeError(
+                f"Expected UnbalancedProductsInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = UnbalancedProductsInspection(
+            data=UnbalancedProductsData(**diff_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = UnbalancedProductsInspection(
+            data=UnbalancedProductsData(**rel_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def inspect_unbalanced_products(

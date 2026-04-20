@@ -116,11 +116,14 @@ def _apply_number_formats(
     field_name: str,
     display_unit: float | None = None,
     rel_base: int = 100,
+    all_rel: bool = False,
 ) -> None:
     """Apply Excel number formats to the data cells of a written worksheet.
 
     The format applied to each cell depends on the field name and column name:
 
+    - If ``all_rel=True``, all data cells receive the percentage format
+      regardless of field name or column name.
     - If ``field_name`` ends with ``_distribution``, ``_rates``, or ``_growth``
       all data cells receive the percentage format (``0.0%``).
     - Otherwise data cells receive the number format (``#,##0.0``), except
@@ -140,12 +143,15 @@ def _apply_number_formats(
     field_name : str
         The dataclass field name corresponding to this sheet (e.g.
         ``"balance_distribution"``).  Drives the all-percentage detection.
+    all_rel : bool, optional
+        When ``True``, all data cells are formatted as percentages regardless
+        of ``field_name`` or column names. Default ``False``.
     """
     n_header_rows = df.columns.nlevels
     n_index_cols = df.index.nlevels
     data_cols = list(df.columns)
 
-    is_all_percentage = field_name.endswith(_PERCENTAGE_FIELD_SUFFIXES)
+    is_all_percentage = all_rel or field_name.endswith(_PERCENTAGE_FIELD_SUFFIXES)
 
     # For "mostly number" tables, track which data-column positions carry
     # relative values and should be formatted as percentages instead.
@@ -323,7 +329,8 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
                 raw.to_excel(writer, sheet_name=sheet_name)
 
             ws = writer.sheets[sheet_name]
+            all_rel = getattr(inspection_obj, "_all_rel", False)
             _apply_bold_headers(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
-            _apply_number_formats(ws, raw, f.name, display_unit, rel_base)
+            _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel)

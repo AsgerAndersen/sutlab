@@ -25,6 +25,7 @@ from sutlab.inspect._style import (
     _style_products_summary_table,
 )
 from sutlab.inspect._products import _get_price_layer_columns
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
 @dataclass
@@ -216,18 +217,28 @@ class IndustryInspection:
     _p1_trans: frozenset = field(default_factory=frozenset, repr=False)
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = field(default=False, repr=False)
+
+    def _number_fmt(self):
+        if self._all_rel:
+            return _make_percentage_formatter(self.rel_base)
+        return _make_number_formatter(self.display_unit)
 
     @property
     def balance(self) -> Styler:
         """Styled industry balance table for display in a Jupyter notebook."""
-        return _style_industry_balance_table(self.data.balance, self._p1_trans, display_unit=self.display_unit, rel_base=self.rel_base)
+        if self._all_rel:
+            fmt = _make_percentage_formatter(self.rel_base)
+        else:
+            fmt = None  # mixed: number for most rows, percentage for Input coefficient
+        return _style_industry_balance_table(self.data.balance, self._p1_trans, format_func=fmt, display_unit=self.display_unit, rel_base=self.rel_base)
 
     @property
     def supply_products(self) -> Styler:
         """Styled product breakdown of industry output for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.supply_products,
-            _make_number_formatter(self.display_unit),
+            self._number_fmt(),
             "supply",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -269,6 +280,7 @@ class IndustryInspection:
             "supply",
             self.display_unit,
             self.rel_base,
+            all_rel=self._all_rel,
         )
 
     @property
@@ -276,7 +288,7 @@ class IndustryInspection:
         """Styled product breakdown of industry input for display in a Jupyter notebook."""
         return _style_detail_table(
             self.data.use_products,
-            _make_number_formatter(self.display_unit),
+            self._number_fmt(),
             "use",
             outer_level="industry",
             outer_txt_level="industry_txt",
@@ -331,6 +343,7 @@ class IndustryInspection:
             "use",
             self.display_unit,
             self.rel_base,
+            all_rel=self._all_rel,
         )
 
     @property
@@ -338,7 +351,7 @@ class IndustryInspection:
         """Styled price layer breakdown of industry input for display in a Jupyter notebook."""
         return _style_price_layers_table(
             self.data.price_layers,
-            _make_number_formatter(self.display_unit),
+            self._number_fmt(),
             outer_level="industry",
             outer_txt_level="industry_txt",
         )
@@ -505,6 +518,53 @@ class IndustryInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "IndustryInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`IndustryInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join.
+
+        Parameters
+        ----------
+        other : IndustryInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as :class:`IndustryInspection`
+            instances.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`IndustryInspection`.
+        """
+        if not isinstance(other, IndustryInspection):
+            raise TypeError(
+                f"Expected IndustryInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = IndustryInspection(
+            data=IndustryInspectionData(**diff_fields),
+            _p1_trans=self._p1_trans,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = IndustryInspection(
+            data=IndustryInspectionData(**rel_fields),
+            _p1_trans=self._p1_trans,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def _keep_products_by_index(

@@ -22,6 +22,7 @@ from sutlab.inspect._style import (
     _style_detail_table,
     _style_price_layers_table,
 )
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
 # ESA code → attribute name on SUTClassifications for category label lookup.
@@ -196,18 +197,24 @@ class ProductInspection:
     data: ProductInspectionData
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = field(default=False, repr=False)
+
+    def _number_fmt(self):
+        if self._all_rel:
+            return _make_percentage_formatter(self.rel_base)
+        return _make_number_formatter(self.display_unit)
 
     @property
     def balance(self) -> Styler:
-        return _style_balance_table(self.data.balance, _make_number_formatter(self.display_unit))
+        return _style_balance_table(self.data.balance, self._number_fmt())
 
     @property
     def supply_products(self) -> Styler:
-        return _style_detail_table(self.data.supply_products, _make_number_formatter(self.display_unit), "supply")
+        return _style_detail_table(self.data.supply_products, self._number_fmt(), "supply")
 
     @property
     def use_products(self) -> Styler:
-        return _style_detail_table(self.data.use_products, _make_number_formatter(self.display_unit), "use")
+        return _style_detail_table(self.data.use_products, self._number_fmt(), "use")
 
     @property
     def balance_distribution(self) -> Styler:
@@ -235,7 +242,7 @@ class ProductInspection:
 
     @property
     def price_layers(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers, _make_number_formatter(self.display_unit))
+        return _style_price_layers_table(self.data.price_layers, self._number_fmt())
 
     @property
     def price_layers_distribution(self) -> Styler:
@@ -296,6 +303,53 @@ class ProductInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "ProductInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`ProductInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join: rows
+        present in only one object contribute ``NaN`` on the missing side.
+
+        Parameters
+        ----------
+        other : ProductInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as :class:`ProductInspection`
+            instances. Access raw data via e.g. ``result.diff.data.balance``
+            and styled views via ``result.diff.balance``.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`ProductInspection`.
+        """
+        if not isinstance(other, ProductInspection):
+            raise TypeError(
+                f"Expected ProductInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = ProductInspection(
+            data=ProductInspectionData(**diff_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = ProductInspection(
+            data=ProductInspectionData(**rel_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def inspect_products(

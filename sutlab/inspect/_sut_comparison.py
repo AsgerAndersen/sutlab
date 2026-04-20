@@ -19,6 +19,7 @@ from sutlab.inspect._style import (
     _style_comparison_summary_table,
 )
 from sutlab.inspect._shared import _write_inspection_to_excel
+from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
 @dataclass
@@ -132,6 +133,7 @@ class SUTComparisonInspection:
     data: SUTComparisonData
     display_unit: float | None = None
     rel_base: int = 100
+    _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     def _rel_col(self, df: pd.DataFrame) -> str:
         return next((c for c in df.columns if c.startswith("rel_")), "")
@@ -140,24 +142,24 @@ class SUTComparisonInspection:
     def supply(self) -> Styler:
         """Styled supply comparison table."""
         df = self.data.supply
-        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def use_basic(self) -> Styler:
         """Styled use at basic prices comparison table."""
         df = self.data.use_basic
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def use_purchasers(self) -> Styler:
         """Styled use at purchasers' prices comparison table."""
         df = self.data.use_purchasers
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def use_price_layers(self) -> Styler:
         """Styled price layers comparison table."""
-        return _style_comparison_layers_table(self.data.use_price_layers, display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_layers_table(self.data.use_price_layers, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def balancing_targets_supply(self) -> Styler | None:
@@ -165,7 +167,7 @@ class SUTComparisonInspection:
         if self.data.balancing_targets_supply is None:
             return None
         df = self.data.balancing_targets_supply
-        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def balancing_targets_use_basic(self) -> Styler | None:
@@ -173,7 +175,7 @@ class SUTComparisonInspection:
         if self.data.balancing_targets_use_basic is None:
             return None
         df = self.data.balancing_targets_use_basic
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def balancing_targets_use_purchasers(self) -> Styler | None:
@@ -181,39 +183,39 @@ class SUTComparisonInspection:
         if self.data.balancing_targets_use_purchasers is None:
             return None
         df = self.data.balancing_targets_use_purchasers
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def balancing_targets_use_price_layers(self) -> Styler | None:
         """Styled use balancing targets price layers comparison table, or None."""
         if self.data.balancing_targets_use_price_layers is None:
             return None
-        return _style_comparison_layers_table(self.data.balancing_targets_use_price_layers, display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_layers_table(self.data.balancing_targets_use_price_layers, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_summary_table(self.data.summary)
+        return _style_summary_table(self.data.summary, all_rel=self._all_rel)
 
     @property
     def supply_products_summary(self) -> Styler:
         """Styled supply-by-product summary table."""
-        return _style_comparison_summary_table(self.data.supply_products_summary, "supply", display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_summary_table(self.data.supply_products_summary, "supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def supply_columns_summary(self) -> Styler:
         """Styled supply-by-transaction/category summary table."""
-        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply", display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def use_products_summary(self) -> Styler:
         """Styled use-by-product summary table (purchasers' prices)."""
-        return _style_comparison_summary_table(self.data.use_products_summary, "use", display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_summary_table(self.data.use_products_summary, "use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     @property
     def use_columns_summary(self) -> Styler:
         """Styled use-by-transaction/category summary table (purchasers' prices)."""
-        return _style_comparison_summary_table(self.data.use_columns_summary, "use", display_unit=self.display_unit, rel_base=self.rel_base)
+        return _style_comparison_summary_table(self.data.use_columns_summary, "use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -262,6 +264,51 @@ class SUTComparisonInspection:
                 f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
             )
         return dataclasses.replace(self, rel_base=rel_base)
+
+    def inspect_tables_comparison(self, other: "SUTComparisonInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`SUTComparisonInspection`.
+
+        Computes element-wise differences and relative changes between
+        corresponding tables. Index alignment uses an outer join.
+
+        Parameters
+        ----------
+        other : SUTComparisonInspection
+            The inspection result to compare against.
+
+        Returns
+        -------
+        TablesComparison
+            Contains ``.diff`` and ``.rel`` as
+            :class:`SUTComparisonInspection` instances.
+
+        Raises
+        ------
+        TypeError
+            If ``other`` is not a :class:`SUTComparisonInspection`.
+        """
+        if not isinstance(other, SUTComparisonInspection):
+            raise TypeError(
+                f"Expected SUTComparisonInspection, got {type(other).__name__}."
+            )
+        diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff = SUTComparisonInspection(
+            data=SUTComparisonData(**diff_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
+        rel = SUTComparisonInspection(
+            data=SUTComparisonData(**rel_fields),
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+            _all_rel=True,
+        )
+        return TablesComparison(
+            diff=diff,
+            rel=rel,
+            display_unit=self.display_unit,
+            rel_base=self.rel_base,
+        )
 
 
 def inspect_sut_comparison(
