@@ -916,3 +916,19 @@ Append-only. Each entry: date, decision, brief rationale.
   (`_style_balance_table`, `_style_detail_table`, etc.). The `.gdp` property now passes
   `_make_number_formatter(display_unit)`; `.gdp_growth` and `.gdp_distribution` pass
   `_make_percentage_formatter(rel_base)`.
+
+- **2026-04-20**: Added `inspect_tables_comparison(other)` to all 7 inspection result
+  classes. Returns a generic `TablesComparison` dataclass (in `sutlab/inspect/_tables_comparison.py`)
+  with `.diff` and `.rel` fields, each an instance of the same inspection class as the
+  caller. `.diff` holds element-wise differences (self − other); `.rel` holds relative
+  changes ((self − other) / other). Key design decisions:
+  - Reuses existing inspection dataclasses for `.diff` and `.rel` — no new result types.
+  - `.rel` has `_all_rel=True` (internal flag on each inspection class) which switches all
+    number-formatted styled properties to percentage format. `_style.py` functions that
+    previously used `display_unit` directly gain an `all_rel` parameter; `_shared.py`
+    `_apply_number_formats` also gains `all_rel` for Excel output.
+  - Index alignment uses outer join; division by zero → NaN (inf replaced).
+  - None fields (e.g. optional violations tables) propagate as None in both diff and rel.
+  - `TablesComparison.set_display_unit`/`set_rel_base` propagate to both inner objects.
+  - `display_unit` and `rel_base` copied from the calling object at construction time.
+  - `TablesComparison` exported from `sutlab/inspect/__init__.py`.
