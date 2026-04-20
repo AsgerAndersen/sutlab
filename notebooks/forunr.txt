@@ -1,0 +1,196 @@
+*
+* ����������������������������������������������������������������Ŀ
+* � Fuldt forudbestemte Nrnr.                                      �
+* � Det betyder dog ikke at alle disse Nrnr vil balancere ved      �
+* � starten p� den manuelle afstemning, s� de kan alts� optr�de    �
+* � p� listen over Nrnr med Nrnr-differencer.                      �
+* ������������������������������������������������������������������
+*
+*  Tilpasset db07 og nye NRnr
+*
+* Alle H-Nrnr ( "Sort og illegal" produktion )
+*
+H030000  Sort produktion, fiskeri
+H107120  Sort prod. i bagerforretninger
+H140000  Sort produktion af bekl�dning
+H160000  Sort fremst.af byggematerialer
+H180000  Sort prod.,papir og skriveudst
+H180609  Illegal import af slik og chok
+H220200  Illegal import af sodavand
+H220300  Illegal import af �l
+H220400  Illegal import af vin
+H240200  Illegal import af tobak
+H293900  Illegal import af narkotika
+H320020  Sort prod.,leget�j,guld-/s�lv
+H410100  Sort boligbyggeri
+H434100  Sort produktion, bygningsrep.
+H452000  Sort produktion,autoreparation
+H472000  Underdekl. i deth.m.f�devarer
+H472001  Momssv. pga underdekl. i deth
+H493239  Sort produkt.,taxi,turistvognm
+H494142  Sort prod. varetransp/flytning
+H561000  Underdekl. i restauranter
+H561001  Momssv. pga und.dekl. i rest
+H561002  Und.dekl. i f.b.m. drikkepenge
+H561003  Momssv. pga und.dekl af drikp
+H620200  Sort prod. softwarekonsulenter
+H692000  Sort produkt.,revision/bogf�r.
+H812100  Sort reng�ring for virksom.
+H855000  Sort undervisning
+H869000  Sort produktion i  sundhedsv
+H900110  Sort prod i teater- og koncert
+H952200  Sort rep. af husholdn. mask
+H952400  Sort prod. i rep. af m�bler
+H960210  Underdekl. i fris�rsaloner
+H960211  Momssv. pga und.dekl. i fris�r
+H960400  Illegal prostitution
+H970000  Priv.hush.m.ansat medhj., sort
+*
+K620101  Egenprod. software, marked
+K620102  Egenprod. software, ikke-m
+K720141  Egenprod. Grundforsk, marked
+K720142  Egenprod. Grundforsk, ikke-m
+K720991  Egenprod. Anv. forsk, marked
+K720992  Egenprod. Anv. forsk, ikke-m
+K720993  Egenprod. Anv. forsk, NPISH
+*
+*
+* R&V-NRnr
+*
+M000002  Uspecificerede reparationer
+M330000  Rep+opst,Rep+inst mask,udsty
+M420000  Anl�gsreparationer
+M430000  Byggereparationer
+M452000  Autoreparation
+*
+*
+* Alle Q-nrnr ( Offentlige ikke-markedsm�ssige tjenester til konsum )
+*
+Q020000  Skovbrug, off. ikke-markedsm.
+Q434200  Anl�gsrep. off. ikke-markedsm.
+Q501000  Kommunal f�rgefart
+Q522110  Stationer, godsterm. ikke-m
+Q522220  Bugs-, bj�rgn- og redn, ikke-m
+Q591400  Kommunale biografer
+Q600000  Danmarks Radio
+Q682040  Udl. af erhverv. ejend. ikke-m
+Q712010  Levnedsm-kntr. off.ikke-marked
+Q720002  F&U, ikke-markedsm�ssig
+Q781000  Arbejdsformidling off ikke-m
+Q799000  Turistbureauer mv., off.ikke-m
+Q811000  Kombinerede serviceydelser
+Q812900  Andre reng�r.yd., off. ikke-m.
+Q813000  Stadsgartnere, ikke-markedsm.
+Q841100  Generelle offentlige tjenester
+Q841200  Off.adm. sundhed,underv,social
+Q841300  Off. adm.af erhvervsfremme
+Q842100  Udenrigsanliggender
+Q842200  Forsvar
+Q842300  Domstole og f�ngselsv�sen
+Q842400  Politi
+Q842500  Brandv,redn-korps, ikke-marked
+Q843000  Lovpligtig socialsikring mv.
+Q852000  Folke- og specialskoler
+Q853000  Gymnasier, erhvervsfagl.skoler
+Q854000  Videreg�ende uddannelsesinst.
+Q855009  Anden underv. off. ikke-marked
+Q861000  Hospitaler, off. ikke-marked
+Q862000  Praktis. l�ger, off. ikke-mark
+Q862300  Praktis. tandl�ger, off ikke-m
+Q869000  Sundhed i�vr.,off. ikke-marked
+Q870000  Institutionsophold
+Q881000  Dagcentre, hjemmehj�lp m.m.
+Q889100  B�rnedagpleje
+Q889900  Andre Soc. foranst. uden inst.
+Q900110  Teater, koncert, off. ikke-m
+Q910100  Biblioteker og arkiver
+Q910200  Museer, off. ikke markedsm�s.
+Q931100  Idr�tsanl�g, off. ikke-marked
+Q932100  Forlystelseparker, off. ikke-m
+Q932990  Akt.i.forb.m.fritid, ikke-mark
+Q949100  Folkekirken
+Q960300  Begravelsesv�sen, off.ikke-m
+*
+*
+* F&U S-NRnr, inge �vrige S-NRnr
+*  skal ikke forudbestemmes ved opstillingen af TA'en
+*S720142  Grundforskning, off. salg
+*S720992  Anvendt forskning, off-salg
+*
+*
+* S�rlige tjeneste-Nrnr
+*
+T000005  Licensbet. ( excl. software )
+T641020  Fisim, import
+T641100  Danmarks Nationalbank
+T641101  Fisim, Danmarks Nationalbank
+T641900  Banker mm, dir.bet.tjn.
+T641901  Fisim, andre danske pengeinst.
+T642010  Finansielle holdingselskaber
+T643010  Investeringsforeninger
+T643039  Inv. og ventureselsk,kap.fonde
+T649100  Finansiel leasing,dir.bet.tjn.
+T649101  Fisim, finansiel leasing
+T649201  Fisim, Anden kreditformidling
+T649203  Realkreditinstitutter mv.
+T649204  Andre kreditselskaber mv.
+T649900  Anden finansiel formidling
+T651201  Skadesforsikring undtaget auto
+T651203  Autoforsikring
+T900011  Royalties-bibliotekspenge
+T900012  Royalties-forlagskontrakter
+T900013  Royalties-Koda
+T900014  Royalties-Ncb
+T900015  Royalties-Copy-dan
+T900016  Royalties-Gramex
+*
+*
+* S�rlige Ikke HS-varer
+*
+U002065  Produkter til/fra f�rdigvarelager
+U352000  Bygas
+U353000  Varmeforsyning
+U360000  Vandforsyning
+U900011  Originalv�rker-bibliotekspenge
+U900012  Originalv�rker-forlagskontrakt
+U900013  Originalv�rker-Koda
+U900014  Originalv�rker-Ncb
+U900015  Originalv�rker-Copy-dan
+U900016  Originalv�rker-Gramex
+U900017  Orig.v�rk, licensbet. fra udl
+*
+*
+* Energi-varer
+*
+V270100  Stenkul samt stenkulsbriketter
+V270200  Brunkul og brunkulsbriketter
+V270400  Koks og halvkoks af stenkul
+V270502  Biogas
+V270900  Jordolie og r� olier
+V271001  Jetpetroleum a middelsv�r olie
+V271005  Motorbenzin uden bioolie
+V271006  �vrige olier max 30% bioolie
+V271007  Farvet benzin
+V271009  LVN (letbenzin) uden bioolie
+V271011  Middelsv�re olier, petroleum
+*V271012  Fyringsgasolie uden bioolie
+V271014  Fyringsgasolie max 30% bioolie
+V271015  Autodiesel
+V271016  DK vognm�nds br�ndstof i udl
+V271018  Fuelolie max 30% bioolie
+V271019  Fuelolie uden bioolie
+V271020  DK skibes bunkring i udlandet
+*V271021  Sm�reolier, -fedt uden bioolie
+V271023  Br�ndselsolie t raffinad u bio
+V271101  Naturgas,propan,butan mv
+V271105  Naturgas, i gasformig stand
+V271106  Naturgas til eksport (III).
+V271107  Naturgas II
+V271109  Raffinaderigas
+V271301  Jordoliekoks
+V271600  Elektrisk str�m
+V440110  Br�nde
+V440120  Skovflis
+V440130  Tr�piller
+*
+*

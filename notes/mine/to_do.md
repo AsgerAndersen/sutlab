@@ -2,47 +2,42 @@
 
 ## Next up
 
--   Se revider.ipynb efter for to dos i fed, og fix dem.
+-   funktion, der kan kaldes på et inpektion objekt, så det sammenlignes med et andet inspektion objekt af samme type.
+    -   diff field, hvorunder forskellene på alle objekternes tabeller ligger
+    -   rel field, hvorunder de relative ændringer mellem alle objekternes tabeller ligger
 
--   Design og implementer workflow til at veksle mellem udforskning af afstemning, og automatisk af alle år
-    -   Se bud i notes/mine/balancing_workflow.md
-    -   Start med løbende priser
-    -   implementer simplificeret novo sag som eksempel
-    -   plan:
-        -   set mappe struktur op i separat projekt.
-        -   brug sutlab til i eksplorativ mappe at finde simpel afstemning af novo sagen i 2019.
-        -   implementer pakke til at kopiere, køre og html-gemme notebooks tilbage over tid.
-        -   brug denne pakke til på novosagen.
-        -   når det er lykkedes at afstemme tilbage til 2014, så skal der implementeres tidsserie inspektions funktioner i løbende priser til at se på aggregater.
+-   Lav ubance tjeks, så de også kan inkludere alle år.
 
--   Implementer flere inspektionsfunktioner
+-   Inspektions funktioner til at lave overblik over hele tidsserien
+    -   branchers bvt
 
+-   Adjust funktioner til at ændre og flytte rundt på værdier.
+-   adjust_substitute_sut funktion til at skifte del af SUT ud (fx til revisioner af energiprodukter).
+-   adjust_subtract_sut til at trække en sut fra en anden (burde bare kunne implementeres ved at gange minus -1 på den sut, der skal trækkes fra og så bruge adjust_add_sut).
+
+-   aggregate og disaggregate funktioner til kategoriske dimensioner.
+    -   se på grønreform og sammentænk
+
+-   balancering af prislag
+
+-   deflatering og chain linking
+
+-   ras-sut
+
+-   Flere inspektionsfunktioner
     -   inspect_price_layers_balances
         -   funktion til at tjekke balancer for prislag
-
-    -   funktioner til at lave overblik over hele tidsserien
-        -   bnp
-        -   produktivitet
-        -   kræver implementering af deflatering og chained linked indexing
-            -   men start med bare at implementer for løbende priser, så jeg kan gå videre til at designe workflow, hvor det kun er løbende priser, der afstemmes. så vender jeg tilbage til faste priser.
-            -   eller faktisk: vent helt med denne funktionalitet, til jeg har implementeret workflow.
+    -   tabel navne og summary funktioner for de nuværende inspektions funktioner
+    -   docstring delegering til alle delegerede funktioner.
 
 ## Spørgsmål
 -   Hvordan skal balancing funktionerne forholde sig til negative tal? Og lagre specifikt. Skal de som udgangspunkt ikke ændres, medmindre afstemmerne gør det "manuelt" vha flyt funktioner?
-
-## Christina, kommentarer
--   Tror eksport af inspect resultater til excel er vigtig. Scrolling er dårligt, og excel giver fleksibilitet til at udforske og teste idéer.
-
-## Generelt
-
-Forstå måltotaler bedre:
--   Har vi måltotaler for alle trans-brch kombinationer, når afstemningen går i gang?
--   Lagre? Detaljerede forbrugsgrupper. Opdeling af eksport på dk produceret og reeksport.
--   Tolerancer: Hvordan er tolerancerne cirka for de forskellige trans-brch kombinationer? Er det altid bestemt på transaktions niveau?
+-   Hvordan skal vi arbejde med lagre?
 
 ## Data examples
 
 -   Make simplified realistic SUT data. Take a subset of products, which are easy to understand and map 
+-   Aggregate products to IO-consistent classification.
 
 ## Løse idéer
 
