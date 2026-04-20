@@ -14,6 +14,7 @@ build/
 
 # Claude Code internals
 .claude/
+.claire/
 
 # Reference documents (copyrighted)
 docs/reference/
