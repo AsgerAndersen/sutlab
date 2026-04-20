@@ -932,3 +932,5 @@ Append-only. Each entry: date, decision, brief rationale.
   - `TablesComparison.set_display_unit`/`set_rel_base` propagate to both inner objects.
   - `display_unit` and `rel_base` copied from the calling object at construction time.
   - `TablesComparison` exported from `sutlab/inspect/__init__.py`.
+
+- **2026-04-20**: Added `set_decimals(n: int)` to all 7 inspection classes and `TablesComparison`. Controls decimal places in both number and percentage formatting (Jupyter display and Excel). Validates: non-negative int. Default 1 (existing behaviour preserved). Threads through all `_style.py` formatter factories and `_apply_number_formats` in `_shared.py`. Propagates via `inspect_tables_comparison` and `TablesComparison.set_decimals` the same way as `set_display_unit`/`set_rel_base`.
