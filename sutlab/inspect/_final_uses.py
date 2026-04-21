@@ -13,8 +13,18 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._shared import _build_growth_table, _display_index, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _apply_display_config, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -106,6 +116,31 @@ class FinalUseInspectionData:
         )
 
 
+_FINAL_USE_INDEX_GROUPING: dict[str, list[str] | None] = {
+    "use": None,
+    "use_distribution": None,
+    "use_growth": None,
+    "use_categories": None,
+    "use_categories_distribution": None,
+    "use_categories_growth": None,
+    "use_products": None,
+    "use_products_distribution": None,
+    "use_products_growth": None,
+    "price_layers": ["transaction", "category"],
+    "price_layers_rates": ["transaction", "category"],
+    "price_layers_distribution": ["transaction", "category"],
+    "price_layers_growth": ["transaction", "category"],
+}
+
+
+def _final_use_default_config() -> DisplayConfiguration:
+    return DisplayConfiguration(
+        protected_tables=frozenset(),
+        protected_index_values={"transaction": [""]},
+        index_grouping=_FINAL_USE_INDEX_GROUPING,
+    )
+
+
 @dataclass
 class FinalUseInspection:
     """
@@ -159,94 +194,96 @@ class FinalUseInspection:
     """
 
     data: FinalUseInspectionData
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = field(default_factory=_final_use_default_config)
     _all_rel: bool = field(default=False, repr=False)
 
+    def _pct_fmt(self):
+        cfg = self.display_configuration
+        return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+
     def _number_fmt(self):
+        cfg = self.display_configuration
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base, self.decimals)
-        return _make_number_formatter(self.display_unit, self.decimals)
+            return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+        return _make_number_formatter(cfg.display_unit, cfg.decimals)
 
     @property
     def use(self) -> Styler:
         """Styled transaction-level use table for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use, self._number_fmt())
+        df = _apply_display_config(self.data.use, "use", self.display_configuration)
+        return _style_final_use_use_table(df, self._number_fmt())
 
     @property
     def use_distribution(self) -> Styler:
         """Styled transaction-level share distribution for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use_distribution, _make_percentage_formatter(self.rel_base, self.decimals))
+        df = _apply_display_config(self.data.use_distribution, "use_distribution", self.display_configuration)
+        return _style_final_use_use_table(df, self._pct_fmt())
 
     @property
     def use_growth(self) -> Styler:
         """Styled transaction-level year-on-year growth for display in a Jupyter notebook."""
-        return _style_final_use_use_table(self.data.use_growth, _make_percentage_formatter(self.rel_base, self.decimals))
+        df = _apply_display_config(self.data.use_growth, "use_growth", self.display_configuration)
+        return _style_final_use_use_table(df, self._pct_fmt())
 
     @property
     def use_categories(self) -> Styler:
         """Styled use table (by transaction+category) for display in a Jupyter notebook."""
-        return _style_final_use_use_categories_table(self.data.use_categories, self._number_fmt())
+        df = _apply_display_config(self.data.use_categories, "use_categories", self.display_configuration)
+        return _style_final_use_use_categories_table(df, self._number_fmt())
 
     @property
     def use_categories_distribution(self) -> Styler:
         """Styled category share distribution for display in a Jupyter notebook."""
-        return _style_final_use_use_categories_table(
-            self.data.use_categories_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.use_categories_distribution, "use_categories_distribution", self.display_configuration)
+        return _style_final_use_use_categories_table(df, self._pct_fmt())
 
     @property
     def use_categories_growth(self) -> Styler:
         """Styled category year-on-year growth for display in a Jupyter notebook."""
-        return _style_final_use_use_categories_table(
-            self.data.use_categories_growth, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.use_categories_growth, "use_categories_growth", self.display_configuration)
+        return _style_final_use_use_categories_table(df, self._pct_fmt())
 
     @property
     def use_products(self) -> Styler:
         """Styled use-detail table (with product breakdown) for display in a Jupyter notebook."""
-        return _style_final_use_use_products_table(self.data.use_products, self._number_fmt())
+        df = _apply_display_config(self.data.use_products, "use_products", self.display_configuration)
+        return _style_final_use_use_products_table(df, self._number_fmt())
 
     @property
     def use_products_distribution(self) -> Styler:
         """Styled use-products distribution table for display in a Jupyter notebook."""
-        return _style_final_use_use_products_table(
-            self.data.use_products_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.use_products_distribution, "use_products_distribution", self.display_configuration)
+        return _style_final_use_use_products_table(df, self._pct_fmt())
 
     @property
     def use_products_growth(self) -> Styler:
         """Styled use-products year-on-year growth table for display in a Jupyter notebook."""
-        return _style_final_use_use_products_table(
-            self.data.use_products_growth, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
+        return _style_final_use_use_products_table(df, self._pct_fmt())
 
     @property
     def price_layers(self) -> Styler:
         """Styled price layer decomposition table for display in a Jupyter notebook."""
-        return _style_final_use_price_layers_table(self.data.price_layers, self._number_fmt())
+        df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
+        return _style_final_use_price_layers_table(df, self._number_fmt())
 
     @property
     def price_layers_rates(self) -> Styler:
         """Styled step-wise price layer rates for display in a Jupyter notebook."""
-        return _style_final_use_price_layers_table(
-            self.data.price_layers_rates, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
+        return _style_final_use_price_layers_table(df, self._pct_fmt())
 
     @property
     def price_layers_distribution(self) -> Styler:
         """Styled price layer distribution table for display in a Jupyter notebook."""
-        return _style_final_use_price_layers_table(
-            self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
+        return _style_final_use_price_layers_table(df, self._pct_fmt())
 
     @property
     def price_layers_growth(self) -> Styler:
         """Styled price layer year-on-year growth table for display in a Jupyter notebook."""
-        return _style_final_use_price_layers_table(
-            self.data.price_layers_growth, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
+        return _style_final_use_price_layers_table(df, self._pct_fmt())
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -261,7 +298,8 @@ class FinalUseInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self.display_configuration
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "FinalUseInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -272,17 +310,9 @@ class FinalUseInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "FinalUseInspection":
+    def set_display_rel_base(self, rel_base: int) -> "FinalUseInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -290,13 +320,9 @@ class FinalUseInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "FinalUseInspection":
+    def set_display_decimals(self, decimals: int) -> "FinalUseInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -305,39 +331,53 @@ class FinalUseInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
-        self,
-        values: str | int | list,
-        level: str,
-    ) -> "FinalUseInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
+    def set_display_index(self, level: str, values) -> "FinalUseInspection":
+        """Return a copy with ``values`` added (union) to the display filter for ``level``.
 
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+        Only rows matching the accumulated filter values are shown in styled
+        properties. Protected index values are always included. Accepts the
+        same pattern syntax as :func:`filter_rows`.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        FinalUseInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list of str/int
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "FinalUseInspection":
+        """Return a copy with rows sorted by ``column`` within each index group.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by. ``None`` clears the sort.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "FinalUseInspection":
+        """Return a copy showing only the ``n`` rows with largest values for ``column``.
+
+        Applied within each index group. Protected rows are always kept.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to keep per group.
+        column : str
+            Column name to rank by.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "FinalUseInspection":
+        """Return a copy with all user-settable display settings reset to defaults."""
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -373,23 +413,17 @@ class FinalUseInspection:
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
         diff = FinalUseInspection(
             data=FinalUseInspectionData(**diff_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = FinalUseInspection(
             data=FinalUseInspectionData(**rel_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
         return TablesComparison(
             diff=diff,
             rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
 
 
@@ -399,7 +433,6 @@ def inspect_final_uses(
     *,
     categories: str | list[str] | None = None,
     ids=None,
-    sort_id=None,
 ) -> FinalUseInspection:
     """
     Return inspection tables for one or more final use transactions.
@@ -425,12 +458,6 @@ def inspect_final_uses(
         single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
         range (``ids=range(2015, 2022)``). Column order follows the sorted
         order of the full collection.
-    sort_id : value, optional
-        If given, non-total rows within each transaction block are sorted
-        descending by the value in that id column. The grand ``"Total use"``
-        row always remains at the bottom. ``use_distribution`` and
-        ``use_growth`` inherit the same order. Must be one of the ids
-        present after applying the ``ids`` filter.
 
     Returns
     -------
@@ -452,9 +479,6 @@ def inspect_final_uses(
         If no transaction codes match the given ``transactions`` patterns.
     ValueError
         If any value in ``ids`` is not found in the collection.
-    ValueError
-        If ``sort_id`` is not found in the collection ids (after applying
-        the ``ids`` filter).
     """
     if sut.metadata is None:
         raise ValueError(
@@ -515,11 +539,6 @@ def inspect_final_uses(
             )
         all_ids = [i for i in all_ids if i in requested_ids]
 
-    if sort_id is not None and sort_id not in all_ids:
-        raise ValueError(
-            f"sort_id {sort_id!r} not found in collection ids. Available: {all_ids}"
-        )
-
     # Transaction name and ESA code lookups.
     trans_names = dict(zip(
         trans_df[cols.transaction].astype(str),
@@ -569,13 +588,6 @@ def inspect_final_uses(
         all_ids=all_ids,
     )
 
-    if sort_id is not None and not use.empty:
-        trans_vals = use.index.get_level_values("transaction")
-        is_total = trans_vals == ""
-        data_rows = use[~is_total].sort_values(by=sort_id, ascending=False)
-        total_rows = use[is_total]
-        use = pd.concat([data_rows, total_rows])
-
     use_distribution = _build_final_use_use_distribution(use)
     use_growth = _build_growth_table(use)
 
@@ -589,15 +601,6 @@ def inspect_final_uses(
         all_ids=all_ids,
     )
 
-    if sort_id is not None and not use_categories.empty:
-        trans_vals_cat = use_categories.index.get_level_values("transaction")
-        is_total_cat = trans_vals_cat == ""
-        data_rows_cat = use_categories[~is_total_cat].sort_values(
-            by=sort_id, ascending=False
-        )
-        total_rows_cat = use_categories[is_total_cat]
-        use_categories = pd.concat([data_rows_cat, total_rows_cat])
-
     use_categories_distribution = _build_final_use_use_distribution(use_categories)
     use_categories_growth = _build_growth_table(use_categories)
 
@@ -610,15 +613,6 @@ def inspect_final_uses(
         cols=cols,
         all_ids=all_ids,
     )
-
-    if sort_id is not None and not use_products.empty:
-        trans_vals_prod = use_products.index.get_level_values("transaction")
-        is_total_prod = trans_vals_prod == ""
-        data_rows_prod = use_products[~is_total_prod].sort_values(
-            by=sort_id, ascending=False
-        )
-        total_rows_prod = use_products[is_total_prod]
-        use_products = pd.concat([data_rows_prod, total_rows_prod])
 
     use_products_distribution = _build_final_use_use_distribution(use_products)
     use_products_growth = _build_growth_table(use_products)

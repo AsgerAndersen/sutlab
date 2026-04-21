@@ -5,11 +5,12 @@ TablesComparison: element-wise comparison between two inspection result objects 
 from __future__ import annotations
 
 import dataclasses
-import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import pandas as pd
+
+from ._display_config import DisplayConfiguration
 
 
 @dataclass
@@ -42,29 +43,17 @@ class TablesComparison:
         Same class as ``diff``. Each table holds the relative change:
         ``(self − other) / other``. Division by zero yields ``NaN``.
         All numeric values are formatted as percentages in styled views.
-    display_unit : float or None
-        Display unit applied to absolute-value tables in ``diff``. Copied
-        from the object ``inspect_tables_comparison`` was called on.
-    rel_base : int
-        Relative-value display base (100, 1000, or 10000). Copied from
-        the object ``inspect_tables_comparison`` was called on.
-    decimals : int
-        Number of decimal places in formatted numbers and percentages.
-        Copied from the object ``inspect_tables_comparison`` was called on.
+    display_configuration : DisplayConfiguration
+        Display settings applied to both inner objects. Copied from the
+        object ``inspect_tables_comparison`` was called on.
     """
 
     diff: Any
     rel: Any
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = field(default_factory=DisplayConfiguration)
 
     def set_display_unit(self, display_unit: float | None) -> "TablesComparison":
         """Return a copy with ``display_unit`` updated on this object and both inner objects.
-
-        Only affects the ``diff`` inner object (absolute values). The ``rel``
-        inner object is unaffected because relative values are not divided by
-        a display unit.
 
         Parameters
         ----------
@@ -72,18 +61,12 @@ class TablesComparison:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        new_diff = dataclasses.replace(self.diff, display_unit=display_unit)
-        new_rel = dataclasses.replace(self.rel, display_unit=display_unit)
-        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_unit=display_unit)
+        new_diff = self.diff.set_display_unit(display_unit)
+        new_rel = self.rel.set_display_unit(display_unit)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
 
-    def set_rel_base(self, rel_base: int) -> "TablesComparison":
+    def set_display_rel_base(self, rel_base: int) -> "TablesComparison":
         """Return a copy with ``rel_base`` updated on this object and both inner objects.
 
         Parameters
@@ -91,15 +74,12 @@ class TablesComparison:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        new_diff = dataclasses.replace(self.diff, rel_base=rel_base)
-        new_rel = dataclasses.replace(self.rel, rel_base=rel_base)
-        return dataclasses.replace(self, diff=new_diff, rel=new_rel, rel_base=rel_base)
+        new_diff = self.diff.set_display_rel_base(rel_base)
+        new_rel = self.rel.set_display_rel_base(rel_base)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
 
-    def set_decimals(self, decimals: int) -> "TablesComparison":
+    def set_display_decimals(self, decimals: int) -> "TablesComparison":
         """Return a copy with ``decimals`` updated on this object and both inner objects.
 
         Parameters
@@ -108,13 +88,62 @@ class TablesComparison:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        new_diff = dataclasses.replace(self.diff, decimals=decimals)
-        new_rel = dataclasses.replace(self.rel, decimals=decimals)
-        return dataclasses.replace(self, diff=new_diff, rel=new_rel, decimals=decimals)
+        new_diff = self.diff.set_display_decimals(decimals)
+        new_rel = self.rel.set_display_decimals(decimals)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
+
+    def set_display_index(self, level: str, values: list) -> "TablesComparison":
+        """Return a copy with the display index filter updated on both inner objects.
+
+        Parameters
+        ----------
+        level : str
+            Index level name to filter on.
+        values : list
+            Values to keep at that level (additive — previous values retained).
+        """
+        new_diff = self.diff.set_display_index(level, values)
+        new_rel = self.rel.set_display_index(level, values)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
+
+    def set_display_sort_column(self, column: str, ascending: bool = False) -> "TablesComparison":
+        """Return a copy with the sort column updated on both inner objects.
+
+        Parameters
+        ----------
+        column : str
+            Column name to sort by.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        new_diff = self.diff.set_display_sort_column(column, ascending)
+        new_rel = self.rel.set_display_sort_column(column, ascending)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "TablesComparison":
+        """Return a copy with n-largest filter updated on both inner objects.
+
+        Parameters
+        ----------
+        n : int
+            Number of largest rows to keep per group.
+        column : str
+            Column to rank by.
+        """
+        new_diff = self.diff.set_display_values_n_largest(n, column)
+        new_rel = self.rel.set_display_values_n_largest(n, column)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
+
+    def set_display_configuration_to_defaults(self) -> "TablesComparison":
+        """Return a copy with display settings reset to defaults on both inner objects."""
+        new_diff = self.diff.set_display_configuration_to_defaults()
+        new_rel = self.rel.set_display_configuration_to_defaults()
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
 
 
 def _compute_comparison_table_fields(

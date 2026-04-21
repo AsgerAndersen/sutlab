@@ -10,7 +10,17 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
-from sutlab.inspect._shared import _build_growth_table, _display_index, _sort_by_id_value, _write_inspection_to_excel
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
+from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _write_inspection_to_excel
 import dataclasses
 
 from sutlab.derive import compute_price_layer_rates
@@ -98,6 +108,38 @@ class IndustryInspectionData:
                 name="name",
             ),
         )
+
+
+_INDUSTRY_PROTECTED_TABLES = frozenset({
+    "balance",
+    "balance_growth",
+    "supply_products_summary",
+    "use_products_summary",
+})
+
+_INDUSTRY_PROTECTED_INDEX_VALUES = {"transaction": [""]}
+
+_INDUSTRY_INDEX_GROUPING: dict[str, list[str] | None] = {
+    "supply_products": ["industry"],
+    "supply_products_distribution": ["industry"],
+    "supply_products_growth": ["industry"],
+    "use_products": ["industry"],
+    "use_products_distribution": ["industry"],
+    "use_products_coefficients": ["industry"],
+    "use_products_growth": ["industry"],
+    "price_layers": ["industry", "price_layer"],
+    "price_layers_rates": ["industry", "price_layer"],
+    "price_layers_distribution": ["industry", "price_layer"],
+    "price_layers_growth": ["industry", "price_layer"],
+}
+
+
+def _industry_default_config() -> DisplayConfiguration:
+    return DisplayConfiguration(
+        protected_tables=_INDUSTRY_PROTECTED_TABLES,
+        protected_index_values=_INDUSTRY_PROTECTED_INDEX_VALUES,
+        index_grouping=_INDUSTRY_INDEX_GROUPING,
+    )
 
 
 @dataclass
@@ -261,279 +303,122 @@ class IndustryInspection:
     data: IndustryInspectionData
     # P1 transaction codes — used by the balance property for colour assignment.
     _p1_trans: frozenset = field(default_factory=frozenset, repr=False)
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = field(default_factory=_industry_default_config)
     _all_rel: bool = field(default=False, repr=False)
 
     def _number_fmt(self):
+        cfg = self.display_configuration
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base, self.decimals)
-        return _make_number_formatter(self.display_unit, self.decimals)
+            return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+        return _make_number_formatter(cfg.display_unit, cfg.decimals)
+
+    def _pct_fmt(self):
+        cfg = self.display_configuration
+        return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
 
     @property
     def balance(self) -> Styler:
         """Styled industry balance table for display in a Jupyter notebook."""
+        cfg = self.display_configuration
         if self._all_rel:
-            fmt = _make_percentage_formatter(self.rel_base, self.decimals)
+            fmt = self._pct_fmt()
         else:
             fmt = None  # mixed: number for most rows, percentage for Input coefficient
-        return _style_industry_balance_table(self.data.balance, self._p1_trans, format_func=fmt, display_unit=self.display_unit, rel_base=self.rel_base, decimals=self.decimals)
+        return _style_industry_balance_table(self.data.balance, self._p1_trans, format_func=fmt, display_unit=cfg.display_unit, rel_base=cfg.rel_base, decimals=cfg.decimals)
 
     @property
     def supply_products(self) -> Styler:
         """Styled product breakdown of industry output for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.supply_products,
-            self._number_fmt(),
-            "supply",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.supply_products, "supply_products", self.display_configuration)
+        return _style_detail_table(df, self._number_fmt(), "supply", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def supply_products_distribution(self) -> Styler:
         """Styled product-share distribution of industry output for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.supply_products_distribution,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            "supply",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.supply_products_distribution, "supply_products_distribution", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "supply", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def supply_products_growth(self) -> Styler:
         """Styled year-on-year growth of industry output detail for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.supply_products_growth,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            "supply",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.supply_products_growth, "supply_products_growth", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "supply", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def supply_products_summary(self) -> Styler:
         """Styled per-transaction supply summary statistics for display in a Jupyter notebook."""
-        return _style_products_summary_table(
-            self.data.supply_products_summary,
-            "supply",
-            self.display_unit,
-            self.rel_base,
-            all_rel=self._all_rel,
-            decimals=self.decimals,
-        )
+        cfg = self.display_configuration
+        return _style_products_summary_table(self.data.supply_products_summary, "supply", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_products(self) -> Styler:
         """Styled product breakdown of industry input for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.use_products,
-            self._number_fmt(),
-            "use",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.use_products, "use_products", self.display_configuration)
+        return _style_detail_table(df, self._number_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def use_products_distribution(self) -> Styler:
         """Styled product-share distribution of industry input for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.use_products_distribution,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            "use",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.use_products_distribution, "use_products_distribution", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def use_products_coefficients(self) -> Styler:
         """Styled input coefficients by product for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.use_products_coefficients,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            "use",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.use_products_coefficients, "use_products_coefficients", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def use_products_growth(self) -> Styler:
         """Styled year-on-year growth of industry input detail for display in a Jupyter notebook."""
-        return _style_detail_table(
-            self.data.use_products_growth,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            "use",
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-            inner_level="product",
-            inner_txt_level="product_txt",
-        )
+        df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
     def use_products_summary(self) -> Styler:
         """Styled per-transaction use summary statistics for display in a Jupyter notebook."""
-        return _style_products_summary_table(
-            self.data.use_products_summary,
-            "use",
-            self.display_unit,
-            self.rel_base,
-            all_rel=self._all_rel,
-            decimals=self.decimals,
-        )
+        cfg = self.display_configuration
+        return _style_products_summary_table(self.data.use_products_summary, "use", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def price_layers(self) -> Styler:
         """Styled price layer breakdown of industry input for display in a Jupyter notebook."""
-        return _style_price_layers_table(
-            self.data.price_layers,
-            self._number_fmt(),
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-        )
+        df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
+        return _style_price_layers_table(df, self._number_fmt(), outer_level="industry", outer_txt_level="industry_txt")
 
     @property
     def price_layers_rates(self) -> Styler:
         """Styled price layer rates for industry input for display in a Jupyter notebook."""
-        return _style_price_layers_table(
-            self.data.price_layers_rates,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-        )
+        df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
+        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt")
 
     @property
     def price_layers_distribution(self) -> Styler:
         """Styled price layer distribution of industry input for display in a Jupyter notebook."""
-        return _style_price_layers_table(
-            self.data.price_layers_distribution,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-        )
+        df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
+        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt")
 
     @property
     def price_layers_growth(self) -> Styler:
         """Styled year-on-year growth of price layers for display in a Jupyter notebook."""
-        return _style_price_layers_table(
-            self.data.price_layers_growth,
-            _make_percentage_formatter(self.rel_base, self.decimals),
-            outer_level="industry",
-            outer_txt_level="industry_txt",
-        )
+        df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
+        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt")
 
     @property
     def balance_growth(self) -> Styler:
-        """Styled year-on-year growth table for display in a Jupyter notebook.
-
-        All values are formatted as percentages.
-        """
-        return _style_industry_balance_table(
-            self.data.balance_growth, self._p1_trans, format_func=_make_percentage_formatter(self.rel_base, self.decimals)
-        )
-
-    def display_products_n_largest(self, n: int, id) -> "IndustryInspection":
-        """Return a copy with supply/use product tables filtered to the n largest products.
-
-        Within each ``(industry, transaction)`` block, keeps the ``n`` products
-        with the largest values in the ``id`` year column. Total/derived rows
-        (``transaction == ""``) are always kept. All non-products tables
-        (``balance``, ``price_layers``, etc.) and summary tables are copied
-        unchanged without recomputation.
-
-        Parameters
-        ----------
-        n : int
-            Number of largest products to keep per ``(industry, transaction)`` block.
-        id : value
-            Id value (e.g. year) whose column is used for ranking.
-
-        Returns
-        -------
-        IndustryInspection
-            New inspection with filtered products tables.
-        """
-        return _display_products_n_largest(self, n, id)
-
-    def display_products_threshold_value(
-        self, threshold: float, id
-    ) -> "IndustryInspection":
-        """Return a copy with supply/use product tables filtered by an absolute value threshold.
-
-        Within each ``(industry, transaction)`` block, keeps products whose
-        value in the ``id`` year column is greater than or equal to
-        ``threshold``. Total/derived rows (``transaction == ""``) are always
-        kept. All non-products tables and summary tables are copied unchanged.
-
-        Parameters
-        ----------
-        threshold : float
-            Minimum value (inclusive) in the ``id`` column for a product to
-            be kept.
-        id : value
-            Id value (e.g. year) whose column is used for filtering.
-
-        Returns
-        -------
-        IndustryInspection
-            New inspection with filtered products tables.
-        """
-        return _display_products_threshold_value(self, threshold, id)
-
-    def display_products_threshold_share(
-        self, threshold: float, id
-    ) -> "IndustryInspection":
-        """Return a copy with supply/use product tables filtered by a share threshold.
-
-        Within each ``(industry, transaction)`` block, keeps products whose
-        share of the transaction total in the ``id`` year column is greater
-        than or equal to ``threshold``. Shares are taken from
-        ``supply_products_distribution`` / ``use_products_distribution``.
-        Total/derived rows (``transaction == ""``) are always kept. All
-        non-products tables and summary tables are copied unchanged.
-
-        Parameters
-        ----------
-        threshold : float
-            Minimum share (inclusive, in [0, 1]) in the ``id`` column for a
-            product to be kept.
-        id : value
-            Id value (e.g. year) whose column is used for filtering.
-
-        Returns
-        -------
-        IndustryInspection
-            New inspection with filtered products tables.
-        """
-        return _display_products_threshold_share(self, threshold, id)
+        """Styled year-on-year growth table for display in a Jupyter notebook."""
+        return _style_industry_balance_table(self.data.balance_growth, self._p1_trans, format_func=self._pct_fmt())
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
-
-        Each field in ``self.data`` is written to a separate sheet. Fields
-        whose value is ``None`` are skipped. Sheet names match the field name;
-        names exceeding Excel's 31-character limit are shortened by truncating
-        each underscore-separated segment to its first three characters.
 
         Parameters
         ----------
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self.display_configuration
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "IndustryInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -544,17 +429,9 @@ class IndustryInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "IndustryInspection":
+    def set_display_rel_base(self, rel_base: int) -> "IndustryInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -562,54 +439,60 @@ class IndustryInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "IndustryInspection":
+    def set_display_decimals(self, decimals: int) -> "IndustryInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
         ----------
         decimals : int
-            Number of decimal places in formatted numbers and percentages.
-            Must be a non-negative integer.
+            Number of decimal places. Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
-        self,
-        values: str | int | list,
-        level: str,
-    ) -> "IndustryInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
+    def set_display_index(self, level: str, values: str | int | list) -> "IndustryInspection":
+        """Return a copy with ``values`` added to the display filter for ``level``.
 
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+        Additive: calling multiple times for the same level unions the values.
+        Protected index values are always shown regardless.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        IndustryInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "IndustryInspection":
+        """Return a copy with rows sorted by ``column`` in styled output.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by. ``None`` disables sorting.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "IndustryInspection":
+        """Return a copy showing only the n rows with the largest values for ``column``.
+
+        Parameters
+        ----------
+        n : int
+            Number of largest rows to keep per group. Must be positive.
+        column : str
+            Column name to rank by.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "IndustryInspection":
+        """Return a copy with all user-settable display settings reset to defaults."""
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -619,9 +502,6 @@ class IndustryInspection:
     def inspect_tables_comparison(self, other: "IndustryInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`IndustryInspection`.
 
-        Computes element-wise differences and relative changes between
-        corresponding tables. Index alignment uses an outer join.
-
         Parameters
         ----------
         other : IndustryInspection
@@ -630,13 +510,11 @@ class IndustryInspection:
         Returns
         -------
         TablesComparison
-            Contains ``.diff`` and ``.rel`` as :class:`IndustryInspection`
-            instances.
 
         Raises
         ------
         TypeError
-            If ``other`` is not a :class:`IndustryInspection`.
+            If ``other`` is not an :class:`IndustryInspection`.
         """
         if not isinstance(other, IndustryInspection):
             raise TypeError(
@@ -646,248 +524,21 @@ class IndustryInspection:
         diff = IndustryInspection(
             data=IndustryInspectionData(**diff_fields),
             _p1_trans=self._p1_trans,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = IndustryInspection(
             data=IndustryInspectionData(**rel_fields),
             _p1_trans=self._p1_trans,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
-        return TablesComparison(
-            diff=diff,
-            rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
-        )
-
-
-def _keep_products_by_index(
-    table: pd.DataFrame,
-    keep_index: pd.Index,
-) -> pd.DataFrame:
-    """Return ``table`` keeping all total/derived rows plus product rows in ``keep_index``.
-
-    Total/derived rows are identified by an empty ``transaction`` level value.
-    ``keep_index`` should contain only product-row index tuples (i.e. those
-    with non-empty ``transaction``).
-
-    Parameters
-    ----------
-    table : pd.DataFrame
-        A products table (``supply_products``, ``use_products``, or a
-        derived variant) with a six-level MultiIndex whose ``transaction``
-        level is ``""`` for total/derived rows and non-empty for product rows.
-    keep_index : pd.Index
-        MultiIndex of product rows to retain. Rows not in this index and not
-        total rows are dropped.
-
-    Returns
-    -------
-    pd.DataFrame
-        Filtered table preserving original row order.
-    """
-    if table.empty:
-        return table
-    total_mask = table.index.get_level_values("transaction") == ""
-    product_keep_mask = table.index.isin(keep_index)
-    return table[total_mask | product_keep_mask]
-
-
-def _apply_products_filter(
-    inspection: IndustryInspection,
-    supply_keep_index: pd.Index,
-    use_keep_index: pd.Index,
-) -> IndustryInspection:
-    """Build a new IndustryInspection with filtered products tables.
-
-    Applies ``supply_keep_index`` to all ``supply_products*`` tables and
-    ``use_keep_index`` to all ``use_products*`` tables (except the summary
-    tables, which have no product dimension and are copied unchanged).
-    All other tables are copied as-is.
-
-    Parameters
-    ----------
-    inspection : IndustryInspection
-        Source inspection result.
-    supply_keep_index : pd.Index
-        Product-row index values to keep in supply tables.
-    use_keep_index : pd.Index
-        Product-row index values to keep in use tables.
-
-    Returns
-    -------
-    IndustryInspection
-        New inspection with filtered products tables.
-    """
-    d = inspection.data
-    new_data = IndustryInspectionData(
-        balance=d.balance,
-        balance_growth=d.balance_growth,
-        supply_products=_keep_products_by_index(d.supply_products, supply_keep_index),
-        supply_products_distribution=_keep_products_by_index(
-            d.supply_products_distribution, supply_keep_index
-        ),
-        supply_products_growth=_keep_products_by_index(
-            d.supply_products_growth, supply_keep_index
-        ),
-        supply_products_summary=d.supply_products_summary,
-        use_products=_keep_products_by_index(d.use_products, use_keep_index),
-        use_products_distribution=_keep_products_by_index(
-            d.use_products_distribution, use_keep_index
-        ),
-        use_products_coefficients=_keep_products_by_index(
-            d.use_products_coefficients, use_keep_index
-        ),
-        use_products_growth=_keep_products_by_index(
-            d.use_products_growth, use_keep_index
-        ),
-        use_products_summary=d.use_products_summary,
-        price_layers=d.price_layers,
-        price_layers_rates=d.price_layers_rates,
-        price_layers_distribution=d.price_layers_distribution,
-        price_layers_growth=d.price_layers_growth,
-    )
-    return IndustryInspection(data=new_data, _p1_trans=inspection._p1_trans, display_unit=inspection.display_unit, rel_base=inspection.rel_base)
-
-
-def _n_largest_keep_index(products_table: pd.DataFrame, n: int, id_val) -> pd.Index:
-    """Return the index of the n largest product rows per (industry, transaction) block.
-
-    Rows with empty ``transaction`` (total/derived rows) are excluded from
-    consideration — only product rows participate in ranking. Ties are broken
-    arbitrarily (``method="first"``). NaN values rank last.
-
-    Parameters
-    ----------
-    products_table : pd.DataFrame
-        A products table with a six-level MultiIndex.
-    n : int
-        Number of largest products to keep per block.
-    id_val
-        Column label to rank by.
-
-    Returns
-    -------
-    pd.Index
-        MultiIndex containing the index tuples of product rows to keep.
-    """
-    if products_table.empty:
-        return products_table.index[:0]
-    product_mask = products_table.index.get_level_values("transaction") != ""
-    product_rows = products_table[product_mask]
-    if product_rows.empty:
-        return product_rows.index[:0]
-    ranks = product_rows.groupby(
-        level=["industry", "transaction"], dropna=False
-    )[id_val].rank(method="first", ascending=False, na_option="bottom")
-    return product_rows.index[ranks <= n]
-
-
-def _threshold_value_keep_index(
-    products_table: pd.DataFrame, threshold: float, id_val
-) -> pd.Index:
-    """Return the index of product rows whose value in ``id_val`` >= ``threshold``.
-
-    Parameters
-    ----------
-    products_table : pd.DataFrame
-        A products table with a six-level MultiIndex.
-    threshold : float
-        Minimum value (inclusive).
-    id_val
-        Column label to filter by.
-
-    Returns
-    -------
-    pd.Index
-        MultiIndex containing the index tuples of product rows to keep.
-    """
-    if products_table.empty:
-        return products_table.index[:0]
-    product_mask = products_table.index.get_level_values("transaction") != ""
-    product_rows = products_table[product_mask]
-    if product_rows.empty:
-        return product_rows.index[:0]
-    return product_rows.index[product_rows[id_val] >= threshold]
-
-
-def _threshold_share_keep_index(
-    dist_table: pd.DataFrame, threshold: float, id_val
-) -> pd.Index:
-    """Return the index of product rows whose share in ``id_val`` >= ``threshold``.
-
-    Shares are read from the distribution table (``supply_products_distribution``
-    or ``use_products_distribution``).
-
-    Parameters
-    ----------
-    dist_table : pd.DataFrame
-        A products distribution table with a six-level MultiIndex.
-    threshold : float
-        Minimum share (inclusive, in [0, 1]).
-    id_val
-        Column label to filter by.
-
-    Returns
-    -------
-    pd.Index
-        MultiIndex containing the index tuples of product rows to keep.
-    """
-    if dist_table.empty:
-        return dist_table.index[:0]
-    product_mask = dist_table.index.get_level_values("transaction") != ""
-    product_rows = dist_table[product_mask]
-    if product_rows.empty:
-        return product_rows.index[:0]
-    return product_rows.index[product_rows[id_val] >= threshold]
-
-
-def _display_products_n_largest(
-    inspection: IndustryInspection, n: int, id_val
-) -> IndustryInspection:
-    """Filter supply/use products tables to the n largest products per block."""
-    supply_keep = _n_largest_keep_index(inspection.data.supply_products, n, id_val)
-    use_keep = _n_largest_keep_index(inspection.data.use_products, n, id_val)
-    return _apply_products_filter(inspection, supply_keep, use_keep)
-
-
-def _display_products_threshold_value(
-    inspection: IndustryInspection, threshold: float, id_val
-) -> IndustryInspection:
-    """Filter supply/use products tables to products with value >= threshold."""
-    supply_keep = _threshold_value_keep_index(
-        inspection.data.supply_products, threshold, id_val
-    )
-    use_keep = _threshold_value_keep_index(
-        inspection.data.use_products, threshold, id_val
-    )
-    return _apply_products_filter(inspection, supply_keep, use_keep)
-
-
-def _display_products_threshold_share(
-    inspection: IndustryInspection, threshold: float, id_val
-) -> IndustryInspection:
-    """Filter supply/use products tables to products with share >= threshold."""
-    supply_keep = _threshold_share_keep_index(
-        inspection.data.supply_products_distribution, threshold, id_val
-    )
-    use_keep = _threshold_share_keep_index(
-        inspection.data.use_products_distribution, threshold, id_val
-    )
-    return _apply_products_filter(inspection, supply_keep, use_keep)
+        return TablesComparison(diff=diff, rel=rel, display_configuration=self.display_configuration)
 
 
 def inspect_industries(
     sut: SUT,
     industries: str | list[str],
     ids=None,
-    sort_id=None,
     *,
     percentiles: list[float] = None,
     coverage_thresholds: list[float] = None,
@@ -909,8 +560,6 @@ def inspect_industries(
         single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
         range (``ids=range(2015, 2022)``). Column order follows the sorted
         order of the full collection.
-    sort_id : value, optional
-        Reserved for future use. Balance tables are not sorted.
     percentiles : list of float, optional
         Percentiles to include in ``supply_products_summary`` and
         ``use_products_summary``. Each value must be between 0.0 and 1.0.
@@ -942,9 +591,6 @@ def inspect_industries(
         transaction text column.
     ValueError
         If any value in ``ids`` is not found in the collection.
-    ValueError
-        If ``sort_id`` is not found in the collection ids (after applying
-        the ``ids`` filter).
     """
     if percentiles is None:
         percentiles = [0.5, 1.0]
@@ -1027,11 +673,6 @@ def inspect_industries(
             )
         all_ids = [i for i in all_ids if i in requested_ids]
 
-    if sort_id is not None and sort_id not in all_ids:
-        raise ValueError(
-            f"sort_id {sort_id!r} not found in collection ids. Available: {all_ids}"
-        )
-
     # Transaction name lookup: code → name.
     trans_names = dict(zip(
         trans_df[cols.transaction].astype(str),
@@ -1087,8 +728,6 @@ def inspect_industries(
         product_names=product_names,
         all_ids=all_ids,
     )
-    if sort_id is not None and not supply_products.empty:
-        supply_products = _sort_by_id_value(supply_products, ["industry"], sort_id)
     supply_products_distribution = _build_supply_products_distribution(supply_products)
     supply_products_growth = _build_growth_table(supply_products)
     supply_products_summary = _build_products_summary(
@@ -1104,8 +743,6 @@ def inspect_industries(
         product_names=product_names,
         all_ids=all_ids,
     )
-    if sort_id is not None and not use_products.empty:
-        use_products = _sort_by_id_value(use_products, ["industry"], sort_id)
     use_products_distribution = _build_use_products_distribution(use_products)
     use_products_summary = _build_products_summary(
         use_products, percentiles, coverage_thresholds, total_label="total_use"
@@ -1128,8 +765,6 @@ def inspect_industries(
         all_ids=all_ids,
         show_total=show_total_input,
     )
-    if sort_id is not None and not price_layers.empty:
-        price_layers = _sort_by_id_value(price_layers, ["industry", "price_layer"], sort_id)
     price_layers_rates = _build_industry_price_layers_rates(
         price_layers=price_layers,
         sut=sut,

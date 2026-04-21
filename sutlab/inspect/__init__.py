@@ -38,6 +38,7 @@ from sutlab.inspect._aggregates_nominal import (
     AggregatesNominalData,
 )
 from sutlab.inspect._tables_comparison import TablesComparison
+from sutlab.inspect._display_config import DisplayConfiguration
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -77,4 +78,5 @@ __all__ = [
     "AggregatesNominalInspection",
     "AggregatesNominalData",
     "TablesComparison",
+    "DisplayConfiguration",
 ]

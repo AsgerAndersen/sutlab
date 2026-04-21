@@ -587,27 +587,6 @@ class TestFilters:
 
 
 # ---------------------------------------------------------------------------
-# Sort
-# ---------------------------------------------------------------------------
-
-
-class TestSort:
-    def test_sort_supply_categories_by_abs_diff(self, sut_no_tol):
-        result = inspect_unbalanced_targets(sut_no_tol, sort=True)
-        # Only 0100/X remains after filter; first row must be 0100 (at level 1).
-        assert result.data.supply_categories.index.get_level_values(1)[0] == "0100"
-
-    def test_sort_use_categories_by_abs_diff(self, sut_no_tol):
-        result = inspect_unbalanced_targets(sut_no_tol, sort=True)
-        # 3110/HH diff=-12 (abs 12) > 2000/X diff=-8 (abs 8).
-        assert result.data.use_categories.index.get_level_values(1)[0] == "3110"
-
-    def test_sort_use_transactions_by_abs_diff(self, sut_no_tol):
-        result = inspect_unbalanced_targets(sut_no_tol, sort=True)
-        assert result.data.use_transactions.index.get_level_values(1)[0] == "3110"
-
-
-# ---------------------------------------------------------------------------
 # MultiIndex structure
 # ---------------------------------------------------------------------------
 

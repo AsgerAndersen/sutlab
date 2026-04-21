@@ -12,7 +12,17 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key, filter_rows
 from sutlab.derive import compute_price_layer_rates
-from sutlab.inspect._shared import _build_growth_table, _display_index, _sort_by_id_value, _write_inspection_to_excel
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
+from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -100,6 +110,36 @@ class ProductInspectionData:
                 name="name",
             ),
         )
+
+
+_PRODUCT_PROTECTED_TABLES = frozenset({
+    "balance",
+    "balance_distribution",
+    "balance_growth",
+})
+
+_PRODUCT_PROTECTED_INDEX_VALUES = {"transaction": [""]}
+
+_PRODUCT_INDEX_GROUPING: dict[str, list[str] | None] = {
+    "supply_products": ["product"],
+    "supply_products_distribution": ["product"],
+    "supply_products_growth": ["product"],
+    "use_products": ["product"],
+    "use_products_distribution": ["product"],
+    "use_products_growth": ["product"],
+    "price_layers": ["product", "price_layer"],
+    "price_layers_rates": ["product", "price_layer"],
+    "price_layers_distribution": ["product", "price_layer"],
+    "price_layers_growth": ["product", "price_layer"],
+}
+
+
+def _product_default_config() -> DisplayConfiguration:
+    return DisplayConfiguration(
+        protected_tables=_PRODUCT_PROTECTED_TABLES,
+        protected_index_values=_PRODUCT_PROTECTED_INDEX_VALUES,
+        index_grouping=_PRODUCT_INDEX_GROUPING,
+    )
 
 
 @dataclass
@@ -237,15 +277,18 @@ class ProductInspection:
     """
 
     data: ProductInspectionData
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = field(default_factory=_product_default_config)
     _all_rel: bool = field(default=False, repr=False)
 
     def _number_fmt(self):
+        cfg = self.display_configuration
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base, self.decimals)
-        return _make_number_formatter(self.display_unit, self.decimals)
+            return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+        return _make_number_formatter(cfg.display_unit, cfg.decimals)
+
+    def _pct_fmt(self):
+        cfg = self.display_configuration
+        return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
 
     @property
     def balance(self) -> Styler:
@@ -253,51 +296,61 @@ class ProductInspection:
 
     @property
     def supply_products(self) -> Styler:
-        return _style_detail_table(self.data.supply_products, self._number_fmt(), "supply")
+        df = _apply_display_config(self.data.supply_products, "supply_products", self.display_configuration)
+        return _style_detail_table(df, self._number_fmt(), "supply")
 
     @property
     def use_products(self) -> Styler:
-        return _style_detail_table(self.data.use_products, self._number_fmt(), "use")
+        df = _apply_display_config(self.data.use_products, "use_products", self.display_configuration)
+        return _style_detail_table(df, self._number_fmt(), "use")
 
     @property
     def balance_distribution(self) -> Styler:
-        return _style_balance_table(self.data.balance_distribution, _make_percentage_formatter(self.rel_base, self.decimals))
+        return _style_balance_table(self.data.balance_distribution, self._pct_fmt())
 
     @property
     def supply_products_distribution(self) -> Styler:
-        return _style_detail_table(self.data.supply_products_distribution, _make_percentage_formatter(self.rel_base, self.decimals), "supply")
+        df = _apply_display_config(self.data.supply_products_distribution, "supply_products_distribution", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "supply")
 
     @property
     def use_products_distribution(self) -> Styler:
-        return _style_detail_table(self.data.use_products_distribution, _make_percentage_formatter(self.rel_base, self.decimals), "use")
+        df = _apply_display_config(self.data.use_products_distribution, "use_products_distribution", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "use")
 
     @property
     def balance_growth(self) -> Styler:
-        return _style_balance_table(self.data.balance_growth, _make_percentage_formatter(self.rel_base, self.decimals))
+        return _style_balance_table(self.data.balance_growth, self._pct_fmt())
 
     @property
     def supply_products_growth(self) -> Styler:
-        return _style_detail_table(self.data.supply_products_growth, _make_percentage_formatter(self.rel_base, self.decimals), "supply")
+        df = _apply_display_config(self.data.supply_products_growth, "supply_products_growth", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "supply")
 
     @property
     def use_products_growth(self) -> Styler:
-        return _style_detail_table(self.data.use_products_growth, _make_percentage_formatter(self.rel_base, self.decimals), "use")
+        df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
+        return _style_detail_table(df, self._pct_fmt(), "use")
 
     @property
     def price_layers(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers, self._number_fmt())
+        df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
+        return _style_price_layers_table(df, self._number_fmt())
 
     @property
     def price_layers_distribution(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_distribution, _make_percentage_formatter(self.rel_base, self.decimals))
+        df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
+        return _style_price_layers_table(df, self._pct_fmt())
 
     @property
     def price_layers_growth(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_growth, _make_percentage_formatter(self.rel_base, self.decimals))
+        df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
+        return _style_price_layers_table(df, self._pct_fmt())
 
     @property
     def price_layers_rates(self) -> Styler:
-        return _style_price_layers_table(self.data.price_layers_rates, _make_percentage_formatter(self.rel_base, self.decimals))
+        df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
+        return _style_price_layers_table(df, self._pct_fmt())
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -312,7 +365,8 @@ class ProductInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self.display_configuration
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "ProductInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -323,17 +377,9 @@ class ProductInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "ProductInspection":
+    def set_display_rel_base(self, rel_base: int) -> "ProductInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -341,13 +387,9 @@ class ProductInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "ProductInspection":
+    def set_display_decimals(self, decimals: int) -> "ProductInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -356,39 +398,72 @@ class ProductInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
+    def set_display_index(
         self,
-        values: str | int | list,
         level: str,
+        values: str | int | list,
     ) -> "ProductInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
+        """Return a copy with ``values`` added to the display filter for ``level``.
 
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+        Additive: calling this multiple times for the same ``level`` unions
+        the values. Tables whose index does not contain ``level`` are
+        unaffected. Protected index values are always shown regardless.
+        Accepts the same pattern syntax as :func:`filter_rows`.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        ProductInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list of str/int
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(
+        self,
+        column: str | None,
+        ascending: bool = False,
+    ) -> "ProductInspection":
+        """Return a copy with rows sorted by ``column`` in styled output.
+
+        Non-protected rows are sorted within each table's index grouping.
+        Protected rows (e.g. Total rows) are kept at the end of each group.
+        Pass ``column=None`` to disable sorting.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by, typically an id value (e.g. ``2023``).
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "ProductInspection":
+        """Return a copy showing only the n rows with the largest values for ``column``.
+
+        Applied within each table's index grouping. Protected rows (e.g.
+        Total rows) are always kept. Tables that do not have ``column`` are
+        unaffected.
+
+        Parameters
+        ----------
+        n : int
+            Number of largest rows to keep per group. Must be positive.
+        column : str
+            Column name to rank by, typically an id value (e.g. ``2023``).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "ProductInspection":
+        """Return a copy with all user-settable display settings reset to defaults.
+
+        Hard-coded settings (protected tables, protected index values,
+        index grouping) are preserved.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -426,31 +501,20 @@ class ProductInspection:
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
         diff = ProductInspection(
             data=ProductInspectionData(**diff_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = ProductInspection(
             data=ProductInspectionData(**rel_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
-        return TablesComparison(
-            diff=diff,
-            rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
-        )
+        return TablesComparison(diff=diff, rel=rel, display_configuration=self.display_configuration)
 
 
 def inspect_products(
     sut: SUT,
     products: str | list[str],
     ids=None,
-    sort_id=None,
 ) -> ProductInspection:
     """
     Return inspection tables for one or more products.
@@ -469,14 +533,6 @@ def inspect_products(
         single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
         range (``ids=range(2015, 2022)``). The column order follows the
         sorted order of the full collection, not the order of the argument.
-    sort_id : value, optional
-        When set, rows within each product (or product/price-layer) block are
-        sorted by their value in this id's column, largest first. Balance
-        tables are not sorted. Supply/use detail tables are sorted within
-        each product block. Price layer tables are sorted within each
-        ``(product, price_layer)`` block. Total and summary rows always stay
-        fixed at the end of their block. Must be one of the ids present in
-        the collection after applying the ``ids`` filter.
 
     Returns
     -------
@@ -499,9 +555,6 @@ def inspect_products(
         ``name`` column.
     ValueError
         If any value in ``ids`` is not found in the collection.
-    ValueError
-        If ``sort_id`` is not found in the collection ids (after applying the
-        ``ids`` filter).
     """
     if sut.metadata is None:
         raise ValueError(
@@ -555,11 +608,6 @@ def inspect_products(
             )
         all_ids = [i for i in all_ids if i in requested_ids]
 
-    if sort_id is not None and sort_id not in all_ids:
-        raise ValueError(
-            f"sort_id {sort_id!r} not found in collection ids. Available: {all_ids}"
-        )
-
     # Transaction name lookup: code → name
     trans_names = dict(zip(
         trans_df[cols.transaction].astype(str),
@@ -595,8 +643,6 @@ def inspect_products(
         all_ids,
         total_label="Total supply",
     )
-    if sort_id is not None:
-        supply_products = _sort_by_id_value(supply_products, ["product"], sort_id)
     use_products = _append_detail_total(
         _build_detail_df(
             sut.use, matched_products, product_names,
@@ -606,8 +652,6 @@ def inspect_products(
         all_ids,
         total_label="Total use",
     )
-    if sort_id is not None:
-        use_products = _sort_by_id_value(use_products, ["product"], sort_id)
     balance_distribution = _build_balance_distribution(balance)
     supply_products_distribution = _build_detail_distribution(supply_products)
     use_products_distribution = _build_detail_distribution(use_products)
@@ -620,8 +664,6 @@ def inspect_products(
     price_layers = _build_price_layers_table(
         sut, matched_products, trans_names, product_names, all_ids
     )
-    if sort_id is not None:
-        price_layers = _sort_by_id_value(price_layers, ["product", "price_layer"], sort_id)
     price_layers_distribution = _build_price_layers_distribution(price_layers)
     price_layers_growth = _build_growth_table(price_layers)
 
@@ -635,10 +677,6 @@ def inspect_products(
     price_layers_rates = _build_price_layers_rates(
         price_layers, sut, all_ids, trans_rates
     )
-    if sort_id is not None:
-        price_layers_rates = _sort_by_id_value(
-            price_layers_rates, ["product", "price_layer"], sort_id
-        )
 
     data = ProductInspectionData(
         balance=balance,

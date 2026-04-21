@@ -9,6 +9,7 @@ from copy import copy
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import openpyxl.utils
 import pandas as pd
 from pandas.io.formats.style import Styler
@@ -354,6 +355,178 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
             _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel, decimals)
+
+
+def _is_protected_row_mask(
+    df: pd.DataFrame,
+    protected_index_values: dict[str, list],
+) -> np.ndarray:
+    """Return bool array: True if a row has a protected value in any specified index level."""
+    mask = np.zeros(len(df), dtype=bool)
+    for level, values in protected_index_values.items():
+        if level in df.index.names:
+            level_arr = df.index.get_level_values(level)
+            for v in values:
+                mask |= (level_arr == v)
+    return mask
+
+
+def _iter_group_positions(
+    df: pd.DataFrame,
+    grouping: list[str] | None,
+):
+    """Yield positional index arrays for each unique group in ``df``.
+
+    If ``grouping`` is ``None`` or no valid levels are found, yields one
+    group covering all rows (global).
+    """
+    if not grouping:
+        yield np.arange(len(df))
+        return
+    valid = [lv for lv in grouping if lv in df.index.names]
+    if not valid:
+        yield np.arange(len(df))
+        return
+    arrays = [df.index.get_level_values(lv) for lv in valid]
+    group_tuples = list(dict.fromkeys(zip(*arrays)))
+    for group_key in group_tuples:
+        group_mask = np.ones(len(df), dtype=bool)
+        for arr, key in zip(arrays, group_key):
+            group_mask &= (arr == key)
+        yield group_mask.nonzero()[0]
+
+
+def _apply_display_index_filter(
+    df: pd.DataFrame,
+    display_index: dict[str, list],
+    protected_index_values: dict[str, list],
+) -> pd.DataFrame:
+    """Filter rows by display_index patterns, always keeping protected rows.
+
+    For each level in ``display_index``, keeps only rows whose value at that
+    level matches one of the given patterns (using the same pattern syntax as
+    :func:`~sutlab.sut.filter_rows`). Rows protected by
+    ``protected_index_values`` are always kept regardless of the filter.
+    Tables that do not have a given level in their index are left unchanged.
+    """
+    result = df
+    for level, patterns in display_index.items():
+        if level not in result.index.names:
+            continue
+        str_patterns = [str(p) for p in (patterns if isinstance(patterns, list) else [patterns])]
+        level_vals_str = result.index.get_level_values(level).astype(str)
+        unique_str_vals = list(dict.fromkeys(level_vals_str))
+        matched = set(_match_codes(unique_str_vals, str_patterns))
+        protected = {str(v) for v in protected_index_values.get(level, [])}
+        matched |= protected
+        result = result[level_vals_str.isin(matched)]
+    return result
+
+
+def _apply_n_largest_filter(
+    df: pd.DataFrame,
+    n: int,
+    column: str,
+    grouping: list[str] | None,
+    protected_index_values: dict[str, list],
+) -> pd.DataFrame:
+    """Keep n largest non-protected rows per group by column value.
+
+    Within each group (defined by ``grouping``), keeps the ``n`` non-protected
+    rows with the largest values in ``column``. Protected rows are always kept
+    and come after the top-n rows. Rows are returned in their original order
+    within each group (sorting is handled separately by ``_apply_column_sort``).
+    """
+    if df.empty:
+        return df
+    protected = _is_protected_row_mask(df, protected_index_values)
+    keep = np.array(protected)
+    col_values = df[column].values
+    for positions in _iter_group_positions(df, grouping):
+        group_protected = protected[positions]
+        non_protected_pos = positions[~group_protected]
+        if len(non_protected_pos) == 0:
+            continue
+        if n >= len(non_protected_pos):
+            keep[non_protected_pos] = True
+        else:
+            group_vals = col_values[non_protected_pos]
+            # argsort ascending → take last n for largest
+            top_local = np.argsort(group_vals)[::-1][:n]
+            keep[non_protected_pos[top_local]] = True
+    # Preserve original row order
+    return df.iloc[keep.nonzero()[0]]
+
+
+def _apply_column_sort(
+    df: pd.DataFrame,
+    column: str,
+    ascending: bool,
+    grouping: list[str] | None,
+    protected_index_values: dict[str, list],
+) -> pd.DataFrame:
+    """Sort non-protected rows within each group by ``column``.
+
+    Within each group (defined by ``grouping``), non-protected rows are sorted
+    by ``column``; protected rows are appended after them in their original
+    relative order.
+    """
+    if df.empty:
+        return df
+    protected = _is_protected_row_mask(df, protected_index_values)
+    blocks = []
+    for positions in _iter_group_positions(df, grouping):
+        group_protected = protected[positions]
+        data_pos = positions[~group_protected]
+        prot_pos = positions[group_protected]
+        sorted_block = (
+            df.iloc[data_pos].sort_values(by=column, ascending=ascending, na_position="last")
+            if len(data_pos) > 0
+            else df.iloc[[]]
+        )
+        prot_block = df.iloc[prot_pos] if len(prot_pos) > 0 else df.iloc[[]]
+        if len(sorted_block) > 0 or len(prot_block) > 0:
+            blocks.append(pd.concat([sorted_block, prot_block]))
+    return pd.concat(blocks) if blocks else df.iloc[[]]
+
+
+def _apply_display_config(
+    df: pd.DataFrame,
+    table_name: str,
+    config,
+) -> pd.DataFrame:
+    """Apply display configuration to a DataFrame for styled display.
+
+    Returns ``df`` unchanged when the table is in ``protected_tables`` or
+    ``df`` is empty. Otherwise applies, in order:
+
+    1. ``display_index`` row filter (pattern-matched, with protected rows always kept).
+    2. ``display_values_n_largest`` filter (top-n per group, protected rows always kept).
+    3. ``sort_column`` sort (non-protected rows within each group, protected at end).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The raw DataFrame from ``inspection_obj.data``.
+    table_name : str
+        The field name of this table (used to look up ``protected_tables``
+        and ``index_grouping`` in ``config``).
+    config : DisplayConfiguration
+        The display configuration to apply.
+    """
+    if df.empty or table_name in config.protected_tables:
+        return df
+    grouping = config.index_grouping.get(table_name)
+    result = df
+    if config.display_index:
+        result = _apply_display_index_filter(result, config.display_index, config.protected_index_values)
+    if config.display_values_n_largest is not None:
+        n, column = config.display_values_n_largest
+        if column in result.columns:
+            result = _apply_n_largest_filter(result, n, column, grouping, config.protected_index_values)
+    if config.sort_column is not None and config.sort_column in result.columns:
+        result = _apply_column_sort(result, config.sort_column, config.sort_ascending, grouping, config.protected_index_values)
+    return result
 
 
 def _display_index(inspection_obj: Any, values, level: str) -> Any:
