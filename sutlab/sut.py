@@ -1482,6 +1482,7 @@ def get_ids(sut: SUT) -> pd.DataFrame:
 # `?sut.method` in Jupyter shows the full documentation.
 # ---------------------------------------------------------------------------
 
+SUT.set_metadata.__doc__ = set_metadata.__doc__
 SUT.set_balancing_id.__doc__ = set_balancing_id.__doc__
 SUT.set_balancing_targets.__doc__ = set_balancing_targets.__doc__
 SUT.set_balancing_config.__doc__ = set_balancing_config.__doc__
