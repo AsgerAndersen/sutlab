@@ -184,7 +184,7 @@ class SUTComparisonInspection:
 
     data: SUTComparisonData
     display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
-        protected_tables=frozenset({"summary", "supply_products_summary", "supply_columns_summary", "use_products_summary", "use_columns_summary"}),
+        protected_tables=frozenset({"summary"}),
         protected_index_values={},
         index_grouping={},
     ))
@@ -663,15 +663,17 @@ def inspect_sut_comparison(
         index=pd.Index(list(summary_entries.keys()), name="table"),
     )
 
-    data_table_names = [
+    all_grouped_table_names = [
         "supply", "use_basic", "use_purchasers", "use_price_layers",
         "balancing_targets_supply", "balancing_targets_use_basic",
         "balancing_targets_use_purchasers", "balancing_targets_use_price_layers",
+        "supply_products_summary", "supply_columns_summary",
+        "use_products_summary", "use_columns_summary",
     ]
     display_config = DisplayConfiguration(
-        protected_tables=frozenset({"summary", "supply_products_summary", "supply_columns_summary", "use_products_summary", "use_columns_summary"}),
+        protected_tables=frozenset({"summary"}),
         protected_index_values={},
-        index_grouping={name: [id_col] for name in data_table_names},
+        index_grouping={name: [id_col] for name in all_grouped_table_names},
     )
     return SUTComparisonInspection(
         data=SUTComparisonData(
