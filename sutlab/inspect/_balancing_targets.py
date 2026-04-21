@@ -13,8 +13,18 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes
 from sutlab.inspect._style import _style_balancing_targets_table, _style_unbalanced_targets_summary, _style_tables_description
-from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
 
 
 @dataclass
@@ -132,75 +142,82 @@ class UnbalancedTargetsInspection:
     """
 
     data: UnbalancedTargetsData
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
+        protected_tables=frozenset({"summary"}),
+        protected_index_values={},
+        index_grouping={},
+    ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
-    def _supply_styler(self, df: pd.DataFrame) -> Styler:
+    def _supply_styler(self, df: pd.DataFrame, table_name: str) -> Styler:
         """Return a styled Styler for a supply-side targets table."""
+        df = _apply_display_config(df, table_name, self.display_configuration)
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self.display_configuration
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
-    def _use_styler(self, df: pd.DataFrame) -> Styler:
+    def _use_styler(self, df: pd.DataFrame, table_name: str) -> Styler:
         """Return a styled Styler for a use-side targets table."""
+        df = _apply_display_config(df, table_name, self.display_configuration)
         price_col = next(c for c in df.columns if not c.startswith(("target_", "diff_", "rel_", "tol_", "violation_")))
         rel_col = next((c for c in df.columns if c.startswith("rel_")), "")
-        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self.display_configuration
+        return _style_balancing_targets_table(df, price_col=price_col, rel_col=rel_col, palette="use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def supply_categories(self) -> Styler:
         """Styled supply category-level targets table."""
-        return self._supply_styler(self.data.supply_categories)
+        return self._supply_styler(self.data.supply_categories, "supply_categories")
 
     @property
     def use_categories(self) -> Styler:
         """Styled use category-level targets table."""
-        return self._use_styler(self.data.use_categories)
+        return self._use_styler(self.data.use_categories, "use_categories")
 
     @property
     def supply_categories_violations(self) -> Styler | None:
         """Styled supply category violations, or ``None`` if no tolerances configured."""
         if self.data.supply_categories_violations is None:
             return None
-        return self._supply_styler(self.data.supply_categories_violations)
+        return self._supply_styler(self.data.supply_categories_violations, "supply_categories_violations")
 
     @property
     def use_categories_violations(self) -> Styler | None:
         """Styled use category violations, or ``None`` if no tolerances configured."""
         if self.data.use_categories_violations is None:
             return None
-        return self._use_styler(self.data.use_categories_violations)
+        return self._use_styler(self.data.use_categories_violations, "use_categories_violations")
 
     @property
     def supply_transactions(self) -> Styler:
         """Styled supply transaction-level targets table."""
-        return self._supply_styler(self.data.supply_transactions)
+        return self._supply_styler(self.data.supply_transactions, "supply_transactions")
 
     @property
     def use_transactions(self) -> Styler:
         """Styled use transaction-level targets table."""
-        return self._use_styler(self.data.use_transactions)
+        return self._use_styler(self.data.use_transactions, "use_transactions")
 
     @property
     def supply_transactions_violations(self) -> Styler | None:
         """Styled supply transaction violations, or ``None`` if no tolerances configured."""
         if self.data.supply_transactions_violations is None:
             return None
-        return self._supply_styler(self.data.supply_transactions_violations)
+        return self._supply_styler(self.data.supply_transactions_violations, "supply_transactions_violations")
 
     @property
     def use_transactions_violations(self) -> Styler | None:
         """Styled use transaction violations, or ``None`` if no tolerances configured."""
         if self.data.use_transactions_violations is None:
             return None
-        return self._use_styler(self.data.use_transactions_violations)
+        return self._use_styler(self.data.use_transactions_violations, "use_transactions_violations")
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_targets_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self.display_configuration
+        return _style_unbalanced_targets_summary(self.data.summary, display_unit=cfg.display_unit, all_rel=self._all_rel, decimals=cfg.decimals)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -215,7 +232,8 @@ class UnbalancedTargetsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self.display_configuration
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "UnbalancedTargetsInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -226,17 +244,9 @@ class UnbalancedTargetsInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "UnbalancedTargetsInspection":
+    def set_display_rel_base(self, rel_base: int) -> "UnbalancedTargetsInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -244,13 +254,9 @@ class UnbalancedTargetsInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "UnbalancedTargetsInspection":
+    def set_display_decimals(self, decimals: int) -> "UnbalancedTargetsInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -259,39 +265,47 @@ class UnbalancedTargetsInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
-        self,
-        values: str | int | list,
-        level: str,
-    ) -> "UnbalancedTargetsInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
-
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+    def set_display_index(self, level: str, values) -> "UnbalancedTargetsInspection":
+        """Return a copy with ``values`` added (union) to the display filter for ``level``.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        UnbalancedTargetsInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list of str/int
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "UnbalancedTargetsInspection":
+        """Return a copy with rows sorted by ``column`` within each index group.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by. ``None`` clears the sort.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "UnbalancedTargetsInspection":
+        """Return a copy showing only the ``n`` rows with largest values for ``column``.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to keep per group.
+        column : str
+            Column name to rank by.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "UnbalancedTargetsInspection":
+        """Return a copy with all user-settable display settings reset to defaults."""
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -327,23 +341,17 @@ class UnbalancedTargetsInspection:
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
         diff = UnbalancedTargetsInspection(
             data=UnbalancedTargetsData(**diff_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = UnbalancedTargetsInspection(
             data=UnbalancedTargetsData(**rel_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
         return TablesComparison(
             diff=diff,
             rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
 
 
@@ -352,7 +360,6 @@ def inspect_unbalanced_targets(
     transactions: str | list[str] | None = None,
     categories: str | list[str] | None = None,
     ids: str | int | list[str | int] | None = None,
-    sort: bool = False,
 ) -> UnbalancedTargetsInspection:
     """
     Return supply and use column totals compared against balancing targets,
@@ -385,10 +392,6 @@ def inspect_unbalanced_targets(
         Id values to include. Accepts the same pattern syntax as
         :func:`~sutlab.sut.filter_rows`. ``None`` (the default) includes
         all ids present in the SUT.
-    sort : bool, optional
-        When ``True``, rows are sorted by ``abs(diff_*)`` descending within
-        each id. Default ``False`` preserves the order from the targets
-        DataFrame.
 
     Returns
     -------
@@ -481,7 +484,6 @@ def inspect_unbalanced_targets(
             transactions_filter=transactions,
             categories_filter=categories,
             has_tolerances=has_tolerances,
-            sort=sort,
             trans_names=trans_names,
             cat_names=cat_names,
             has_labels=has_labels,
@@ -497,7 +499,6 @@ def inspect_unbalanced_targets(
             transactions_filter=transactions,
             categories_filter=categories,
             has_tolerances=has_tolerances,
-            sort=sort,
             trans_names=trans_names,
             cat_names=cat_names,
             has_labels=has_labels,
@@ -513,7 +514,6 @@ def inspect_unbalanced_targets(
             transactions_filter=transactions,
             has_tolerances=has_tolerances,
             tolerances=tolerances,
-            sort=sort,
             trans_names=trans_names,
             has_labels=has_labels,
         )
@@ -528,7 +528,6 @@ def inspect_unbalanced_targets(
             transactions_filter=transactions,
             has_tolerances=has_tolerances,
             tolerances=tolerances,
-            sort=sort,
             trans_names=trans_names,
             has_labels=has_labels,
         )
@@ -596,6 +595,17 @@ def inspect_unbalanced_targets(
         index=pd.Index(list(summary_rows.keys()), name="table"),
     )
 
+    all_table_names = [
+        "supply_categories", "use_categories",
+        "supply_categories_violations", "use_categories_violations",
+        "supply_transactions", "use_transactions",
+        "supply_transactions_violations", "use_transactions_violations",
+    ]
+    display_config = DisplayConfiguration(
+        protected_tables=frozenset({"summary"}),
+        protected_index_values={},
+        index_grouping={name: [id_col] for name in all_table_names},
+    )
     return UnbalancedTargetsInspection(
         data=UnbalancedTargetsData(
             supply_categories=supply_categories,
@@ -608,6 +618,7 @@ def inspect_unbalanced_targets(
             use_transactions_violations=use_transactions_violations,
             summary=summary,
         ),
+        display_configuration=display_config,
     )
 
 
@@ -639,7 +650,6 @@ def _build_categories_table(
     transactions_filter: str | list[str] | None,
     categories_filter: str | list[str] | None,
     has_tolerances: bool,
-    sort: bool,
     trans_names: dict[str, str],
     cat_names: dict[str, str],
     has_labels: bool,
@@ -718,10 +728,6 @@ def _build_categories_table(
     # Column order.
     result = result[[trans_col, cat_col, price_col, target_col, diff_col, rel_col, tol_col, violation_col]]
 
-    # Sort by absolute diff if requested.
-    if sort:
-        result = result.sort_values(diff_col, key=lambda s: s.abs(), ascending=False)
-
     # Filter to rows with abs(diff) > 1 — NaN diff rows are excluded.
     result = result[result[diff_col].abs() > 1]
 
@@ -756,7 +762,6 @@ def _build_transactions_table(
     transactions_filter: str | list[str] | None,
     has_tolerances: bool,
     tolerances,
-    sort: bool,
     trans_names: dict[str, str],
     has_labels: bool,
 ) -> pd.DataFrame:
@@ -849,10 +854,6 @@ def _build_transactions_table(
 
     # Column order.
     result = result[[trans_col, price_col, target_col, diff_col, rel_col, tol_col, violation_col]]
-
-    # Sort by absolute diff if requested.
-    if sort:
-        result = result.sort_values(diff_col, key=lambda s: s.abs(), ascending=False)
 
     # Filter to rows with abs(diff) > 1 — NaN diff rows are excluded.
     result = result[result[diff_col].abs() > 1]

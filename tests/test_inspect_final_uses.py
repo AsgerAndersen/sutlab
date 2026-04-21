@@ -464,68 +464,11 @@ def test_use_growth_values_correct(sut):
     assert row_3110[2021] == pytest.approx((93 - 85) / 85)
 
 
-def test_use_sort_id_reorders_transactions(sut):
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2020)
-    use = result.data.use
-    trans_vals = use.index.get_level_values("transaction").tolist()[:-1]
-    # 3110=85, 3200=55, 6001=60 → sorted: 3110 > 6001 > 3200
-    assert trans_vals.index("3110") < trans_vals.index("6001")
-    assert trans_vals.index("6001") < trans_vals.index("3200")
-
-
 def test_use_properties_return_styler(sut):
     result = inspect_final_uses(sut, ["3110", "3200", "6001"])
     assert isinstance(result.use, Styler)
     assert isinstance(result.use_distribution, Styler)
     assert isinstance(result.use_growth, Styler)
-
-
-# ---------------------------------------------------------------------------
-# sort_id
-# ---------------------------------------------------------------------------
-
-
-def test_sort_id_flat_sort_across_all_transactions(sut):
-    # With sort_id=2020, all data rows sorted globally by 2020 value descending.
-    # 2020 values: FKO1=50, FKO2=35, GOV=55, exports=60
-    # Expected order: exports(60), GOV(55), FKO1(50), FKO2(35), Total use
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2020)
-    use = result.data.use_categories
-    data_rows = use.iloc[:-1]  # exclude Total use
-    values = data_rows[2020].tolist()
-    assert values == sorted(values, reverse=True)
-
-
-def test_sort_id_transactions_intermixed(sut):
-    # Transactions from different codes should be intermixed in the sorted result.
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2020)
-    use = result.data.use_categories
-    trans_vals = use.index.get_level_values("transaction").tolist()[:-1]  # exclude Total use
-    # Exports (6001, value=60) should appear before GOV (3200, value=55)
-    # which should appear before FKO1 (3110, value=50).
-    assert trans_vals.index("6001") < trans_vals.index("3200")
-    assert trans_vals.index("3200") < trans_vals.index("3110")
-
-
-def test_sort_id_total_use_row_stays_last(sut):
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2021)
-    use = result.data.use_categories
-    assert use.index[-1] == ("", "Total use", "", "")
-
-
-def test_sort_id_distribution_inherits_order(sut):
-    result = inspect_final_uses(sut, "3110", sort_id=2020)
-    assert result.data.use_categories.index.equals(result.data.use_categories_distribution.index)
-
-
-def test_sort_id_growth_inherits_order(sut):
-    result = inspect_final_uses(sut, "3110", sort_id=2020)
-    assert result.data.use_categories.index.equals(result.data.use_categories_growth.index)
-
-
-def test_sort_id_unknown_raises(sut):
-    with pytest.raises(ValueError, match="sort_id"):
-        inspect_final_uses(sut, "3110", sort_id=1999)
 
 
 # ---------------------------------------------------------------------------
@@ -726,35 +669,6 @@ def test_use_products_product_classification_order(columns, transactions,
 
 
 # ---------------------------------------------------------------------------
-# use_products — sort_id
-# ---------------------------------------------------------------------------
-
-
-def test_use_products_sort_id_flat_sort(sut):
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2020)
-    ud = result.data.use_products
-    data_rows = ud.iloc[:-1]
-    values = data_rows[2020].tolist()
-    assert values == sorted(values, reverse=True)
-
-
-def test_use_products_sort_id_total_stays_last(sut):
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2021)
-    ud = result.data.use_products
-    assert ud.index[-1] == ("", "Total use", "", "", "", "")
-
-
-def test_use_products_sort_id_transactions_intermixed(sut):
-    # 2020 values: FKO1+A=50, FKO2+B=35, GOV+A=55, exports+A=60
-    # Expected order: exports(60) > GOV(55) > FKO1(50) > FKO2(35)
-    result = inspect_final_uses(sut, ["3110", "3200", "6001"], sort_id=2020)
-    ud = result.data.use_products
-    trans_vals = ud.index.get_level_values("transaction").tolist()[:-1]
-    assert trans_vals.index("6001") < trans_vals.index("3200")
-    assert trans_vals.index("3200") < trans_vals.index("3110")
-
-
-# ---------------------------------------------------------------------------
 # use_products_distribution
 # ---------------------------------------------------------------------------
 
@@ -782,11 +696,6 @@ def test_use_products_distribution_value_correct(sut):
     assert fko1_share == pytest.approx(50.0 / 200.0)
 
 
-def test_use_products_distribution_inherits_sort_order(sut):
-    result = inspect_final_uses(sut, "3110", sort_id=2020)
-    assert result.data.use_products.index.equals(result.data.use_products_distribution.index)
-
-
 # ---------------------------------------------------------------------------
 # use_products_growth
 # ---------------------------------------------------------------------------
@@ -804,11 +713,6 @@ def test_use_products_growth_second_year_correct(sut):
     fko1_row = growth[growth.index.get_level_values("category") == "FKO1"].iloc[0]
     # FKO1+A: 50 → 55 → (55-50)/50 = 0.10
     assert fko1_row[2021] == pytest.approx(0.10)
-
-
-def test_use_products_growth_inherits_sort_order(sut):
-    result = inspect_final_uses(sut, "3110", sort_id=2020)
-    assert result.data.use_products.index.equals(result.data.use_products_growth.index)
 
 
 # ---------------------------------------------------------------------------

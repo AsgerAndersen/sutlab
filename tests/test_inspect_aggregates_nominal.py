@@ -646,7 +646,7 @@ def test_gdp_growth_styler_has_correct_shape(sut):
 
 def test_gdp_growth_styler_with_rel_base(sut):
     from pandas.io.formats.style import Styler
-    result = inspect_aggregates_nominal(sut).set_rel_base(1000)
+    result = inspect_aggregates_nominal(sut).set_display_rel_base(1000)
     assert isinstance(result.gdp_growth, Styler)
 
 
@@ -723,30 +723,30 @@ def test_gdp_distribution_styler_has_correct_shape(sut):
 
 def test_gdp_distribution_styler_with_rel_base(sut):
     from pandas.io.formats.style import Styler
-    result = inspect_aggregates_nominal(sut).set_rel_base(1000)
+    result = inspect_aggregates_nominal(sut).set_display_rel_base(1000)
     assert isinstance(result.gdp_distribution, Styler)
 
 
 # ---------------------------------------------------------------------------
-# set_decimals
+# set_display_decimals
 # ---------------------------------------------------------------------------
 
 
 def test_set_decimals_default(sut):
     result = inspect_aggregates_nominal(sut)
-    assert result.decimals == 1
+    assert result.display_configuration.decimals == 1
 
 
 def test_set_decimals_returns_new_copy(sut):
     result = inspect_aggregates_nominal(sut)
-    updated = result.set_decimals(0)
-    assert updated.decimals == 0
-    assert result.decimals == 1
+    updated = result.set_display_decimals(0)
+    assert updated.display_configuration.decimals == 0
+    assert result.display_configuration.decimals == 1
 
 
 def test_set_decimals_styled_properties_do_not_raise(sut):
     from pandas.io.formats.style import Styler
-    result = inspect_aggregates_nominal(sut).set_decimals(0)
+    result = inspect_aggregates_nominal(sut).set_display_decimals(0)
     assert isinstance(result.gdp, Styler)
     assert isinstance(result.gdp_growth, Styler)
     assert isinstance(result.gdp_distribution, Styler)
@@ -754,9 +754,9 @@ def test_set_decimals_styled_properties_do_not_raise(sut):
 
 def test_set_decimals_invalid_negative_raises(sut):
     with pytest.raises(ValueError, match="non-negative integer"):
-        inspect_aggregates_nominal(sut).set_decimals(-1)
+        inspect_aggregates_nominal(sut).set_display_decimals(-1)
 
 
 def test_set_decimals_invalid_float_raises(sut):
     with pytest.raises(ValueError, match="non-negative integer"):
-        inspect_aggregates_nominal(sut).set_decimals(1.5)
+        inspect_aggregates_nominal(sut).set_display_decimals(1.5)

@@ -277,23 +277,6 @@ def test_tolerance_zero_includes_all_nonzero(sut):
 
 
 # ---------------------------------------------------------------------------
-# Sort argument
-# ---------------------------------------------------------------------------
-
-
-def test_sort_false_preserves_natural_order(sut):
-    df = inspect_unbalanced_products(sut, ids=2021, sort=False).data.imbalances
-    # Natural order: A, C, D (within 2021)
-    assert list(df.index.get_level_values("nrnr")) == ["A", "C", "D"]
-
-
-def test_sort_true_orders_by_abs_diff_descending(sut):
-    # abs diffs: A=20, C=30, D=80 → sorted: D, C, A (within 2021)
-    df = inspect_unbalanced_products(sut, ids=2021, sort=True).data.imbalances
-    assert list(df.index.get_level_values("nrnr")) == ["D", "C", "A"]
-
-
-# ---------------------------------------------------------------------------
 # products argument
 # ---------------------------------------------------------------------------
 

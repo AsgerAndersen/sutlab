@@ -13,8 +13,18 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary, _style_tables_description
-from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
 
 
 @dataclass
@@ -86,25 +96,29 @@ class UnbalancedProductsInspection:
     """
 
     data: UnbalancedProductsData
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
+        protected_tables=frozenset({"summary"}),
+        protected_index_values={},
+        index_grouping={},
+    ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     @property
     def imbalances(self) -> Styler:
         """Styled imbalances table."""
-        df = self.data.imbalances
+        df = _apply_display_config(self.data.imbalances, "imbalances", self.display_configuration)
         supply_cols = [c for c in df.columns if c.startswith("supply_")]
         use_cols = [c for c in df.columns if c.startswith("use_")]
         rel_cols = [c for c in df.columns if c.startswith("rel_")]
         rel_col = rel_cols[0] if rel_cols else ""
-        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self.display_configuration
+        return _style_imbalances_table(df, supply_cols, use_cols, rel_col, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_unbalanced_products_summary(self.data.summary, display_unit=self.display_unit, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self.display_configuration
+        return _style_unbalanced_products_summary(self.data.summary, display_unit=cfg.display_unit, all_rel=self._all_rel, decimals=cfg.decimals)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -119,7 +133,8 @@ class UnbalancedProductsInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self.display_configuration
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "UnbalancedProductsInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -130,17 +145,9 @@ class UnbalancedProductsInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "UnbalancedProductsInspection":
+    def set_display_rel_base(self, rel_base: int) -> "UnbalancedProductsInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -148,13 +155,9 @@ class UnbalancedProductsInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "UnbalancedProductsInspection":
+    def set_display_decimals(self, decimals: int) -> "UnbalancedProductsInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -163,39 +166,47 @@ class UnbalancedProductsInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
-        self,
-        values: str | int | list,
-        level: str,
-    ) -> "UnbalancedProductsInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
-
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+    def set_display_index(self, level: str, values) -> "UnbalancedProductsInspection":
+        """Return a copy with ``values`` added (union) to the display filter for ``level``.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        UnbalancedProductsInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list of str/int
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "UnbalancedProductsInspection":
+        """Return a copy with rows sorted by ``column`` within each index group.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by. ``None`` clears the sort.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "UnbalancedProductsInspection":
+        """Return a copy showing only the ``n`` rows with largest values for ``column``.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to keep per group.
+        column : str
+            Column name to rank by.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "UnbalancedProductsInspection":
+        """Return a copy with all user-settable display settings reset to defaults."""
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -231,23 +242,17 @@ class UnbalancedProductsInspection:
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
         diff = UnbalancedProductsInspection(
             data=UnbalancedProductsData(**diff_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = UnbalancedProductsInspection(
             data=UnbalancedProductsData(**rel_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
         return TablesComparison(
             diff=diff,
             rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
 
 
@@ -255,7 +260,6 @@ def inspect_unbalanced_products(
     sut: SUT,
     products: str | list[str] | None = None,
     ids: str | int | list[str | int] | None = None,
-    sort: bool = False,
     tolerance: float = 1,
 ) -> UnbalancedProductsInspection:
     """
@@ -277,11 +281,6 @@ def inspect_unbalanced_products(
         Id values to include. Accepts the same pattern syntax as
         :func:`~sutlab.sut.filter_rows`. ``None`` (the default) includes
         all ids present in the SUT.
-    sort : bool, optional
-        When ``True``, rows are sorted by the absolute value of
-        ``diff_{price_basic}`` in descending order (largest imbalance first)
-        within each id. Default ``False`` preserves natural sort order of
-        product codes.
     tolerance : float, optional
         Products are considered unbalanced when
         ``abs(supply_{price_basic} - use_{price_basic}) > tolerance``.
@@ -354,7 +353,6 @@ def inspect_unbalanced_products(
             member_supply=member_supply,
             member_use=member_use,
             products=products,
-            sort=sort,
             tolerance=tolerance,
             prod_col=prod_col,
             price_basic_col=price_basic_col,
@@ -384,8 +382,14 @@ def inspect_unbalanced_products(
         index=pd.Index(["imbalances"], name="table"),
     )
 
+    display_config = DisplayConfiguration(
+        protected_tables=frozenset({"summary"}),
+        protected_index_values={},
+        index_grouping={"imbalances": [id_col]},
+    )
     return UnbalancedProductsInspection(
         data=UnbalancedProductsData(imbalances=result, summary=summary),
+        display_configuration=display_config,
     )
 
 
@@ -398,7 +402,6 @@ def _build_imbalances_for_id(
     member_supply: pd.DataFrame,
     member_use: pd.DataFrame,
     products: str | list[str] | None,
-    sort: bool,
     tolerance: float,
     prod_col: str,
     price_basic_col: str,
@@ -506,10 +509,6 @@ def _build_imbalances_for_id(
 
     # Keep only products whose imbalance exceeds the tolerance
     result = result[result[diff_name].abs() > tolerance]
-
-    # Optionally sort by absolute imbalance descending
-    if sort:
-        result = result.sort_values(diff_name, key=lambda s: s.abs(), ascending=False)
 
     # Attach product labels as a second index level if available
     prod_txt_col = f"{prod_col}_txt"

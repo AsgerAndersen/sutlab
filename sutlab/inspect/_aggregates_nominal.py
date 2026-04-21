@@ -13,7 +13,17 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
-from sutlab.inspect._shared import _build_growth_table, _display_index, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _write_inspection_to_excel
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
 from sutlab.inspect._style import (
     _make_number_formatter,
     _make_percentage_formatter,
@@ -102,36 +112,37 @@ class AggregatesNominalInspection:
     """
 
     data: AggregatesNominalData
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
+        protected_tables=frozenset({"gdp", "gdp_growth", "gdp_distribution"}),
+        protected_index_values={},
+        index_grouping={},
+    ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
+    def _pct_fmt(self):
+        cfg = self.display_configuration
+        return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+
     def _number_fmt(self):
+        cfg = self.display_configuration
         if self._all_rel:
-            return _make_percentage_formatter(self.rel_base, self.decimals)
-        return _make_number_formatter(self.display_unit, self.decimals)
+            return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+        return _make_number_formatter(cfg.display_unit, cfg.decimals)
 
     @property
     def gdp(self) -> Styler:
         """Styled GDP decomposition table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(
-            self.data.gdp, self._number_fmt()
-        )
+        return _style_aggregates_nominal_table(self.data.gdp, self._number_fmt())
 
     @property
     def gdp_growth(self) -> Styler:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(
-            self.data.gdp_growth, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        return _style_aggregates_nominal_table(self.data.gdp_growth, self._pct_fmt())
 
     @property
     def gdp_distribution(self) -> Styler:
         """Styled GDP share table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(
-            self.data.gdp_distribution, _make_percentage_formatter(self.rel_base, self.decimals)
-        )
+        return _style_aggregates_nominal_table(self.data.gdp_distribution, self._pct_fmt())
 
     def write_to_excel(self, path: str | Path) -> None:
         """Write the inspection tables to an Excel file.
@@ -141,7 +152,8 @@ class AggregatesNominalInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self.display_configuration
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "AggregatesNominalInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -152,17 +164,9 @@ class AggregatesNominalInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "AggregatesNominalInspection":
+    def set_display_rel_base(self, rel_base: int) -> "AggregatesNominalInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -170,13 +174,9 @@ class AggregatesNominalInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "AggregatesNominalInspection":
+    def set_display_decimals(self, decimals: int) -> "AggregatesNominalInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -185,39 +185,47 @@ class AggregatesNominalInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
-        self,
-        values: str | int | list,
-        level: str,
-    ) -> "AggregatesNominalInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
-
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+    def set_display_index(self, level: str, values) -> "AggregatesNominalInspection":
+        """Return a copy with ``values`` added (union) to the display filter for ``level``.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        AggregatesNominalInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list of str/int
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "AggregatesNominalInspection":
+        """Return a copy with rows sorted by ``column`` within each index group.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by. ``None`` clears the sort.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "AggregatesNominalInspection":
+        """Return a copy showing only the ``n`` rows with largest values for ``column``.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to keep per group.
+        column : str
+            Column name to rank by.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "AggregatesNominalInspection":
+        """Return a copy with all user-settable display settings reset to defaults."""
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -253,23 +261,17 @@ class AggregatesNominalInspection:
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
         diff = AggregatesNominalInspection(
             data=AggregatesNominalData(**diff_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = AggregatesNominalInspection(
             data=AggregatesNominalData(**rel_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
         return TablesComparison(
             diff=diff,
             rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
 
 

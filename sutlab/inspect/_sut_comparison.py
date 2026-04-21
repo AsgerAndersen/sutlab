@@ -19,8 +19,18 @@ from sutlab.inspect._style import (
     _style_comparison_summary_table,
     _style_tables_description,
 )
-from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
+from sutlab.inspect._display_config import (
+    DisplayConfiguration,
+    _cfg_set_display_unit,
+    _cfg_set_display_rel_base,
+    _cfg_set_display_decimals,
+    _cfg_set_display_index,
+    _cfg_set_display_sort_column,
+    _cfg_set_display_values_n_largest,
+    _cfg_reset_to_defaults,
+)
 
 
 @dataclass
@@ -173,92 +183,112 @@ class SUTComparisonInspection:
     """
 
     data: SUTComparisonData
-    display_unit: float | None = None
-    rel_base: int = 100
-    decimals: int = 1
+    display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
+        protected_tables=frozenset({"summary", "supply_products_summary", "supply_columns_summary", "use_products_summary", "use_columns_summary"}),
+        protected_index_values={},
+        index_grouping={},
+    ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
     def _rel_col(self, df: pd.DataFrame) -> str:
         return next((c for c in df.columns if c.startswith("rel_")), "")
 
+    def _cfg(self):
+        return self.display_configuration
+
     @property
     def supply(self) -> Styler:
         """Styled supply comparison table."""
-        df = self.data.supply
-        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.supply, "supply", cfg)
+        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_basic(self) -> Styler:
         """Styled use at basic prices comparison table."""
-        df = self.data.use_basic
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.use_basic, "use_basic", cfg)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_purchasers(self) -> Styler:
         """Styled use at purchasers' prices comparison table."""
-        df = self.data.use_purchasers
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.use_purchasers, "use_purchasers", cfg)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_price_layers(self) -> Styler:
         """Styled price layers comparison table."""
-        return _style_comparison_layers_table(self.data.use_price_layers, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.use_price_layers, "use_price_layers", cfg)
+        return _style_comparison_layers_table(df, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def balancing_targets_supply(self) -> Styler | None:
         """Styled supply balancing targets comparison table, or None."""
         if self.data.balancing_targets_supply is None:
             return None
-        df = self.data.balancing_targets_supply
-        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.balancing_targets_supply, "balancing_targets_supply", cfg)
+        return _style_comparison_table(df, "supply", self._rel_col(df), display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def balancing_targets_use_basic(self) -> Styler | None:
         """Styled use balancing targets at basic prices comparison table, or None."""
         if self.data.balancing_targets_use_basic is None:
             return None
-        df = self.data.balancing_targets_use_basic
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.balancing_targets_use_basic, "balancing_targets_use_basic", cfg)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def balancing_targets_use_purchasers(self) -> Styler | None:
         """Styled use balancing targets at purchasers' prices comparison table, or None."""
         if self.data.balancing_targets_use_purchasers is None:
             return None
-        df = self.data.balancing_targets_use_purchasers
-        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.balancing_targets_use_purchasers, "balancing_targets_use_purchasers", cfg)
+        return _style_comparison_table(df, "use", self._rel_col(df), display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def balancing_targets_use_price_layers(self) -> Styler | None:
         """Styled use balancing targets price layers comparison table, or None."""
         if self.data.balancing_targets_use_price_layers is None:
             return None
-        return _style_comparison_layers_table(self.data.balancing_targets_use_price_layers, display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        df = _apply_display_config(self.data.balancing_targets_use_price_layers, "balancing_targets_use_price_layers", cfg)
+        return _style_comparison_layers_table(df, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def summary(self) -> Styler:
         """Styled summary table."""
-        return _style_summary_table(self.data.summary, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        return _style_summary_table(self.data.summary, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def supply_products_summary(self) -> Styler:
         """Styled supply-by-product summary table."""
-        return _style_comparison_summary_table(self.data.supply_products_summary, "supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        return _style_comparison_summary_table(self.data.supply_products_summary, "supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def supply_columns_summary(self) -> Styler:
         """Styled supply-by-transaction/category summary table."""
-        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_products_summary(self) -> Styler:
         """Styled use-by-product summary table (purchasers' prices)."""
-        return _style_comparison_summary_table(self.data.use_products_summary, "use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        return _style_comparison_summary_table(self.data.use_products_summary, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_columns_summary(self) -> Styler:
         """Styled use-by-transaction/category summary table (purchasers' prices)."""
-        return _style_comparison_summary_table(self.data.use_columns_summary, "use", display_unit=self.display_unit, rel_base=self.rel_base, all_rel=self._all_rel, decimals=self.decimals)
+        cfg = self._cfg()
+        return _style_comparison_summary_table(self.data.use_columns_summary, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -273,7 +303,8 @@ class SUTComparisonInspection:
         path : str or Path
             Destination ``.xlsx`` file path.
         """
-        _write_inspection_to_excel(self, path, self.display_unit, self.rel_base, self.decimals)
+        cfg = self._cfg()
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
 
     def set_display_unit(self, display_unit: float | None) -> "SUTComparisonInspection":
         """Return a copy with ``display_unit`` set to the given value.
@@ -284,17 +315,9 @@ class SUTComparisonInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        if display_unit is not None:
-            import math
-            log = math.log10(display_unit) if display_unit > 0 else float("nan")
-            if not (display_unit > 0 and abs(log - round(log)) < 1e-9):
-                raise ValueError(
-                    f"display_unit must be a positive power of 10 "
-                    f"(e.g. 1_000, 1_000_000). Got {display_unit}."
-                )
-        return dataclasses.replace(self, display_unit=display_unit)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_rel_base(self, rel_base: int) -> "SUTComparisonInspection":
+    def set_display_rel_base(self, rel_base: int) -> "SUTComparisonInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -302,13 +325,9 @@ class SUTComparisonInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        if rel_base not in (100, 1000, 10000):
-            raise ValueError(
-                f"rel_base must be 100, 1000, or 10000. Got {rel_base}."
-            )
-        return dataclasses.replace(self, rel_base=rel_base)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_decimals(self, decimals: int) -> "SUTComparisonInspection":
+    def set_display_decimals(self, decimals: int) -> "SUTComparisonInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -317,39 +336,47 @@ class SUTComparisonInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        if not isinstance(decimals, int) or decimals < 0:
-            raise ValueError(
-                f"decimals must be a non-negative integer. Got {decimals!r}."
-            )
-        return dataclasses.replace(self, decimals=decimals)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def display_index(
-        self,
-        values: str | int | list,
-        level: str,
-    ) -> "SUTComparisonInspection":
-        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
-
-        Tables whose index does not contain a level named ``level`` are left
-        unchanged. ``None`` fields are propagated unchanged. Accepts the same
-        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
-        ranges (``:``), and negation (``~``). Non-string values are stringified
-        before matching.
+    def set_display_index(self, level: str, values) -> "SUTComparisonInspection":
+        """Return a copy with ``values`` added (union) to the display filter for ``level``.
 
         Parameters
         ----------
-        values : str, int, or list of str/int
-            Values (or patterns) to keep. A single value is treated as a
-            one-element list.
         level : str
             Name of the index level to filter on.
-
-        Returns
-        -------
-        SUTComparisonInspection
-            A new inspection result with filtered tables.
+        values : str, int, or list of str/int
+            Values (or patterns) to keep.
         """
-        return _display_index(self, values, level)
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "SUTComparisonInspection":
+        """Return a copy with rows sorted by ``column`` within each index group.
+
+        Parameters
+        ----------
+        column : str or None
+            Column name to sort by. ``None`` clears the sort.
+        ascending : bool
+            Sort direction. Default ``False`` (descending).
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_values_n_largest(self, n: int, column: str) -> "SUTComparisonInspection":
+        """Return a copy showing only the ``n`` rows with largest values for ``column``.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to keep per group.
+        column : str
+            Column name to rank by.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+
+    def set_display_configuration_to_defaults(self) -> "SUTComparisonInspection":
+        """Return a copy with all user-settable display settings reset to defaults."""
+        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
     @property
     def tables_description(self) -> Styler:
@@ -385,23 +412,17 @@ class SUTComparisonInspection:
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
         diff = SUTComparisonInspection(
             data=SUTComparisonData(**diff_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
         rel = SUTComparisonInspection(
             data=SUTComparisonData(**rel_fields),
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
             _all_rel=True,
         )
         return TablesComparison(
             diff=diff,
             rel=rel,
-            display_unit=self.display_unit,
-            rel_base=self.rel_base,
-            decimals=self.decimals,
+            display_configuration=self.display_configuration,
         )
 
 
@@ -416,7 +437,6 @@ def inspect_sut_comparison(
     diff_tolerance: float = 1,
     rel_tolerance: float = float("inf"),
     filter_nan_as_zero: bool = False,
-    sort: bool = False,
     percentiles: list[float] = [0.0, 0.5, 1.0],
 ) -> SUTComparisonInspection:
     """
@@ -458,11 +478,6 @@ def inspect_sut_comparison(
         when a new row is added to a SUT with zero values — such a row
         would otherwise always appear as a one-sided difference. Default
         ``False`` preserves all one-sided rows regardless of value.
-    sort : bool, optional
-        When ``True``, rows are sorted by ``abs(diff)`` descending within
-        each id (for ``supply``, ``use_basic``, ``use_purchasers``) or
-        within each ``(id, price_layer)`` group (for ``use_price_layers``).
-        Default ``False`` preserves natural sort order.
     percentiles : list of float, optional
         Quantiles to compute for the diff and rel columns of the four
         summary tables. Each value must be in ``[0, 1]``. Special names:
@@ -539,7 +554,6 @@ def inspect_sut_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     supply_table = _set_key_index(supply_table, key_cols, names_by_col)
@@ -559,7 +573,6 @@ def inspect_sut_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     use_basic_table = _set_key_index(use_basic_table, key_cols, names_by_col)
@@ -571,7 +584,6 @@ def inspect_sut_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     use_purchasers_table = _set_key_index(use_purchasers_table, key_cols, names_by_col)
@@ -583,7 +595,6 @@ def inspect_sut_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     use_price_layers_table = _set_layers_index(use_price_layers_table, key_cols, names_by_col)
@@ -605,7 +616,6 @@ def inspect_sut_comparison(
             diff_tolerance=diff_tolerance,
             rel_tolerance=rel_tolerance,
             filter_nan_as_zero=filter_nan_as_zero,
-            sort=sort,
             trans_names=trans_names,
             cat_names=cat_names,
         )
@@ -624,16 +634,16 @@ def inspect_sut_comparison(
     # Build the four summary tables from the already-filtered supply and
     # use_purchasers comparison tables.
     supply_products_summary = _build_comparison_summary(
-        supply_table, group_cols=[id_col, prod_col], percentiles=percentiles, sort=sort
+        supply_table, group_cols=[id_col, prod_col], percentiles=percentiles
     )
     supply_columns_summary = _build_comparison_summary(
-        supply_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
+        supply_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles
     )
     use_products_summary = _build_comparison_summary(
-        use_purchasers_table, group_cols=[id_col, prod_col], percentiles=percentiles, sort=sort
+        use_purchasers_table, group_cols=[id_col, prod_col], percentiles=percentiles
     )
     use_columns_summary = _build_comparison_summary(
-        use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles, sort=sort
+        use_purchasers_table, group_cols=[id_col, trans_col, cat_col], percentiles=percentiles
     )
 
     # Summary block order: base tables, products, columns, balancing targets.
@@ -653,6 +663,16 @@ def inspect_sut_comparison(
         index=pd.Index(list(summary_entries.keys()), name="table"),
     )
 
+    data_table_names = [
+        "supply", "use_basic", "use_purchasers", "use_price_layers",
+        "balancing_targets_supply", "balancing_targets_use_basic",
+        "balancing_targets_use_purchasers", "balancing_targets_use_price_layers",
+    ]
+    display_config = DisplayConfiguration(
+        protected_tables=frozenset({"summary", "supply_products_summary", "supply_columns_summary", "use_products_summary", "use_columns_summary"}),
+        protected_index_values={},
+        index_grouping={name: [id_col] for name in data_table_names},
+    )
     return SUTComparisonInspection(
         data=SUTComparisonData(
             supply=supply_table,
@@ -669,6 +689,7 @@ def inspect_sut_comparison(
             use_products_summary=use_products_summary,
             use_columns_summary=use_columns_summary,
         ),
+        display_configuration=display_config,
     )
 
 
@@ -788,7 +809,6 @@ def _build_single_price_comparison(
     diff_tolerance: float,
     rel_tolerance: float,
     filter_nan_as_zero: bool,
-    sort: bool,
     id_col: str,
 ) -> pd.DataFrame:
     """Build a before/after/diff/rel comparison for a single price column.
@@ -798,7 +818,7 @@ def _build_single_price_comparison(
     sides are included only when diff or rel exceeds the tolerances.
     """
     merged = _merge_sides(before_df, after_df, key_cols, [price_col])
-    return _extract_price_comparison(merged, key_cols, price_col, diff_tolerance, rel_tolerance, filter_nan_as_zero, sort, id_col)
+    return _extract_price_comparison(merged, key_cols, price_col, diff_tolerance, rel_tolerance, filter_nan_as_zero, id_col)
 
 
 def _extract_price_comparison(
@@ -808,7 +828,6 @@ def _extract_price_comparison(
     diff_tolerance: float,
     rel_tolerance: float,
     filter_nan_as_zero: bool,
-    sort: bool,
     id_col: str,
 ) -> pd.DataFrame:
     """Extract a before/after/diff/rel table for one price column from an already-merged frame.
@@ -850,11 +869,6 @@ def _extract_price_comparison(
     result[diff_col] = diff[keep].values
     result[rel_col] = rel[keep].values
 
-    if sort:
-        result["_abs_diff"] = result[diff_col].abs()
-        result = result.sort_values([id_col, "_abs_diff"], ascending=[True, False])
-        result = result.drop(columns=["_abs_diff"])
-
     return result.reset_index(drop=True)
 
 
@@ -865,7 +879,6 @@ def _extract_layers_comparison(
     diff_tolerance: float,
     rel_tolerance: float,
     filter_nan_as_zero: bool,
-    sort: bool,
     id_col: str,
 ) -> pd.DataFrame:
     """Extract the long-format price layers comparison from an already-merged frame.
@@ -912,14 +925,6 @@ def _extract_layers_comparison(
         layer_frames.append(layer_df[key_cols + ["price_layer", "before", "after", "diff", "rel"]])
 
     result = pd.concat(layer_frames, ignore_index=True)
-
-    if sort:
-        result["_abs_diff"] = result["diff"].abs()
-        result = result.sort_values(
-            [id_col, "price_layer", "_abs_diff"],
-            ascending=[True, True, False],
-        )
-        result = result.drop(columns=["_abs_diff"])
 
     return result.reset_index(drop=True)
 
@@ -1023,7 +1028,6 @@ def _build_targets_comparison(
     diff_tolerance: float,
     rel_tolerance: float,
     filter_nan_as_zero: bool,
-    sort: bool,
     trans_names: dict[str, str],
     cat_names: dict[str, str],
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1077,7 +1081,6 @@ def _build_targets_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     targets_supply = _set_key_index(targets_supply, targets_key_cols, names_by_col)
@@ -1095,7 +1098,6 @@ def _build_targets_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     targets_use_basic = _set_key_index(targets_use_basic, targets_key_cols, names_by_col)
@@ -1107,7 +1109,6 @@ def _build_targets_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     targets_use_purchasers = _set_key_index(targets_use_purchasers, targets_key_cols, names_by_col)
@@ -1119,7 +1120,6 @@ def _build_targets_comparison(
         diff_tolerance=diff_tolerance,
         rel_tolerance=rel_tolerance,
         filter_nan_as_zero=filter_nan_as_zero,
-        sort=sort,
         id_col=id_col,
     )
     targets_use_price_layers = _set_layers_index(
@@ -1199,7 +1199,6 @@ def _build_comparison_summary(
     df: pd.DataFrame,
     group_cols: list[str],
     percentiles: list[float],
-    sort: bool = False,
 ) -> pd.DataFrame:
     """Build a summary table by grouping a comparison table on ``group_cols``.
 
@@ -1222,10 +1221,6 @@ def _build_comparison_summary(
         Actual column names to group by (e.g. ``[id_col, prod_col]``).
     percentiles : list of float
         Quantile values to compute. Each in ``[0, 1]``.
-    sort : bool, optional
-        When ``True``, rows are sorted by ``diff_norm`` descending.
-        Default ``False``.
-
     Returns
     -------
     pd.DataFrame
@@ -1304,9 +1299,6 @@ def _build_comparison_summary(
             index_cols.append(txt_col)
 
     result = result.set_index(index_cols)
-
-    if sort and "diff_norm" in result.columns:
-        result = result.sort_values("diff_norm", ascending=False)
 
     return result
 
