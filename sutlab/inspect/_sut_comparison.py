@@ -270,25 +270,29 @@ class SUTComparisonInspection:
     def supply_products_summary(self) -> Styler:
         """Styled supply-by-product summary table."""
         cfg = self._cfg()
-        return _style_comparison_summary_table(self.data.supply_products_summary, "supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        df = _apply_display_config(self.data.supply_products_summary, "supply_products_summary", cfg)
+        return _style_comparison_summary_table(df, "supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def supply_columns_summary(self) -> Styler:
         """Styled supply-by-transaction/category summary table."""
         cfg = self._cfg()
-        return _style_comparison_summary_table(self.data.supply_columns_summary, "supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        df = _apply_display_config(self.data.supply_columns_summary, "supply_columns_summary", cfg)
+        return _style_comparison_summary_table(df, "supply", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_products_summary(self) -> Styler:
         """Styled use-by-product summary table (purchasers' prices)."""
         cfg = self._cfg()
-        return _style_comparison_summary_table(self.data.use_products_summary, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        df = _apply_display_config(self.data.use_products_summary, "use_products_summary", cfg)
+        return _style_comparison_summary_table(df, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_columns_summary(self) -> Styler:
         """Styled use-by-transaction/category summary table (purchasers' prices)."""
         cfg = self._cfg()
-        return _style_comparison_summary_table(self.data.use_columns_summary, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        df = _apply_display_config(self.data.use_columns_summary, "use_columns_summary", cfg)
+        return _style_comparison_summary_table(df, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
