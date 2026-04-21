@@ -309,6 +309,42 @@ class SUTComparisonInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "supply",
+                "use_basic",
+                "use_purchasers",
+                "use_price_layers",
+                "balancing_targets_supply",
+                "balancing_targets_use_basic",
+                "balancing_targets_use_purchasers",
+                "balancing_targets_use_price_layers",
+                "summary",
+                "supply_products_summary",
+                "supply_columns_summary",
+                "use_products_summary",
+                "use_columns_summary",
+            ],
+            "description": [
+                "Row-level differences in supply at basic prices between the two SUTs.",
+                "Row-level differences in use at basic prices between the two SUTs.",
+                "Row-level differences in use at purchasers' prices between the two SUTs.",
+                "Row-level differences in individual price layer columns between the two SUTs.",
+                "Row-level differences in supply balancing targets (None if either SUT has no targets).",
+                "Row-level differences in use balancing targets at basic prices (None if either SUT has no targets).",
+                "Row-level differences in use balancing targets at purchasers' prices (None if either SUT has no targets).",
+                "Row-level differences in use balancing target price layers (None if either SUT has no targets).",
+                "Number of changed rows per comparison table.",
+                "Change magnitude per product in the supply comparison.",
+                "Change magnitude per transaction-category column in the supply comparison.",
+                "Change magnitude per product in the use (purchasers' prices) comparison.",
+                "Change magnitude per transaction-category column in the use comparison.",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "SUTComparisonInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`SUTComparisonInspection`.
 

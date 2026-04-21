@@ -204,6 +204,22 @@ class AggregatesNominalInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "gdp",
+                "gdp_growth",
+                "gdp_distribution",
+            ],
+            "description": [
+                "Nominal GDP decomposition with Production and Expenditure blocks; columns are id values.",
+                "Year-on-year growth rates of GDP components (Balance block excluded).",
+                "Each component expressed as a share of its block's GDP (Balance block excluded).",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "AggregatesNominalInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`AggregatesNominalInspection`.
 

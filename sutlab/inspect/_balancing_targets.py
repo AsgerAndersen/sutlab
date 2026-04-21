@@ -260,6 +260,34 @@ class UnbalancedTargetsInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "supply_categories",
+                "use_categories",
+                "supply_categories_violations",
+                "use_categories_violations",
+                "supply_transactions",
+                "use_transactions",
+                "supply_transactions_violations",
+                "use_transactions_violations",
+                "summary",
+            ],
+            "description": [
+                "Supply balancing target deviations by transaction and category.",
+                "Use balancing target deviations by transaction and category.",
+                "Supply category rows that violate configured tolerances (None if no tolerances configured).",
+                "Use category rows that violate configured tolerances (None if no tolerances configured).",
+                "Supply balancing target deviations collapsed across categories.",
+                "Use balancing target deviations collapsed across categories.",
+                "Supply transaction rows that violate configured tolerances (None if no tolerances configured).",
+                "Use transaction rows that violate configured tolerances (None if no tolerances configured).",
+                "Count of deviating rows per table, collapsed across all id values.",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "UnbalancedTargetsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedTargetsInspection`.
 

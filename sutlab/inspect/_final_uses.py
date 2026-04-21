@@ -297,6 +297,42 @@ class FinalUseInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "use",
+                "use_distribution",
+                "use_growth",
+                "use_categories",
+                "use_categories_distribution",
+                "use_categories_growth",
+                "use_products",
+                "use_products_distribution",
+                "use_products_growth",
+                "price_layers",
+                "price_layers_rates",
+                "price_layers_distribution",
+                "price_layers_growth",
+            ],
+            "description": [
+                "Final use totals by transaction (and category where applicable), at purchasers' prices.",
+                "Each transaction expressed as a share of total final use.",
+                "Year-on-year growth rates of final use totals.",
+                "Final use broken down by transaction and category.",
+                "Category values expressed as shares within each transaction.",
+                "Year-on-year growth rates of category values.",
+                "Final use broken down by transaction, category, and product.",
+                "Product values expressed as shares within each transaction-category group.",
+                "Year-on-year growth rates of product-level use values.",
+                "Price layer values (gap between basic and purchasers' prices) by layer.",
+                "Each price layer expressed as a rate relative to basic-price use.",
+                "Each price layer expressed as a share of total price layers.",
+                "Year-on-year growth rates of price layer values.",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "FinalUseInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`FinalUseInspection`.
 

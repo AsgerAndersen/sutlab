@@ -348,6 +348,42 @@ class ProductInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "balance",
+                "supply_products",
+                "use_products",
+                "balance_distribution",
+                "supply_products_distribution",
+                "use_products_distribution",
+                "balance_growth",
+                "supply_products_growth",
+                "use_products_growth",
+                "price_layers",
+                "price_layers_distribution",
+                "price_layers_growth",
+                "price_layers_rates",
+            ],
+            "description": [
+                "Supply and use totals side-by-side with a balance row, at purchasers' prices.",
+                "Supply values broken down by transaction and category.",
+                "Use values broken down by transaction and category, at purchasers' prices.",
+                "Balance table values expressed as shares of the product total.",
+                "Supply values expressed as shares of the supply total.",
+                "Use values expressed as shares of the use total.",
+                "Year-on-year growth rates of the balance table.",
+                "Year-on-year growth rates of supply values.",
+                "Year-on-year growth rates of use values.",
+                "Price layer values (gap between basic and purchasers' prices) by layer.",
+                "Each price layer expressed as a share of total price layers.",
+                "Year-on-year growth rates of price layer values.",
+                "Each price layer expressed as a rate relative to basic-price supply.",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "ProductInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`ProductInspection`.
 
