@@ -12,7 +12,7 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary
+from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary, _style_tables_description
 from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
@@ -28,6 +28,19 @@ class UnbalancedProductsData:
 
     imbalances: pd.DataFrame
     summary: pd.DataFrame
+
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with ``name`` as index and a ``description`` column."""
+        return pd.DataFrame(
+            {
+                "description": [
+                    "One row per (id, product) where supply and use differ beyond the tolerance threshold.",
+                    "Imbalance counts and magnitudes collapsed across all id values.",
+                ]
+            },
+            index=pd.Index(["imbalances", "summary"], name="name"),
+        )
 
 
 @dataclass
@@ -185,18 +198,9 @@ class UnbalancedProductsInspection:
         return _display_index(self, values, level)
 
     @property
-    def tables_description(self) -> pd.DataFrame:
-        """DataFrame with one row per table: columns ``name`` and ``description``."""
-        return pd.DataFrame({
-            "name": [
-                "imbalances",
-                "summary",
-            ],
-            "description": [
-                "One row per (id, product) where supply and use differ beyond the tolerance threshold.",
-                "Imbalance counts and magnitudes collapsed across all id values.",
-            ],
-        })
+    def tables_description(self) -> Styler:
+        """Styled table with ``name`` as index and a ``description`` column."""
+        return _style_tables_description(self.data.tables_description)
 
     def inspect_tables_comparison(self, other: "UnbalancedProductsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedProductsInspection`.
