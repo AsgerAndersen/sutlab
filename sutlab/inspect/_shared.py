@@ -356,7 +356,7 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
             _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel, decimals)
 
 
-def _display_index_values(inspection_obj: Any, values, level: str) -> Any:
+def _display_index(inspection_obj: Any, values, level: str) -> Any:
     """Filter all tables in ``inspection_obj`` to rows matching ``values`` at ``level``.
 
     Each DataFrame field whose index contains a level named ``level`` is

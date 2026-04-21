@@ -1,5 +1,5 @@
 """
-Tests for display_index_values on inspection result classes.
+Tests for display_index on inspection result classes.
 """
 
 import pytest
@@ -78,14 +78,14 @@ def inspection(sut):
 
 
 def test_returns_new_product_inspection(inspection):
-    result = inspection.display_index_values("2000", "transaction")
+    result = inspection.display_index("2000", "transaction")
     assert isinstance(result, ProductInspection)
     assert result is not inspection
 
 
 def test_preserves_display_settings(inspection):
     tweaked = inspection.set_display_unit(1000).set_rel_base(1000).set_decimals(2)
-    result = tweaked.display_index_values("2000", "transaction")
+    result = tweaked.display_index("2000", "transaction")
     assert result.display_unit == 1000
     assert result.rel_base == 1000
     assert result.decimals == 2
@@ -97,7 +97,7 @@ def test_preserves_display_settings(inspection):
 
 
 def test_exact_match_filters_transaction_level(inspection):
-    result = inspection.display_index_values("2000", "transaction")
+    result = inspection.display_index("2000", "transaction")
     trans_vals = result.data.use_products.index.get_level_values("transaction")
     # Total rows (empty string) are also present — only data rows with "2000" remain
     data_rows = trans_vals[trans_vals != ""]
@@ -105,7 +105,7 @@ def test_exact_match_filters_transaction_level(inspection):
 
 
 def test_list_of_values_keeps_multiple_transactions(inspection):
-    result = inspection.display_index_values(["2000", "6001"], "transaction")
+    result = inspection.display_index(["2000", "6001"], "transaction")
     trans_vals = result.data.use_products.index.get_level_values("transaction")
     data_rows = set(trans_vals[trans_vals != ""])
     assert data_rows == {"2000", "6001"}
@@ -113,7 +113,7 @@ def test_list_of_values_keeps_multiple_transactions(inspection):
 
 def test_wildcard_pattern(inspection):
     # "2*" should match "2000" but not "6001" or "0100"
-    result = inspection.display_index_values("2*", "transaction")
+    result = inspection.display_index("2*", "transaction")
     trans_vals = result.data.use_products.index.get_level_values("transaction")
     data_rows = set(trans_vals[trans_vals != ""])
     assert data_rows == {"2000"}
@@ -121,7 +121,7 @@ def test_wildcard_pattern(inspection):
 
 def test_negation_pattern(inspection):
     # "~6001" should exclude "6001"
-    result = inspection.display_index_values("~6001", "transaction")
+    result = inspection.display_index("~6001", "transaction")
     trans_vals = result.data.use_products.index.get_level_values("transaction")
     assert "6001" not in set(trans_vals)
 
@@ -132,7 +132,7 @@ def test_negation_pattern(inspection):
 
 
 def test_filters_product_level(inspection):
-    result = inspection.display_index_values("A", "product")
+    result = inspection.display_index("A", "product")
     for field_name in ("balance", "supply_products", "use_products"):
         df = getattr(result.data, field_name)
         prod_vals = df.index.get_level_values("product")
@@ -146,7 +146,7 @@ def test_filters_product_level(inspection):
 
 def test_unknown_level_leaves_tables_unchanged(inspection):
     original_balance_shape = inspection.data.balance.shape
-    result = inspection.display_index_values("2000", "nonexistent_level")
+    result = inspection.display_index("2000", "nonexistent_level")
     assert result.data.balance.shape == original_balance_shape
 
 
@@ -155,7 +155,7 @@ def test_level_absent_from_some_tables_skips_them(inspection):
     # price_layers has levels: product, product_txt, price_layer, transaction, transaction_txt
     # filtering by "price_layer" should only affect price_layers tables
     original_balance_shape = inspection.data.balance.shape
-    result = inspection.display_index_values("somevalue", "price_layer")
+    result = inspection.display_index("somevalue", "price_layer")
     assert result.data.balance.shape == original_balance_shape
 
 
@@ -191,7 +191,7 @@ def test_integer_value_matches_string_pattern(sut, columns):
     result = inspect_unbalanced_products(sut_unbal)
     assert isinstance(result, UnbalancedProductsInspection)
 
-    filtered = result.display_index_values(2020, "year")
+    filtered = result.display_index(2020, "year")
     id_vals = filtered.data.imbalances.index.get_level_values("year")
     assert set(id_vals) == {2020}
     assert 2021 not in set(id_vals)
@@ -220,6 +220,6 @@ def test_string_pattern_for_integer_id(sut, columns):
     result = inspect_unbalanced_products(sut_unbal)
 
     # Pass year as string — should still match the integer index level
-    filtered = result.display_index_values("2020", "year")
+    filtered = result.display_index("2020", "year")
     id_vals = filtered.data.imbalances.index.get_level_values("year")
     assert set(id_vals) == {2020}

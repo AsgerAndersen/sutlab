@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary
-from sutlab.inspect._shared import _display_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
@@ -156,7 +156,7 @@ class UnbalancedProductsInspection:
             )
         return dataclasses.replace(self, decimals=decimals)
 
-    def display_index_values(
+    def display_index(
         self,
         values: str | int | list,
         level: str,
@@ -182,7 +182,7 @@ class UnbalancedProductsInspection:
         UnbalancedProductsInspection
             A new inspection result with filtered tables.
         """
-        return _display_index_values(self, values, level)
+        return _display_index(self, values, level)
 
     def inspect_tables_comparison(self, other: "UnbalancedProductsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedProductsInspection`.

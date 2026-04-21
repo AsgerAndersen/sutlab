@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes
 from sutlab.inspect._style import _style_balancing_targets_table, _style_unbalanced_targets_summary
-from sutlab.inspect._shared import _display_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
@@ -232,7 +232,7 @@ class UnbalancedTargetsInspection:
             )
         return dataclasses.replace(self, decimals=decimals)
 
-    def display_index_values(
+    def display_index(
         self,
         values: str | int | list,
         level: str,
@@ -258,7 +258,7 @@ class UnbalancedTargetsInspection:
         UnbalancedTargetsInspection
             A new inspection result with filtered tables.
         """
-        return _display_index_values(self, values, level)
+        return _display_index(self, values, level)
 
     def inspect_tables_comparison(self, other: "UnbalancedTargetsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedTargetsInspection`.

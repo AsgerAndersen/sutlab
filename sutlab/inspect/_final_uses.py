@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._shared import _build_growth_table, _display_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _display_index, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 from sutlab.inspect._style import (
     _format_number,
@@ -269,7 +269,7 @@ class FinalUseInspection:
             )
         return dataclasses.replace(self, decimals=decimals)
 
-    def display_index_values(
+    def display_index(
         self,
         values: str | int | list,
         level: str,
@@ -295,7 +295,7 @@ class FinalUseInspection:
         FinalUseInspection
             A new inspection result with filtered tables.
         """
-        return _display_index_values(self, values, level)
+        return _display_index(self, values, level)
 
     def inspect_tables_comparison(self, other: "FinalUseInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`FinalUseInspection`.
