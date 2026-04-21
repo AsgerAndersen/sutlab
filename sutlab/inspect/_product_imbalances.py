@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary
-from sutlab.inspect._shared import _write_inspection_to_excel
+from sutlab.inspect._shared import _display_index_values, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
 
@@ -155,6 +155,34 @@ class UnbalancedProductsInspection:
                 f"decimals must be a non-negative integer. Got {decimals!r}."
             )
         return dataclasses.replace(self, decimals=decimals)
+
+    def display_index_values(
+        self,
+        values: str | int | list,
+        level: str,
+    ) -> "UnbalancedProductsInspection":
+        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
+
+        Tables whose index does not contain a level named ``level`` are left
+        unchanged. ``None`` fields are propagated unchanged. Accepts the same
+        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
+        ranges (``:``), and negation (``~``). Non-string values are stringified
+        before matching.
+
+        Parameters
+        ----------
+        values : str, int, or list of str/int
+            Values (or patterns) to keep. A single value is treated as a
+            one-element list.
+        level : str
+            Name of the index level to filter on.
+
+        Returns
+        -------
+        UnbalancedProductsInspection
+            A new inspection result with filtered tables.
+        """
+        return _display_index_values(self, values, level)
 
     def inspect_tables_comparison(self, other: "UnbalancedProductsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedProductsInspection`.
