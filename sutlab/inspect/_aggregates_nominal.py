@@ -13,7 +13,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
-from sutlab.inspect._shared import _build_growth_table, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _display_index, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _make_number_formatter,
     _make_percentage_formatter,
@@ -175,6 +175,34 @@ class AggregatesNominalInspection:
                 f"decimals must be a non-negative integer. Got {decimals!r}."
             )
         return dataclasses.replace(self, decimals=decimals)
+
+    def display_index(
+        self,
+        values: str | int | list,
+        level: str,
+    ) -> "AggregatesNominalInspection":
+        """Return a copy with all tables filtered to rows matching ``values`` at ``level``.
+
+        Tables whose index does not contain a level named ``level`` are left
+        unchanged. ``None`` fields are propagated unchanged. Accepts the same
+        pattern syntax as :func:`filter_rows`: exact codes, wildcards (``*``),
+        ranges (``:``), and negation (``~``). Non-string values are stringified
+        before matching.
+
+        Parameters
+        ----------
+        values : str, int, or list of str/int
+            Values (or patterns) to keep. A single value is treated as a
+            one-element list.
+        level : str
+            Name of the index level to filter on.
+
+        Returns
+        -------
+        AggregatesNominalInspection
+            A new inspection result with filtered tables.
+        """
+        return _display_index(self, values, level)
 
     def inspect_tables_comparison(self, other: "AggregatesNominalInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`AggregatesNominalInspection`.

@@ -14,6 +14,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.inspect._style import _REL_BASE_SYMBOLS
+from sutlab.sut import _match_codes
 
 
 def _sort_by_id_value(
@@ -353,3 +354,52 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
             _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel, decimals)
+
+
+def _display_index(inspection_obj: Any, values, level: str) -> Any:
+    """Filter all tables in ``inspection_obj`` to rows matching ``values`` at ``level``.
+
+    Each DataFrame field whose index contains a level named ``level`` is
+    filtered to rows where that level matches one of the given patterns.
+    Tables without the named level are left unchanged. ``None`` fields are
+    propagated unchanged. Values are converted to strings for matching, so
+    integer id values are matched by their string representation.
+
+    Parameters
+    ----------
+    inspection_obj : inspection result object
+        Any inspection result with a ``.data`` attribute that is a dataclass.
+    values : str, int, or list
+        Values (or patterns) to keep. Accepts the same pattern syntax as
+        :func:`~sutlab.sut.filter_rows`: exact, wildcard (``*``), range
+        (``:``), negation (``~``). A single value is treated as a one-element
+        list.
+    level : str
+        Name of the index level to filter on.
+
+    Returns
+    -------
+    Same type as ``inspection_obj``
+        A new inspection result of the same class with filtered tables.
+    """
+    patterns = [values] if not isinstance(values, list) else list(values)
+    str_patterns = [str(p) for p in patterns]
+
+    filtered_fields: dict = {}
+    for f in dataclasses.fields(inspection_obj.data):
+        val = getattr(inspection_obj.data, f.name)
+        if val is None or not isinstance(val, pd.DataFrame):
+            filtered_fields[f.name] = val
+            continue
+        if val.empty or level not in val.index.names:
+            filtered_fields[f.name] = val
+            continue
+
+        level_vals_str = val.index.get_level_values(level).astype(str)
+        unique_str_vals = list(dict.fromkeys(level_vals_str))
+        matched = set(_match_codes(unique_str_vals, str_patterns))
+        filtered_fields[f.name] = val[level_vals_str.isin(matched)]
+
+    data_cls = type(inspection_obj.data)
+    new_data = data_cls(**filtered_fields)
+    return dataclasses.replace(inspection_obj, data=new_data)
