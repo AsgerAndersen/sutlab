@@ -565,6 +565,46 @@ class IndustryInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "balance",
+                "balance_growth",
+                "supply_products",
+                "supply_products_distribution",
+                "supply_products_growth",
+                "supply_products_summary",
+                "use_products",
+                "use_products_distribution",
+                "use_products_coefficients",
+                "use_products_growth",
+                "use_products_summary",
+                "price_layers",
+                "price_layers_rates",
+                "price_layers_distribution",
+                "price_layers_growth",
+            ],
+            "description": [
+                "Output, input, gross value added, and input coefficient per industry.",
+                "Year-on-year growth rates of the balance table.",
+                "Supply values broken down by product for each industry.",
+                "Supply products expressed as shares of total output.",
+                "Year-on-year growth rates of supply product values.",
+                "Per-transaction statistics summarising the supply product breakdown (totals, counts, percentiles).",
+                "Use values broken down by product for each industry, at purchasers' prices.",
+                "Use products expressed as shares of total input.",
+                "Use product values expressed as coefficients relative to total output.",
+                "Year-on-year growth rates of use product values.",
+                "Per-transaction statistics summarising the use product breakdown (totals, counts, percentiles).",
+                "Price layer values (gap between basic and purchasers' prices) by layer.",
+                "Each price layer expressed as a rate relative to basic-price use.",
+                "Each price layer expressed as a share of total price layers.",
+                "Year-on-year growth rates of price layer values.",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "IndustryInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`IndustryInspection`.
 

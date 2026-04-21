@@ -184,6 +184,20 @@ class UnbalancedProductsInspection:
         """
         return _display_index(self, values, level)
 
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with one row per table: columns ``name`` and ``description``."""
+        return pd.DataFrame({
+            "name": [
+                "imbalances",
+                "summary",
+            ],
+            "description": [
+                "One row per (id, product) where supply and use differ beyond the tolerance threshold.",
+                "Imbalance counts and magnitudes collapsed across all id values.",
+            ],
+        })
+
     def inspect_tables_comparison(self, other: "UnbalancedProductsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedProductsInspection`.
 
