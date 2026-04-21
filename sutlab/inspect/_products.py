@@ -21,6 +21,7 @@ from sutlab.inspect._style import (
     _style_balance_table,
     _style_detail_table,
     _style_price_layers_table,
+    _style_tables_description,
 )
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
@@ -58,6 +59,47 @@ class ProductInspectionData:
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with ``name`` as index and a ``description`` column."""
+        return pd.DataFrame(
+            {
+                "description": [
+                    "Supply and use totals side-by-side with a balance row, at purchasers' prices.",
+                    "Supply values broken down by transaction and category.",
+                    "Use values broken down by transaction and category, at purchasers' prices.",
+                    "Balance table values expressed as shares of the product total.",
+                    "Supply values expressed as shares of the supply total.",
+                    "Use values expressed as shares of the use total.",
+                    "Year-on-year growth rates of the balance table.",
+                    "Year-on-year growth rates of supply values.",
+                    "Year-on-year growth rates of use values.",
+                    "Price layer values (gap between basic and purchasers' prices) by layer.",
+                    "Each price layer expressed as a share of total price layers.",
+                    "Year-on-year growth rates of price layer values.",
+                    "Each price layer expressed as a rate relative to basic-price supply.",
+                ]
+            },
+            index=pd.Index(
+                [
+                    "balance",
+                    "supply_products",
+                    "use_products",
+                    "balance_distribution",
+                    "supply_products_distribution",
+                    "use_products_distribution",
+                    "balance_growth",
+                    "supply_products_growth",
+                    "use_products_growth",
+                    "price_layers",
+                    "price_layers_distribution",
+                    "price_layers_growth",
+                    "price_layers_rates",
+                ],
+                name="name",
+            ),
+        )
 
 
 @dataclass
@@ -349,40 +391,9 @@ class ProductInspection:
         return _display_index(self, values, level)
 
     @property
-    def tables_description(self) -> pd.DataFrame:
-        """DataFrame with one row per table: columns ``name`` and ``description``."""
-        return pd.DataFrame({
-            "name": [
-                "balance",
-                "supply_products",
-                "use_products",
-                "balance_distribution",
-                "supply_products_distribution",
-                "use_products_distribution",
-                "balance_growth",
-                "supply_products_growth",
-                "use_products_growth",
-                "price_layers",
-                "price_layers_distribution",
-                "price_layers_growth",
-                "price_layers_rates",
-            ],
-            "description": [
-                "Supply and use totals side-by-side with a balance row, at purchasers' prices.",
-                "Supply values broken down by transaction and category.",
-                "Use values broken down by transaction and category, at purchasers' prices.",
-                "Balance table values expressed as shares of the product total.",
-                "Supply values expressed as shares of the supply total.",
-                "Use values expressed as shares of the use total.",
-                "Year-on-year growth rates of the balance table.",
-                "Year-on-year growth rates of supply values.",
-                "Year-on-year growth rates of use values.",
-                "Price layer values (gap between basic and purchasers' prices) by layer.",
-                "Each price layer expressed as a share of total price layers.",
-                "Year-on-year growth rates of price layer values.",
-                "Each price layer expressed as a rate relative to basic-price supply.",
-            ],
-        })
+    def tables_description(self) -> Styler:
+        """Styled table with ``name`` as index and a ``description`` column."""
+        return _style_tables_description(self.data.tables_description)
 
     def inspect_tables_comparison(self, other: "ProductInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`ProductInspection`.

@@ -12,7 +12,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT, _match_codes
-from sutlab.inspect._style import _style_balancing_targets_table, _style_unbalanced_targets_summary
+from sutlab.inspect._style import _style_balancing_targets_table, _style_unbalanced_targets_summary, _style_tables_description
 from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
@@ -35,6 +35,39 @@ class UnbalancedTargetsData:
     supply_transactions_violations: pd.DataFrame | None
     use_transactions_violations: pd.DataFrame | None
     summary: pd.DataFrame
+
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with ``name`` as index and a ``description`` column."""
+        return pd.DataFrame(
+            {
+                "description": [
+                    "Supply balancing target deviations by transaction and category.",
+                    "Use balancing target deviations by transaction and category.",
+                    "Supply category rows that violate configured tolerances (None if no tolerances configured).",
+                    "Use category rows that violate configured tolerances (None if no tolerances configured).",
+                    "Supply balancing target deviations collapsed across categories.",
+                    "Use balancing target deviations collapsed across categories.",
+                    "Supply transaction rows that violate configured tolerances (None if no tolerances configured).",
+                    "Use transaction rows that violate configured tolerances (None if no tolerances configured).",
+                    "Count of deviating rows per table, collapsed across all id values.",
+                ]
+            },
+            index=pd.Index(
+                [
+                    "supply_categories",
+                    "use_categories",
+                    "supply_categories_violations",
+                    "use_categories_violations",
+                    "supply_transactions",
+                    "use_transactions",
+                    "supply_transactions_violations",
+                    "use_transactions_violations",
+                    "summary",
+                ],
+                name="name",
+            ),
+        )
 
 
 @dataclass
@@ -261,32 +294,9 @@ class UnbalancedTargetsInspection:
         return _display_index(self, values, level)
 
     @property
-    def tables_description(self) -> pd.DataFrame:
-        """DataFrame with one row per table: columns ``name`` and ``description``."""
-        return pd.DataFrame({
-            "name": [
-                "supply_categories",
-                "use_categories",
-                "supply_categories_violations",
-                "use_categories_violations",
-                "supply_transactions",
-                "use_transactions",
-                "supply_transactions_violations",
-                "use_transactions_violations",
-                "summary",
-            ],
-            "description": [
-                "Supply balancing target deviations by transaction and category.",
-                "Use balancing target deviations by transaction and category.",
-                "Supply category rows that violate configured tolerances (None if no tolerances configured).",
-                "Use category rows that violate configured tolerances (None if no tolerances configured).",
-                "Supply balancing target deviations collapsed across categories.",
-                "Use balancing target deviations collapsed across categories.",
-                "Supply transaction rows that violate configured tolerances (None if no tolerances configured).",
-                "Use transaction rows that violate configured tolerances (None if no tolerances configured).",
-                "Count of deviating rows per table, collapsed across all id values.",
-            ],
-        })
+    def tables_description(self) -> Styler:
+        """Styled table with ``name`` as index and a ``description`` column."""
+        return _style_tables_description(self.data.tables_description)
 
     def inspect_tables_comparison(self, other: "UnbalancedTargetsInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`UnbalancedTargetsInspection`.

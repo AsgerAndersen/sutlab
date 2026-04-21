@@ -2228,3 +2228,40 @@ def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | N
     styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
 
     return styler
+
+
+def _style_tables_description(df: pd.DataFrame) -> Styler:
+    """Apply alternating neutral grey to the tables_description DataFrame.
+
+    Index (table name) uses ``_INDEX_COLORS["balance"]``; data cells use
+    ``_DATA_COLORS["balance"]``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Tables description DataFrame with ``name`` as index and a single
+        ``description`` column.
+    """
+    styler = df.style.set_properties(**{"text-align": "left"})
+
+    if df.empty:
+        return styler
+
+    n = len(df)
+    data_css = {
+        col: [
+            f"background-color: {_DATA_COLORS['balance'][i % 2]}"
+            for i in range(n)
+        ]
+        for col in df.columns
+    }
+    index_css = [
+        f"background-color: {_INDEX_COLORS['balance'][i % 2]}"
+        for i in range(n)
+    ]
+
+    css_df = pd.DataFrame(data_css, index=df.index)
+    styler = styler.apply(lambda d: css_df, axis=None)
+    styler = styler.apply_index(lambda s, css=index_css: css, axis=0)
+
+    return styler

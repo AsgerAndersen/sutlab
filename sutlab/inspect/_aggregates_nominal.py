@@ -18,6 +18,7 @@ from sutlab.inspect._style import (
     _make_number_formatter,
     _make_percentage_formatter,
     _style_aggregates_nominal_table,
+    _style_tables_description,
 )
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 
@@ -55,6 +56,20 @@ class AggregatesNominalData:
     gdp: pd.DataFrame
     gdp_growth: pd.DataFrame
     gdp_distribution: pd.DataFrame
+
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with ``name`` as index and a ``description`` column."""
+        return pd.DataFrame(
+            {
+                "description": [
+                    "Nominal GDP decomposition with Production and Expenditure blocks; columns are id values.",
+                    "Year-on-year growth rates of GDP components (Balance block excluded).",
+                    "Each component expressed as a share of its block's GDP (Balance block excluded).",
+                ]
+            },
+            index=pd.Index(["gdp", "gdp_growth", "gdp_distribution"], name="name"),
+        )
 
 
 @dataclass
@@ -205,20 +220,9 @@ class AggregatesNominalInspection:
         return _display_index(self, values, level)
 
     @property
-    def tables_description(self) -> pd.DataFrame:
-        """DataFrame with one row per table: columns ``name`` and ``description``."""
-        return pd.DataFrame({
-            "name": [
-                "gdp",
-                "gdp_growth",
-                "gdp_distribution",
-            ],
-            "description": [
-                "Nominal GDP decomposition with Production and Expenditure blocks; columns are id values.",
-                "Year-on-year growth rates of GDP components (Balance block excluded).",
-                "Each component expressed as a share of its block's GDP (Balance block excluded).",
-            ],
-        })
+    def tables_description(self) -> Styler:
+        """Styled table with ``name`` as index and a ``description`` column."""
+        return _style_tables_description(self.data.tables_description)
 
     def inspect_tables_comparison(self, other: "AggregatesNominalInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`AggregatesNominalInspection`.

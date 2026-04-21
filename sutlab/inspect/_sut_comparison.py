@@ -17,6 +17,7 @@ from sutlab.inspect._style import (
     _style_comparison_layers_table,
     _style_summary_table,
     _style_comparison_summary_table,
+    _style_tables_description,
 )
 from sutlab.inspect._shared import _display_index, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
@@ -106,6 +107,47 @@ class SUTComparisonData:
     supply_columns_summary: pd.DataFrame
     use_products_summary: pd.DataFrame
     use_columns_summary: pd.DataFrame
+
+    @property
+    def tables_description(self) -> pd.DataFrame:
+        """DataFrame with ``name`` as index and a ``description`` column."""
+        return pd.DataFrame(
+            {
+                "description": [
+                    "Row-level differences in supply at basic prices between the two SUTs.",
+                    "Row-level differences in use at basic prices between the two SUTs.",
+                    "Row-level differences in use at purchasers' prices between the two SUTs.",
+                    "Row-level differences in individual price layer columns between the two SUTs.",
+                    "Row-level differences in supply balancing targets (None if either SUT has no targets).",
+                    "Row-level differences in use balancing targets at basic prices (None if either SUT has no targets).",
+                    "Row-level differences in use balancing targets at purchasers' prices (None if either SUT has no targets).",
+                    "Row-level differences in use balancing target price layers (None if either SUT has no targets).",
+                    "Number of changed rows per comparison table.",
+                    "Change magnitude per product in the supply comparison.",
+                    "Change magnitude per transaction-category column in the supply comparison.",
+                    "Change magnitude per product in the use (purchasers' prices) comparison.",
+                    "Change magnitude per transaction-category column in the use comparison.",
+                ]
+            },
+            index=pd.Index(
+                [
+                    "supply",
+                    "use_basic",
+                    "use_purchasers",
+                    "use_price_layers",
+                    "balancing_targets_supply",
+                    "balancing_targets_use_basic",
+                    "balancing_targets_use_purchasers",
+                    "balancing_targets_use_price_layers",
+                    "summary",
+                    "supply_products_summary",
+                    "supply_columns_summary",
+                    "use_products_summary",
+                    "use_columns_summary",
+                ],
+                name="name",
+            ),
+        )
 
 
 @dataclass
@@ -310,40 +352,9 @@ class SUTComparisonInspection:
         return _display_index(self, values, level)
 
     @property
-    def tables_description(self) -> pd.DataFrame:
-        """DataFrame with one row per table: columns ``name`` and ``description``."""
-        return pd.DataFrame({
-            "name": [
-                "supply",
-                "use_basic",
-                "use_purchasers",
-                "use_price_layers",
-                "balancing_targets_supply",
-                "balancing_targets_use_basic",
-                "balancing_targets_use_purchasers",
-                "balancing_targets_use_price_layers",
-                "summary",
-                "supply_products_summary",
-                "supply_columns_summary",
-                "use_products_summary",
-                "use_columns_summary",
-            ],
-            "description": [
-                "Row-level differences in supply at basic prices between the two SUTs.",
-                "Row-level differences in use at basic prices between the two SUTs.",
-                "Row-level differences in use at purchasers' prices between the two SUTs.",
-                "Row-level differences in individual price layer columns between the two SUTs.",
-                "Row-level differences in supply balancing targets (None if either SUT has no targets).",
-                "Row-level differences in use balancing targets at basic prices (None if either SUT has no targets).",
-                "Row-level differences in use balancing targets at purchasers' prices (None if either SUT has no targets).",
-                "Row-level differences in use balancing target price layers (None if either SUT has no targets).",
-                "Number of changed rows per comparison table.",
-                "Change magnitude per product in the supply comparison.",
-                "Change magnitude per transaction-category column in the supply comparison.",
-                "Change magnitude per product in the use (purchasers' prices) comparison.",
-                "Change magnitude per transaction-category column in the use comparison.",
-            ],
-        })
+    def tables_description(self) -> Styler:
+        """Styled table with ``name`` as index and a ``description`` column."""
+        return _style_tables_description(self.data.tables_description)
 
     def inspect_tables_comparison(self, other: "SUTComparisonInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`SUTComparisonInspection`.
