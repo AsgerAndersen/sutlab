@@ -416,7 +416,7 @@ def _summary_row_format_func(summary_label: str, display_unit: float | None = No
     - ``value_*`` → number (divided by ``display_unit`` when set)
     - ``share_*`` → percentage (never divided)
     """
-    if summary_label.startswith("n_products"):
+    if summary_label.startswith("n_"):
         return lambda v: "" if pd.isna(v) else str(int(v))
     if summary_label.startswith("share_"):
         return _make_percentage_formatter(rel_base, decimals)
@@ -554,6 +554,93 @@ def _style_products_summary_table(
     styler = styler.apply_index(
         lambda s, css=industry_txt_css: css, level="industry_txt", axis=0
     )
+    return styler
+
+
+def _style_categories_summary_table(
+    df: pd.DataFrame,
+    color_key: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
+    all_rel: bool = False,
+    decimals: int = 1,
+) -> Styler:
+    """Apply per-row formatting, colours, and separators to a categories summary table.
+
+    Index levels: ``(product, product_txt, summary)``.
+
+    Formatting is determined by the ``summary`` label of each row:
+
+    - ``total_*`` → number format
+    - ``n_categories`` / ``n_categories_*`` → integer (no decimal point)
+    - ``value_*`` → number format
+    - ``share_*`` → percentage format
+
+    When ``all_rel=True``, all cells are formatted as percentages regardless
+    of the summary label (used for the ``.rel`` table in a
+    :class:`~sutlab.inspect.TablesComparison`).
+
+    Colours: rows alternate between the two lighter shades of the supply/use
+    palette. No bold on any row. Thick border (``2px``) between product blocks.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary table produced by :func:`~sutlab.inspect._shared._build_summary_table`
+        with ``group_levels=["product", "product_txt"]``.
+    color_key : str
+        ``"supply"`` or ``"use"`` — selects the colour set from
+        ``_DATA_COLORS`` / ``_INDEX_COLORS``.
+    all_rel : bool, optional
+        When ``True``, all cells are formatted as percentages. Default ``False``.
+    """
+    summary_vals = df.index.get_level_values("summary")
+    unique_labels = list(dict.fromkeys(summary_vals))
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
+    styler = df.style.format(na_rep="")
+    for label in unique_labels:
+        mask = summary_vals == label
+        row_positions = [i for i, m in enumerate(mask) if m]
+        fmt = pct_fmt if all_rel else _summary_row_format_func(label, display_unit, rel_base, decimals)
+        styler = styler.format(fmt, na_rep="", subset=(df.index[row_positions], df.columns))
+
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS[color_key]
+    idx_row_colors = _INDEX_COLORS[color_key]
+
+    product_vals = df.index.get_level_values("product")
+    products = list(dict.fromkeys(product_vals))
+    n = len(df)
+
+    data_css = [""] * n
+    summary_css = [""] * n
+    product_css = [""] * n
+    product_txt_css = [""] * n
+
+    for prod_idx, product in enumerate(products):
+        is_last_product = (prod_idx == len(products) - 1)
+        product_positions = [i for i, v in enumerate(product_vals) if v == product]
+
+        if not is_last_product:
+            # Border on the merged product/product_txt cell (first row of block).
+            product_css[product_positions[0]] = "border-bottom: 2px solid #999"
+            product_txt_css[product_positions[0]] = "border-bottom: 2px solid #999"
+
+        for row_counter, i_abs in enumerate(product_positions):
+            is_last_in_block = (row_counter == len(product_positions) - 1)
+            sep = "; border-bottom: 2px solid #999" if is_last_in_block and not is_last_product else ""
+            data_css[i_abs] = f"background-color: {data_row_colors[row_counter % 2]}{sep}"
+            summary_css[i_abs] = f"background-color: {idx_row_colors[row_counter % 2]}{sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=summary_css: css, level="summary", axis=0)
+    styler = styler.apply_index(lambda s, css=product_css: css, level="product", axis=0)
+    styler = styler.apply_index(lambda s, css=product_txt_css: css, level="product_txt", axis=0)
     return styler
 
 

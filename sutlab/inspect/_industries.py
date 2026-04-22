@@ -20,7 +20,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
-from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _build_summary_table, _get_index_values, _write_inspection_to_excel
 import dataclasses
 
 from sutlab.derive import compute_price_layer_rates
@@ -1700,29 +1700,6 @@ def _build_price_layers_distribution(price_layers: pd.DataFrame) -> pd.DataFrame
     return result_data
 
 
-def _percentile_label(p: float) -> str:
-    """Return the canonical display name for a percentile value.
-
-    Parameters
-    ----------
-    p : float
-        Percentile in [0, 1].
-
-    Returns
-    -------
-    str
-        ``"min"`` for 0.0, ``"median"`` for 0.5, ``"max"`` for 1.0,
-        ``"p{int(p*100)}"`` for all other values.
-    """
-    if p == 0.0:
-        return "min"
-    if p == 0.5:
-        return "median"
-    if p == 1.0:
-        return "max"
-    return f"p{int(p * 100)}"
-
-
 def _build_products_summary(
     products_table: pd.DataFrame,
     percentiles: list[float],
@@ -1731,192 +1708,15 @@ def _build_products_summary(
 ) -> pd.DataFrame:
     """Build per-transaction summary statistics from a supply_products or use_products table.
 
-    Aggregates over the product dimension within each
-    ``(industry, transaction)`` group. Only non-zero product values
-    contribute to n_products, percentiles, shares, and coverage counts.
-
-    Parameters
-    ----------
-    products_table : pd.DataFrame
-        Wide-format DataFrame with a six-level MultiIndex:
-        ``(industry, industry_txt, transaction, transaction_txt, product,
-        product_txt)``. Non-total rows have ``transaction != ""``.
-    percentiles : list of float
-        Percentile values in [0, 1] to compute for absolute values and
-        shares. Labels follow :func:`_percentile_label`. Value and share
-        rows appear in descending percentile order.
-    coverage_thresholds : list of float
-        Fraction-of-total thresholds in [0, 1]. For each threshold ``t``,
-        the result contains an ``"n_products_{label}"`` row with the minimum
-        number of products (sorted by value descending, per year) needed to
-        reach ``t * total``. Coverage rows appear in ascending threshold order.
-    total_label : str
-        Label for the total row in the ``summary`` index level. Default
-        ``"total_supply"``; pass ``"total_use"`` for use tables.
-
-    Returns
-    -------
-    pd.DataFrame
-        Wide-format summary table with a five-level MultiIndex:
-        ``(industry, industry_txt, transaction, transaction_txt, summary)``.
-        Columns match ``products_table.columns``. Empty when
-        ``products_table`` is empty or contains no non-total rows.
-
-        Row order within each ``(industry, transaction)`` block:
-
-        1. ``total_label`` — sum of all products.
-        2. ``n_products`` — count of non-zero products.
-        3. ``n_products_{label}`` — one row per coverage threshold, ascending.
-        4. ``value_{label}`` — one row per percentile, descending.
-        5. ``share_{label}`` — one row per percentile, descending.
+    Aggregates over the product dimension within each ``(industry, transaction)``
+    group. Delegates to :func:`~sutlab.inspect._shared._build_summary_table`.
     """
-    if products_table.empty:
-        return pd.DataFrame()
-
-    group_levels = ["industry", "industry_txt", "transaction", "transaction_txt"]
-    id_cols = list(products_table.columns)
-
-    # Non-total rows: transaction code is non-empty.
-    product_mask = products_table.index.get_level_values("transaction") != ""
-    product_rows = products_table[product_mask].astype(float)
-
-    if product_rows.empty:
-        return pd.DataFrame()
-
-    # --- Vectorized aggregation ---
-
-    # Group totals: sum of all product values per (group, year).
-    totals_wide = product_rows.groupby(level=group_levels, dropna=False).sum()
-
-    # n_products: count of non-zero values per (group, year).
-    n_products_wide = (product_rows != 0).groupby(level=group_levels, dropna=False).sum()
-
-    # Replace zeros with NaN so groupby quantile skips them.
-    nonzero_values = product_rows.where(product_rows != 0)
-
-    # Value percentiles over non-zero products.
-    value_quantiles = {
-        p: nonzero_values.groupby(level=group_levels, dropna=False).quantile(p)
-        for p in percentiles
-    }
-
-    # Shares = value / group total. Align group totals to every product row.
-    safe_totals = totals_wide.replace(0, float("nan"))
-    group_keys = list(
-        zip(*[product_rows.index.get_level_values(lv) for lv in group_levels])
+    return _build_summary_table(
+        detail_table=products_table,
+        group_levels=["industry", "industry_txt", "transaction", "transaction_txt"],
+        item_levels=["product"],
+        item_count_label="n_products",
+        total_label=total_label,
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
     )
-    denominators = safe_totals.loc[group_keys].values
-    shares = pd.DataFrame(
-        product_rows.values / denominators,
-        index=product_rows.index,
-        columns=id_cols,
-    )
-    nonzero_shares = shares.where(product_rows != 0)
-
-    # Share percentiles over non-zero products.
-    share_quantiles = {
-        p: nonzero_shares.groupby(level=group_levels, dropna=False).quantile(p)
-        for p in percentiles
-    }
-
-    # Coverage counts: for each threshold t, find the minimum number of
-    # products (sorted by value descending, per year) whose cumulative sum
-    # reaches >= t * total. Computed in a single melt+sort+cumsum pass.
-    coverage_wide: dict[float, pd.DataFrame] = {}
-    if coverage_thresholds:
-        # Flatten to long format: (group, product, year) → value.
-        flat = product_rows.reset_index()
-        long = flat.melt(
-            id_vars=group_levels + [products_table.index.names[4]],  # product col
-            value_vars=id_cols,
-            var_name="_year",
-            value_name="_value",
-        )
-        # Drop product_txt by not including it — it was not in id_vars.
-        long = long[long["_value"].notna() & (long["_value"] != 0)].copy()
-
-        if not long.empty:
-            group_key = group_levels + ["_year"]
-            long = long.sort_values(
-                group_key + ["_value"],
-                ascending=[True] * len(group_key) + [False],
-            )
-            long["_cumsum"] = long.groupby(group_key, sort=False)["_value"].cumsum()
-            long["_total"] = long.groupby(group_key, sort=False)["_value"].transform("sum")
-            long["_rank"] = long.groupby(group_key, sort=False).cumcount() + 1
-
-            for t in coverage_thresholds:
-                covered = long[long["_cumsum"] >= t * long["_total"]]
-                first = (
-                    covered.groupby(group_key, sort=False)["_rank"]
-                    .first()
-                    .reset_index()
-                )
-                first.columns = group_levels + ["_year", "_count"]
-                wide = first.pivot_table(
-                    index=group_levels,
-                    columns="_year",
-                    values="_count",
-                    aggfunc="first",
-                )
-                wide.columns.name = None
-                for id_val in id_cols:
-                    if id_val not in wide.columns:
-                        wide[id_val] = float("nan")
-                coverage_wide[t] = wide[id_cols]
-
-    # --- Ordered assembly ---
-    # Determine distinct (industry, transaction) groups in appearance order.
-    seen: set = set()
-    ordered_groups: list = []
-    for idx_tuple in product_rows.index:
-        key = (idx_tuple[0], idx_tuple[1], idx_tuple[2], idx_tuple[3])
-        if key not in seen:
-            seen.add(key)
-            ordered_groups.append(key)
-
-    # Summary row labels in the desired display order:
-    # total, n_products, coverage (asc), value (desc), share (desc).
-    sorted_thresholds = sorted(coverage_thresholds)
-    sorted_percentiles_desc = sorted(percentiles, reverse=True)
-    summary_labels = (
-        [total_label, "n_products"]
-        + [f"n_products_p{int(t * 100)}" for t in sorted_thresholds]
-        + [f"value_{_percentile_label(p)}" for p in sorted_percentiles_desc]
-        + [f"share_{_percentile_label(p)}" for p in sorted_percentiles_desc]
-    )
-
-    blocks = []
-    for group in ordered_groups:
-        industry, industry_txt, transaction, transaction_txt = group
-        row_data = [
-            totals_wide.loc[group].tolist(),
-            n_products_wide.loc[group].tolist(),
-        ]
-        for t in sorted_thresholds:
-            if t in coverage_wide and group in coverage_wide[t].index:
-                row_data.append(coverage_wide[t].loc[group].tolist())
-            else:
-                row_data.append([float("nan")] * len(id_cols))
-        for p in sorted_percentiles_desc:
-            row_data.append(value_quantiles[p].loc[group].tolist())
-        for p in sorted_percentiles_desc:
-            row_data.append(share_quantiles[p].loc[group].tolist())
-
-        row_labels = [
-            (industry, industry_txt, transaction, transaction_txt, label)
-            for label in summary_labels
-        ]
-        block = pd.DataFrame(
-            row_data,
-            index=pd.MultiIndex.from_tuples(
-                row_labels, names=group_levels + ["summary"]
-            ),
-            columns=id_cols,
-        )
-        blocks.append(block)
-
-    if not blocks:
-        return pd.DataFrame()
-
-    return pd.concat(blocks)

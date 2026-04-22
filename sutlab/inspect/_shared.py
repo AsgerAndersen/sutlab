@@ -268,6 +268,233 @@ def _fit_index_column_widths(ws, n_index_cols: int) -> None:
         ws.column_dimensions[col_letter].width = max_len + 2
 
 
+def _percentile_label(p: float) -> str:
+    """Return the canonical display name for a percentile value.
+
+    Parameters
+    ----------
+    p : float
+        Percentile in [0, 1].
+
+    Returns
+    -------
+    str
+        ``"min"`` for 0.0, ``"median"`` for 0.5, ``"max"`` for 1.0,
+        ``"p{int(p*100)}"`` for all other values.
+    """
+    if p == 0.0:
+        return "min"
+    if p == 0.5:
+        return "median"
+    if p == 1.0:
+        return "max"
+    return f"p{int(p * 100)}"
+
+
+def _build_summary_table(
+    detail_table: pd.DataFrame,
+    group_levels: list[str],
+    item_levels: list[str],
+    item_count_label: str,
+    total_label: str,
+    percentiles: list[float],
+    coverage_thresholds: list[float],
+) -> pd.DataFrame:
+    """Build per-group summary statistics from a detail table.
+
+    Aggregates over the item dimension within each group defined by
+    ``group_levels``. Only non-zero item values contribute to counts,
+    percentiles, shares, and coverage counts. Non-total rows are identified
+    by ``transaction != ""``.
+
+    Parameters
+    ----------
+    detail_table : pd.DataFrame
+        Wide-format DataFrame with a MultiIndex that includes at least a
+        ``"transaction"`` level and the levels named in ``group_levels`` and
+        ``item_levels``. Non-total rows have ``transaction != ""``.
+    group_levels : list of str
+        Index level names that define the blocks to aggregate within
+        (e.g. ``["industry", "industry_txt", "transaction", "transaction_txt"]``
+        for the industries summary, or ``["product", "product_txt"]`` for the
+        products summary).
+    item_levels : list of str
+        Index level names that uniquely identify items within each group
+        (e.g. ``["product"]`` for the industries summary, or
+        ``["transaction", "category"]`` for the products summary).
+    item_count_label : str
+        Label for the item count row (e.g. ``"n_products"`` or
+        ``"n_categories"``). Coverage rows use this as a prefix:
+        ``"{item_count_label}_p{int(t*100)}"``.
+    total_label : str
+        Label for the total row (e.g. ``"total_supply"`` or ``"total_use"``).
+    percentiles : list of float
+        Percentile values in [0, 1] to compute for absolute values and shares.
+        Value and share rows appear in descending percentile order.
+    coverage_thresholds : list of float
+        Fraction-of-total thresholds in [0, 1]. For each threshold ``t``,
+        the result contains an ``"{item_count_label}_p{int(t*100)}"`` row
+        with the minimum number of items (sorted by value descending, per year)
+        needed to reach ``t * total``. Coverage rows appear in ascending order.
+
+    Returns
+    -------
+    pd.DataFrame
+        Wide-format summary table with a MultiIndex of
+        ``group_levels + ["summary"]``. Columns match ``detail_table.columns``.
+        Empty when ``detail_table`` is empty or has no non-total rows.
+
+        Row order within each group block:
+
+        1. ``total_label`` — sum of all items.
+        2. ``item_count_label`` — count of non-zero items.
+        3. ``"{item_count_label}_p{N}"`` — one row per coverage threshold, ascending.
+        4. ``"value_{label}"`` — one row per percentile, descending.
+        5. ``"share_{label}"`` — one row per percentile, descending.
+    """
+    if detail_table.empty:
+        return pd.DataFrame()
+
+    id_cols = list(detail_table.columns)
+
+    # Non-total rows: transaction code is non-empty.
+    non_total_mask = detail_table.index.get_level_values("transaction") != ""
+    item_rows = detail_table[non_total_mask].astype(float)
+
+    if item_rows.empty:
+        return pd.DataFrame()
+
+    # --- Vectorised aggregation ---
+
+    # Group totals: sum of all item values per (group, year).
+    totals_wide = item_rows.groupby(level=group_levels, dropna=False).sum()
+
+    # n_items: count of non-zero values per (group, year).
+    n_items_wide = (item_rows != 0).groupby(level=group_levels, dropna=False).sum()
+
+    # Replace zeros with NaN so groupby quantile skips them.
+    nonzero_values = item_rows.where(item_rows != 0)
+
+    # Value percentiles over non-zero items.
+    value_quantiles = {
+        p: nonzero_values.groupby(level=group_levels, dropna=False).quantile(p)
+        for p in percentiles
+    }
+
+    # Shares = value / group total. Align group totals to every item row.
+    safe_totals = totals_wide.replace(0, float("nan"))
+    group_keys = list(
+        zip(*[item_rows.index.get_level_values(lv) for lv in group_levels])
+    )
+    denominators = safe_totals.loc[group_keys].values
+    shares = pd.DataFrame(
+        item_rows.values / denominators,
+        index=item_rows.index,
+        columns=id_cols,
+    )
+    nonzero_shares = shares.where(item_rows != 0)
+
+    # Share percentiles over non-zero items.
+    share_quantiles = {
+        p: nonzero_shares.groupby(level=group_levels, dropna=False).quantile(p)
+        for p in percentiles
+    }
+
+    # Coverage counts: for each threshold t, find the minimum number of items
+    # (sorted by value descending, per year) whose cumulative sum reaches
+    # >= t * total. Computed in a single melt+sort+cumsum pass.
+    coverage_wide: dict[float, pd.DataFrame] = {}
+    if coverage_thresholds:
+        flat = item_rows.reset_index()
+        long = flat.melt(
+            id_vars=group_levels + item_levels,
+            value_vars=id_cols,
+            var_name="_year",
+            value_name="_value",
+        )
+        long = long[long["_value"].notna() & (long["_value"] != 0)].copy()
+
+        if not long.empty:
+            group_key = group_levels + ["_year"]
+            long = long.sort_values(
+                group_key + ["_value"],
+                ascending=[True] * len(group_key) + [False],
+            )
+            long["_cumsum"] = long.groupby(group_key, sort=False)["_value"].cumsum()
+            long["_total"] = long.groupby(group_key, sort=False)["_value"].transform("sum")
+            long["_rank"] = long.groupby(group_key, sort=False).cumcount() + 1
+
+            for t in coverage_thresholds:
+                covered = long[long["_cumsum"] >= t * long["_total"]]
+                first = (
+                    covered.groupby(group_key, sort=False)["_rank"]
+                    .first()
+                    .reset_index()
+                )
+                first.columns = group_levels + ["_year", "_count"]
+                wide = first.pivot_table(
+                    index=group_levels,
+                    columns="_year",
+                    values="_count",
+                    aggfunc="first",
+                )
+                wide.columns.name = None
+                for id_val in id_cols:
+                    if id_val not in wide.columns:
+                        wide[id_val] = float("nan")
+                coverage_wide[t] = wide[id_cols]
+
+    # --- Ordered assembly ---
+    n_group = len(group_levels)
+    seen: set = set()
+    ordered_groups: list = []
+    for idx_tuple in item_rows.index:
+        key = idx_tuple[:n_group]
+        if key not in seen:
+            seen.add(key)
+            ordered_groups.append(key)
+
+    sorted_thresholds = sorted(coverage_thresholds)
+    sorted_percentiles_desc = sorted(percentiles, reverse=True)
+    summary_labels = (
+        [total_label, item_count_label]
+        + [f"{item_count_label}_p{int(t * 100)}" for t in sorted_thresholds]
+        + [f"value_{_percentile_label(p)}" for p in sorted_percentiles_desc]
+        + [f"share_{_percentile_label(p)}" for p in sorted_percentiles_desc]
+    )
+
+    blocks = []
+    for group in ordered_groups:
+        row_data = [
+            totals_wide.loc[group].tolist(),
+            n_items_wide.loc[group].tolist(),
+        ]
+        for t in sorted_thresholds:
+            if t in coverage_wide and group in coverage_wide[t].index:
+                row_data.append(coverage_wide[t].loc[group].tolist())
+            else:
+                row_data.append([float("nan")] * len(id_cols))
+        for p in sorted_percentiles_desc:
+            row_data.append(value_quantiles[p].loc[group].tolist())
+        for p in sorted_percentiles_desc:
+            row_data.append(share_quantiles[p].loc[group].tolist())
+
+        row_labels = [(*group, label) for label in summary_labels]
+        block = pd.DataFrame(
+            row_data,
+            index=pd.MultiIndex.from_tuples(
+                row_labels, names=group_levels + ["summary"]
+            ),
+            columns=id_cols,
+        )
+        blocks.append(block)
+
+    if not blocks:
+        return pd.DataFrame()
+
+    return pd.concat(blocks)
+
+
 def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
     """Build year-on-year growth table: change relative to the previous year.
 

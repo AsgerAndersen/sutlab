@@ -22,13 +22,14 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
-from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _build_summary_table, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
     _make_number_formatter,
     _make_percentage_formatter,
     _style_balance_table,
+    _style_categories_summary_table,
     _style_detail_table,
     _style_price_layers_table,
     _style_tables_description,
@@ -59,6 +60,8 @@ class ProductInspectionData:
     balance: pd.DataFrame
     supply: pd.DataFrame = field(default_factory=pd.DataFrame)
     use: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     balance_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     supply_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     use_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -79,6 +82,8 @@ class ProductInspectionData:
                     "Supply and use totals side-by-side with a balance row, at purchasers' prices.",
                     "Supply values broken down by transaction and category.",
                     "Use values broken down by transaction and category, at purchasers' prices.",
+                    "Per-product statistics summarising the supply category breakdown (totals, counts, percentiles).",
+                    "Per-product statistics summarising the use category breakdown (totals, counts, percentiles).",
                     "Balance table values expressed as shares of the product total.",
                     "Supply values expressed as shares of the supply total.",
                     "Use values expressed as shares of the use total.",
@@ -96,6 +101,8 @@ class ProductInspectionData:
                     "balance",
                     "supply",
                     "use",
+                    "supply_summary",
+                    "use_summary",
                     "balance_distribution",
                     "supply_distribution",
                     "use_distribution",
@@ -116,6 +123,8 @@ _PRODUCT_PROTECTED_TABLES = frozenset({
     "balance",
     "balance_distribution",
     "balance_growth",
+    "supply_summary",
+    "use_summary",
 })
 
 _PRODUCT_PROTECTED_INDEX_VALUES = {"transaction": [""]}
@@ -304,6 +313,22 @@ class ProductInspection:
     def use(self) -> Styler:
         df = _apply_display_config(self.data.use, "use", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "use")
+
+    @property
+    def supply_summary(self) -> Styler:
+        cfg = self.display_configuration
+        return _style_categories_summary_table(
+            self.data.supply_summary, "supply", cfg.display_unit, cfg.rel_base,
+            all_rel=self._all_rel, decimals=cfg.decimals,
+        )
+
+    @property
+    def use_summary(self) -> Styler:
+        cfg = self.display_configuration
+        return _style_categories_summary_table(
+            self.data.use_summary, "use", cfg.display_unit, cfg.rel_base,
+            all_rel=self._all_rel, decimals=cfg.decimals,
+        )
 
     @property
     def balance_distribution(self) -> Styler:
@@ -547,6 +572,9 @@ def inspect_products(
     sut: SUT,
     products: str | list[str],
     ids=None,
+    *,
+    percentiles: list[float] | None = None,
+    coverage_thresholds: list[float] | None = None,
 ) -> ProductInspection:
     """
     Return inspection tables for one or more products.
@@ -565,11 +593,20 @@ def inspect_products(
         single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
         range (``ids=range(2015, 2022)``). The column order follows the
         sorted order of the full collection, not the order of the argument.
+    percentiles : list of float, optional
+        Percentile values in [0, 1] for ``supply_summary`` and
+        ``use_summary``. Default ``[0.5, 1.0]`` (median and max).
+    coverage_thresholds : list of float, optional
+        Coverage thresholds in [0, 1] for ``supply_summary`` and
+        ``use_summary``. For each threshold ``t``, the summary includes an
+        ``n_categories_p{int(t*100)}`` row with the minimum number of
+        (transaction, category) combinations needed to cover ``t * total``.
+        Default ``[0.5, 0.8, 0.95]``.
 
     Returns
     -------
     ProductInspection
-        A dataclass with 13 inspection tables. Raw DataFrames are available
+        A dataclass with 15 inspection tables. Raw DataFrames are available
         under ``result.data``; the same-named properties on the returned
         object give styled versions for Jupyter display. See
         :class:`ProductInspection` for field descriptions.
@@ -588,6 +625,11 @@ def inspect_products(
     ValueError
         If any value in ``ids`` is not found in the collection.
     """
+    if percentiles is None:
+        percentiles = [0.5, 1.0]
+    if coverage_thresholds is None:
+        coverage_thresholds = [0.5, 0.8, 0.95]
+
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call inspect_products. "
@@ -710,10 +752,31 @@ def inspect_products(
         price_layers, sut, all_ids, trans_rates
     )
 
+    supply_summary = _build_summary_table(
+        detail_table=supply,
+        group_levels=["product", "product_txt"],
+        item_levels=["transaction", "category"],
+        item_count_label="n_categories",
+        total_label="total_supply",
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
+    )
+    use_summary = _build_summary_table(
+        detail_table=use,
+        group_levels=["product", "product_txt"],
+        item_levels=["transaction", "category"],
+        item_count_label="n_categories",
+        total_label="total_use",
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
+    )
+
     data = ProductInspectionData(
         balance=balance,
         supply=supply,
         use=use,
+        supply_summary=supply_summary,
+        use_summary=use_summary,
         balance_distribution=balance_distribution,
         supply_distribution=supply_distribution,
         use_distribution=use_distribution,
