@@ -279,6 +279,7 @@ class ProductInspection:
     data: ProductInspectionData
     display_configuration: DisplayConfiguration = field(default_factory=_product_default_config)
     _all_rel: bool = field(default=False, repr=False)
+    _price_layer_columns: list[str] = field(default_factory=list, repr=False)
 
     def _number_fmt(self):
         cfg = self.display_configuration
@@ -335,22 +336,22 @@ class ProductInspection:
     @property
     def price_layers(self) -> Styler:
         df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
-        return _style_price_layers_table(df, self._number_fmt())
+        return _style_price_layers_table(df, self._number_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
     def price_layers_distribution(self) -> Styler:
         df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
-        return _style_price_layers_table(df, self._pct_fmt())
+        return _style_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
     def price_layers_growth(self) -> Styler:
         df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
-        return _style_price_layers_table(df, self._pct_fmt())
+        return _style_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
     def price_layers_rates(self) -> Styler:
         df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
-        return _style_price_layers_table(df, self._pct_fmt())
+        return _style_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -531,11 +532,13 @@ class ProductInspection:
         diff = ProductInspection(
             data=ProductInspectionData(**diff_fields),
             display_configuration=self.display_configuration,
+            _price_layer_columns=self._price_layer_columns,
         )
         rel = ProductInspection(
             data=ProductInspectionData(**rel_fields),
             display_configuration=self.display_configuration,
             _all_rel=True,
+            _price_layer_columns=self._price_layer_columns,
         )
         return TablesComparison(diff=diff, rel=rel, display_configuration=self.display_configuration)
 
@@ -722,7 +725,7 @@ def inspect_products(
         price_layers_growth=price_layers_growth,
         price_layers_rates=price_layers_rates,
     )
-    return ProductInspection(data=data)
+    return ProductInspection(data=data, _price_layer_columns=_get_price_layer_columns(cols, sut.use))
 
 
 def _build_category_names_by_trans(

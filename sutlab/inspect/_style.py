@@ -563,12 +563,15 @@ def _style_price_layers_table(
     *,
     outer_level: str = "product",
     outer_txt_level: str = "product_txt",
+    price_layer_columns: list[str] | None = None,
 ) -> Styler:
     """Apply colours, bold, and separators to a price_layers-shaped table.
 
-    Each distinct ``price_layer`` value gets a colour from ``_LAYER_PALETTES``
-    (cycling if there are more layers than palette entries). Within each
-    ``(outer_level, price_layer)`` block:
+    Each distinct ``price_layer`` value gets a colour from ``_LAYER_PALETTES``.
+    When ``price_layer_columns`` is provided, palette assignment is based on
+    position in that list so the same layer always gets the same colour across
+    tables. Otherwise palettes cycle by ordinal position within the table.
+    Within each ``(outer_level, price_layer)`` block:
 
     - Transaction rows alternate between the two light shades of that layer's
       palette; their ``transaction`` and ``transaction_txt`` index cells use
@@ -612,6 +615,10 @@ def _style_price_layers_table(
     outer_txt_css = [""] * n
 
     outers = list(dict.fromkeys(outer_vals))
+    stable_palette_map = (
+        {col: _LAYER_PALETTES[i % len(_LAYER_PALETTES)] for i, col in enumerate(price_layer_columns)}
+        if price_layer_columns is not None else None
+    )
 
     for p_idx, outer in enumerate(outers):
         is_last_outer = (p_idx == len(outers) - 1)
@@ -625,7 +632,10 @@ def _style_price_layers_table(
 
         for l_idx, layer in enumerate(outer_layers):
             is_last_layer = (l_idx == len(outer_layers) - 1)
-            palette = _LAYER_PALETTES[l_idx % len(_LAYER_PALETTES)]
+            if stable_palette_map is not None:
+                palette = stable_palette_map.get(layer, _LAYER_PALETTES[0])
+            else:
+                palette = _LAYER_PALETTES[l_idx % len(_LAYER_PALETTES)]
 
             block_positions = [i for i in outer_positions if layer_vals[i] == layer]
             block_txts = [trans_txt_vals[i] for i in block_positions]
@@ -1131,7 +1141,12 @@ def _style_final_use_use_products_table(df: pd.DataFrame, format_func) -> Styler
     return styler
 
 
-def _style_final_use_price_layers_table(df: pd.DataFrame, format_func) -> Styler:
+def _style_final_use_price_layers_table(
+    df: pd.DataFrame,
+    format_func,
+    *,
+    price_layer_columns: list[str] | None = None,
+) -> Styler:
     """Apply colours and separators to a final-use price layers table.
 
     The table has a five-level MultiIndex
@@ -1144,9 +1159,11 @@ def _style_final_use_price_layers_table(df: pd.DataFrame, format_func) -> Styler
       colour with ``1px solid #ccc`` separator between
       ``(transaction, category)`` blocks within the same transaction,
       and ``2px solid #999`` when the transaction changes.
-    - ``price_layer`` rows each get a cycling palette colour based on
-      their ordinal position among distinct layer values. The Total row
-      (``price_layer == ""``) is bold with the use-total colour.
+    - ``price_layer`` rows each get a palette colour. When
+      ``price_layer_columns`` is provided, palette assignment is based on
+      position in that list so the same layer always gets the same colour
+      across tables. Otherwise palettes cycle by ordinal position. The
+      Total row (``price_layer == ""``) is bold with the use-total colour.
 
     Parameters
     ----------
@@ -1154,6 +1171,9 @@ def _style_final_use_price_layers_table(df: pd.DataFrame, format_func) -> Styler
         Price layers table from :func:`inspect_final_uses`.
     format_func : callable
         Applied to all data cells (e.g. ``_format_number``).
+    price_layer_columns : list of str, optional
+        Ordered list of all price layer column names for stable palette
+        assignment across tables.
     """
     styler = df.style.format(format_func, na_rep="")
     if df.empty:
@@ -1164,12 +1184,16 @@ def _style_final_use_price_layers_table(df: pd.DataFrame, format_func) -> Styler
     layer_vals = df.index.get_level_values("price_layer")
     n = len(df)
 
-    # Assign each distinct non-total price_layer value a cycling palette.
+    # Assign each distinct non-total price_layer value a palette.
     distinct_layers = list(dict.fromkeys(l for l in layer_vals if l != ""))
-    layer_palette = {
-        l: _LAYER_PALETTES[i % len(_LAYER_PALETTES)]
-        for i, l in enumerate(distinct_layers)
-    }
+    if price_layer_columns is not None:
+        stable_map = {col: _LAYER_PALETTES[i % len(_LAYER_PALETTES)] for i, col in enumerate(price_layer_columns)}
+        layer_palette = {l: stable_map.get(l, _LAYER_PALETTES[0]) for l in distinct_layers}
+    else:
+        layer_palette = {
+            l: _LAYER_PALETTES[i % len(_LAYER_PALETTES)]
+            for i, l in enumerate(distinct_layers)
+        }
 
     data_total_color = _DATA_COLORS["use_total"]
     idx_hdr_color = _INDEX_COLORS["use_total"]
@@ -1626,7 +1650,7 @@ def _style_comparison_table(
     return styler
 
 
-def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None = None, rel_base: int = 100, all_rel: bool = False, decimals: int = 1) -> Styler:
+def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None = None, rel_base: int = 100, all_rel: bool = False, decimals: int = 1, price_layer_columns: list[str] | None = None) -> Styler:
     """Apply colours and formatting to a price-layers comparison table.
 
     Used for ``use_price_layers`` and
@@ -1673,12 +1697,16 @@ def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None 
     id_vals = df.index.get_level_values(0)
     layer_vals = df.index.get_level_values("price_layer")
 
-    # Assign a cycling palette to each distinct price_layer value.
+    # Assign a palette to each distinct price_layer value.
     distinct_layers = list(dict.fromkeys(layer_vals))
-    layer_palette = {
-        layer: _LAYER_PALETTES[i % len(_LAYER_PALETTES)]
-        for i, layer in enumerate(distinct_layers)
-    }
+    if price_layer_columns is not None:
+        stable_map = {col: _LAYER_PALETTES[i % len(_LAYER_PALETTES)] for i, col in enumerate(price_layer_columns)}
+        layer_palette = {layer: stable_map.get(layer, _LAYER_PALETTES[0]) for layer in distinct_layers}
+    else:
+        layer_palette = {
+            layer: _LAYER_PALETTES[i % len(_LAYER_PALETTES)]
+            for i, layer in enumerate(distinct_layers)
+        }
 
     # Identify id block boundaries.
     block_end_rows = {i for i in range(n - 1) if id_vals[i] != id_vals[i + 1]}

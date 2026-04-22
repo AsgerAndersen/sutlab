@@ -305,6 +305,7 @@ class IndustryInspection:
     _p1_trans: frozenset = field(default_factory=frozenset, repr=False)
     display_configuration: DisplayConfiguration = field(default_factory=_industry_default_config)
     _all_rel: bool = field(default=False, repr=False)
+    _price_layer_columns: list[str] = field(default_factory=list, repr=False)
 
     def _number_fmt(self):
         cfg = self.display_configuration
@@ -384,25 +385,25 @@ class IndustryInspection:
     def price_layers(self) -> Styler:
         """Styled price layer breakdown of industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
-        return _style_price_layers_table(df, self._number_fmt(), outer_level="industry", outer_txt_level="industry_txt")
+        return _style_price_layers_table(df, self._number_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
     def price_layers_rates(self) -> Styler:
         """Styled price layer rates for industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
-        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt")
+        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
     def price_layers_distribution(self) -> Styler:
         """Styled price layer distribution of industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
-        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt")
+        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
     def price_layers_growth(self) -> Styler:
         """Styled year-on-year growth of price layers for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
-        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt")
+        return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
     def balance_growth(self) -> Styler:
@@ -554,12 +555,14 @@ class IndustryInspection:
             data=IndustryInspectionData(**diff_fields),
             _p1_trans=self._p1_trans,
             display_configuration=self.display_configuration,
+            _price_layer_columns=self._price_layer_columns,
         )
         rel = IndustryInspection(
             data=IndustryInspectionData(**rel_fields),
             _p1_trans=self._p1_trans,
             display_configuration=self.display_configuration,
             _all_rel=True,
+            _price_layer_columns=self._price_layer_columns,
         )
         return TablesComparison(diff=diff, rel=rel, display_configuration=self.display_configuration)
 
@@ -825,7 +828,7 @@ def inspect_industries(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans))
+    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans), _price_layer_columns=_get_price_layer_columns(cols, sut.use))
 
 
 def _build_industry_balance_table(
