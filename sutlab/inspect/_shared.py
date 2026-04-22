@@ -725,12 +725,19 @@ def _apply_display_config(
 ) -> pd.DataFrame:
     """Apply display configuration to a DataFrame for styled display.
 
-    Returns ``df`` unchanged when the table is in ``protected_tables`` or
-    ``df`` is empty. Otherwise applies, in order:
+    Returns ``df`` unchanged when ``df`` is empty. Id-column and id-index
+    sorting apply to all tables including protected ones. Other operations
+    (``display_index``, ``display_values_n_largest``, ``sort_column``) are
+    skipped for tables in ``protected_tables``. Order of operations:
 
-    1. ``display_index`` row filter (pattern-matched, with protected rows always kept).
-    2. ``display_values_n_largest`` filter (top-n per group, protected rows always kept).
-    3. ``sort_column`` sort (non-protected rows within each group, protected at end).
+    1. Id-column sort: sort all columns ascending/descending when
+       ``config.id_columns`` is ``True``.
+    2. Id-index sort: sort rows by the id index level when
+       ``config.id_index_level`` is set and present in the index.
+    3. (Protected tables exit here.)
+    4. ``display_index`` row filter (pattern-matched, protected rows always kept).
+    5. ``display_values_n_largest`` filter (top-n per group, protected rows always kept).
+    6. ``sort_column`` sort (non-protected rows within each group, protected at end).
 
     Parameters
     ----------
@@ -742,10 +749,20 @@ def _apply_display_config(
     config : DisplayConfiguration
         The display configuration to apply.
     """
-    if df.empty or table_name in config.protected_tables:
+    if df.empty:
         return df
-    grouping = config.index_grouping.get(table_name)
     result = df
+    if config.id_columns:
+        result = result[sorted(result.columns, reverse=not config.sort_ids_ascending)]
+    if config.id_index_level is not None and config.id_index_level in result.index.names:
+        result = result.sort_index(
+            level=config.id_index_level,
+            ascending=config.sort_ids_ascending,
+            sort_remaining=False,
+        )
+    if table_name in config.protected_tables:
+        return result
+    grouping = config.index_grouping.get(table_name)
     if config.display_index:
         result = _apply_display_index_filter(result, config.display_index, config.protected_index_values)
     if config.display_values_n_largest is not None:

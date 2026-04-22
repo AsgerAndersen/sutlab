@@ -17,6 +17,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_decimals,
     _cfg_set_display_index,
     _cfg_set_display_sort_column,
+    _cfg_set_display_sort_ids_ascending,
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
@@ -139,6 +140,7 @@ def _industry_default_config() -> DisplayConfiguration:
         protected_tables=_INDUSTRY_PROTECTED_TABLES,
         protected_index_values=_INDUSTRY_PROTECTED_INDEX_VALUES,
         index_grouping=_INDUSTRY_INDEX_GROUPING,
+        id_columns=True,
     )
 
 
@@ -320,12 +322,13 @@ class IndustryInspection:
     @property
     def balance(self) -> Styler:
         """Styled industry balance table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.balance, "balance", self.display_configuration)
         cfg = self.display_configuration
         if self._all_rel:
             fmt = self._pct_fmt()
         else:
             fmt = None  # mixed: number for most rows, percentage for Input coefficient
-        return _style_industry_balance_table(self.data.balance, self._p1_trans, format_func=fmt, display_unit=cfg.display_unit, rel_base=cfg.rel_base, decimals=cfg.decimals)
+        return _style_industry_balance_table(df, self._p1_trans, format_func=fmt, display_unit=cfg.display_unit, rel_base=cfg.rel_base, decimals=cfg.decimals)
 
     @property
     def supply_products(self) -> Styler:
@@ -348,8 +351,9 @@ class IndustryInspection:
     @property
     def supply_products_summary(self) -> Styler:
         """Styled per-transaction supply summary statistics for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.supply_products_summary, "supply_products_summary", self.display_configuration)
         cfg = self.display_configuration
-        return _style_products_summary_table(self.data.supply_products_summary, "supply", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        return _style_products_summary_table(df, "supply", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def use_products(self) -> Styler:
@@ -378,8 +382,9 @@ class IndustryInspection:
     @property
     def use_products_summary(self) -> Styler:
         """Styled per-transaction use summary statistics for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.use_products_summary, "use_products_summary", self.display_configuration)
         cfg = self.display_configuration
-        return _style_products_summary_table(self.data.use_products_summary, "use", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        return _style_products_summary_table(df, "use", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def price_layers(self) -> Styler:
@@ -408,7 +413,8 @@ class IndustryInspection:
     @property
     def balance_growth(self) -> Styler:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
-        return _style_industry_balance_table(self.data.balance_growth, self._p1_trans, format_func=self._pct_fmt())
+        df = _apply_display_config(self.data.balance_growth, "balance_growth", self.display_configuration)
+        return _style_industry_balance_table(df, self._p1_trans, format_func=self._pct_fmt())
 
     def write_to_excel(self, path) -> None:
         """Write all tables to an Excel file, one sheet per table.
@@ -478,6 +484,20 @@ class IndustryInspection:
             Sort direction. Default ``False`` (descending).
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "IndustryInspection":
+        """Return a copy with id columns sorted ascending or descending.
+
+        Controls left-to-right column order for all tables (id values are the
+        columns in wide-format inspection tables). Default ``True`` (ascending,
+        i.e. earliest year on the left).
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
     def set_display_values_n_largest(self, n: int, column: str) -> "IndustryInspection":
         """Return a copy showing only the n rows with the largest values for ``column``.

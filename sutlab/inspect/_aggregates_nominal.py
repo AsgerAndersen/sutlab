@@ -13,7 +13,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
-from sutlab.inspect._shared import _build_growth_table, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
     _cfg_set_display_unit,
@@ -21,6 +21,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_decimals,
     _cfg_set_display_index,
     _cfg_set_display_sort_column,
+    _cfg_set_display_sort_ids_ascending,
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
@@ -116,6 +117,7 @@ class AggregatesNominalInspection:
         protected_tables=frozenset({"gdp", "gdp_growth", "gdp_distribution"}),
         protected_index_values={},
         index_grouping={},
+        id_columns=True,
     ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
 
@@ -132,17 +134,20 @@ class AggregatesNominalInspection:
     @property
     def gdp(self) -> Styler:
         """Styled GDP decomposition table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(self.data.gdp, self._number_fmt())
+        df = _apply_display_config(self.data.gdp, "gdp", self.display_configuration)
+        return _style_aggregates_nominal_table(df, self._number_fmt())
 
     @property
     def gdp_growth(self) -> Styler:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(self.data.gdp_growth, self._pct_fmt())
+        df = _apply_display_config(self.data.gdp_growth, "gdp_growth", self.display_configuration)
+        return _style_aggregates_nominal_table(df, self._pct_fmt())
 
     @property
     def gdp_distribution(self) -> Styler:
         """Styled GDP share table for display in a Jupyter notebook."""
-        return _style_aggregates_nominal_table(self.data.gdp_distribution, self._pct_fmt())
+        df = _apply_display_config(self.data.gdp_distribution, "gdp_distribution", self.display_configuration)
+        return _style_aggregates_nominal_table(df, self._pct_fmt())
 
     def write_to_excel(self, path: str | Path) -> None:
         """Write the inspection tables to an Excel file.
@@ -210,6 +215,20 @@ class AggregatesNominalInspection:
             Sort direction. Default ``False`` (descending).
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "AggregatesNominalInspection":
+        """Return a copy with id columns sorted ascending or descending.
+
+        Controls left-to-right column order for all tables (id values are the
+        columns in wide-format inspection tables). Default ``True`` (ascending,
+        i.e. earliest year on the left).
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
     def set_display_values_n_largest(self, n: int, column: str) -> "AggregatesNominalInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.

@@ -108,6 +108,19 @@ class TablesComparison:
         new_cfg = new_diff.display_configuration
         return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
 
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "TablesComparison":
+        """Return a copy with ids sorted ascending or descending on both inner objects.
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        new_diff = self.diff.set_display_sort_ids_ascending(ascending)
+        new_rel = self.rel.set_display_sort_ids_ascending(ascending)
+        new_cfg = new_diff.display_configuration
+        return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
+
     def set_display_sort_column(self, column: str, ascending: bool = False) -> "TablesComparison":
         """Return a copy with the sort column updated on both inner objects.
 

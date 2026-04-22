@@ -22,6 +22,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_decimals,
     _cfg_set_display_index,
     _cfg_set_display_sort_column,
+    _cfg_set_display_sort_ids_ascending,
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
@@ -191,6 +192,19 @@ class UnbalancedProductsInspection:
             Sort direction. Default ``False`` (descending).
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "UnbalancedProductsInspection":
+        """Return a copy with ids sorted ascending or descending.
+
+        Controls top-to-bottom row order for the id index level in the
+        imbalances table. Default ``True`` (ascending, i.e. earliest id first).
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
     def set_display_values_n_largest(self, n: int, column: str) -> "UnbalancedProductsInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
@@ -421,6 +435,7 @@ def inspect_unbalanced_products(
         protected_tables=frozenset({"summary"}),
         protected_index_values={},
         index_grouping={"imbalances": [id_col]},
+        id_index_level=id_col,
     )
     return UnbalancedProductsInspection(
         data=UnbalancedProductsData(imbalances=result, summary=summary),

@@ -22,6 +22,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_decimals,
     _cfg_set_display_index,
     _cfg_set_display_sort_column,
+    _cfg_set_display_sort_ids_ascending,
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
@@ -143,6 +144,7 @@ def _final_use_default_config() -> DisplayConfiguration:
         protected_tables=frozenset(),
         protected_index_values={"transaction": [""]},
         index_grouping=_FINAL_USE_INDEX_GROUPING,
+        id_columns=True,
     )
 
 
@@ -373,6 +375,20 @@ class FinalUseInspection:
             Sort direction. Default ``False`` (descending).
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "FinalUseInspection":
+        """Return a copy with id columns sorted ascending or descending.
+
+        Controls left-to-right column order for all tables (id values are the
+        columns in wide-format inspection tables). Default ``True`` (ascending,
+        i.e. earliest year on the left).
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
     def set_display_values_n_largest(self, n: int, column: str) -> "FinalUseInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
