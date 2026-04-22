@@ -145,6 +145,48 @@ class TablesComparison:
         new_cfg = new_diff.display_configuration
         return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
 
+    def get_index_values(self, table: str, levels: str | list[str]) -> pd.DataFrame:
+        """Return unique index value combinations using dot notation to address inner tables.
+
+        Use ``"diff.<table>"`` or ``"rel.<table>"`` to address a table within
+        the inner ``.diff`` or ``.rel`` inspection objects. The display
+        configuration of the addressed inner object is applied before extracting
+        values.
+
+        Parameters
+        ----------
+        table : str
+            Dot-prefixed table name, e.g. ``"diff.balance"`` or
+            ``"rel.supply_products"``.
+        levels : str or list of str
+            One or more index level names whose unique value combinations to return.
+
+        Returns
+        -------
+        pd.DataFrame
+            One column per requested level, unique combinations only.
+            Rows where all values are ``""`` or ``NaN`` are dropped.
+            Index is a default RangeIndex.
+
+        Raises
+        ------
+        ValueError
+            If ``table`` does not use dot notation, if the prefix is not
+            ``"diff"`` or ``"rel"``, or if the inner object raises.
+        """
+        if "." not in table:
+            raise ValueError(
+                f"Table name for TablesComparison must use dot notation: "
+                f"'diff.<table>' or 'rel.<table>'. Got {table!r}."
+            )
+        attr, table_name = table.split(".", 1)
+        if attr not in ("diff", "rel"):
+            raise ValueError(
+                f"First part of dot-notation table name must be 'diff' or 'rel'. "
+                f"Got {attr!r}."
+            )
+        return getattr(self, attr).get_index_values(table_name, levels)
+
 
 def _compute_comparison_table_fields(
     self_data,

@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.inspect._products import _get_price_layer_columns
 from sutlab.inspect._style import _style_imbalances_table, _style_unbalanced_products_summary, _style_tables_description
-from sutlab.inspect._shared import _apply_display_config, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
@@ -50,7 +50,7 @@ class UnbalancedProductsData:
                 ]
             },
             index=pd.Index(["imbalances", "summary"], name="name"),
-        )
+        ).sort_index()
 
 
 @dataclass
@@ -207,6 +207,35 @@ class UnbalancedProductsInspection:
     def set_display_configuration_to_defaults(self) -> "UnbalancedProductsInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
         return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+
+    def get_index_values(self, table: str, levels: str | list[str]) -> pd.DataFrame:
+        """Return unique index value combinations for a table after applying display config.
+
+        The display configuration (index filter, n-largest filter, sort) is applied
+        before extracting values, so the result reflects what is visible in styled output.
+        ``.data`` is not affected.
+
+        Parameters
+        ----------
+        table : str
+            Name of a table field (e.g. ``"imbalances"``).
+        levels : str or list of str
+            One or more index level names whose unique value combinations to return.
+
+        Returns
+        -------
+        pd.DataFrame
+            One column per requested level, unique combinations only.
+            Rows where all values are ``""`` or ``NaN`` are dropped.
+            Index is a default RangeIndex.
+
+        Raises
+        ------
+        ValueError
+            If ``table`` does not exist or is ``None``, or if any entry in
+            ``levels`` is not an index level of that table.
+        """
+        return _get_index_values(self, table, levels)
 
     @property
     def tables_description(self) -> Styler:

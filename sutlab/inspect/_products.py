@@ -22,7 +22,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
-from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _write_inspection_to_excel
+from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -109,7 +109,7 @@ class ProductInspectionData:
                 ],
                 name="name",
             ),
-        )
+        ).sort_index()
 
 
 _PRODUCT_PROTECTED_TABLES = frozenset({
@@ -464,6 +464,35 @@ class ProductInspection:
         index grouping) are preserved.
         """
         return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+
+    def get_index_values(self, table: str, levels: str | list[str]) -> pd.DataFrame:
+        """Return unique index value combinations for a table after applying display config.
+
+        The display configuration (index filter, n-largest filter, sort) is applied
+        before extracting values, so the result reflects what is visible in styled output.
+        ``.data`` is not affected.
+
+        Parameters
+        ----------
+        table : str
+            Name of a table field (e.g. ``"balance"``, ``"supply_products"``).
+        levels : str or list of str
+            One or more index level names whose unique value combinations to return.
+
+        Returns
+        -------
+        pd.DataFrame
+            One column per requested level, unique combinations only.
+            Rows where all values are ``""`` or ``NaN`` are dropped.
+            Index is a default RangeIndex.
+
+        Raises
+        ------
+        ValueError
+            If ``table`` does not exist or is ``None``, or if any entry in
+            ``levels`` is not an index level of that table.
+        """
+        return _get_index_values(self, table, levels)
 
     @property
     def tables_description(self) -> Styler:

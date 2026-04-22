@@ -13,7 +13,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
-from sutlab.inspect._shared import _build_growth_table, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
     _cfg_set_display_unit,
@@ -79,7 +79,7 @@ class AggregatesNominalData:
                 ]
             },
             index=pd.Index(["gdp", "gdp_growth", "gdp_distribution"], name="name"),
-        )
+        ).sort_index()
 
 
 @dataclass
@@ -226,6 +226,35 @@ class AggregatesNominalInspection:
     def set_display_configuration_to_defaults(self) -> "AggregatesNominalInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
         return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+
+    def get_index_values(self, table: str, levels: str | list[str]) -> pd.DataFrame:
+        """Return unique index value combinations for a table after applying display config.
+
+        The display configuration (index filter, n-largest filter, sort) is applied
+        before extracting values, so the result reflects what is visible in styled output.
+        ``.data`` is not affected.
+
+        Parameters
+        ----------
+        table : str
+            Name of a table field (e.g. ``"gdp"``, ``"gdp_distribution"``).
+        levels : str or list of str
+            One or more index level names whose unique value combinations to return.
+
+        Returns
+        -------
+        pd.DataFrame
+            One column per requested level, unique combinations only.
+            Rows where all values are ``""`` or ``NaN`` are dropped.
+            Index is a default RangeIndex.
+
+        Raises
+        ------
+        ValueError
+            If ``table`` does not exist or is ``None``, or if any entry in
+            ``levels`` is not an index level of that table.
+        """
+        return _get_index_values(self, table, levels)
 
     @property
     def tables_description(self) -> Styler:
