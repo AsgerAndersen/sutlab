@@ -13,7 +13,7 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._shared import _build_growth_table, _apply_display_config, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import _build_growth_table, _build_summary_table, _apply_display_config, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
@@ -33,6 +33,7 @@ from sutlab.inspect._style import (
     _style_final_use_use_table,
     _style_final_use_use_categories_table,
     _style_final_use_use_products_table,
+    _style_final_use_use_products_summary_table,
     _style_final_use_price_layers_table,
     _style_tables_description,
 )
@@ -69,6 +70,7 @@ class FinalUseInspectionData:
     use_products: pd.DataFrame = field(default_factory=pd.DataFrame)
     use_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     use_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_products_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -89,6 +91,7 @@ class FinalUseInspectionData:
                     "Final use broken down by transaction, category, and product.",
                     "Product values expressed as shares within each transaction-category group.",
                     "Year-on-year growth rates of product-level use values.",
+                    "Per-(transaction, category) summary statistics aggregated over products.",
                     "Price layer values (gap between basic and purchasers' prices) by layer.",
                     "Each price layer expressed as a rate relative to basic-price use.",
                     "Each price layer expressed as a share of total price layers.",
@@ -106,6 +109,7 @@ class FinalUseInspectionData:
                     "use_products",
                     "use_products_distribution",
                     "use_products_growth",
+                    "use_products_summary",
                     "price_layers",
                     "price_layers_rates",
                     "price_layers_distribution",
@@ -126,6 +130,7 @@ _FINAL_USE_INDEX_GROUPING: dict[str, list[str] | None] = {
     "use_products": None,
     "use_products_distribution": None,
     "use_products_growth": None,
+    "use_products_summary": ["transaction", "category"],
     "price_layers": ["transaction", "category"],
     "price_layers_rates": ["transaction", "category"],
     "price_layers_distribution": ["transaction", "category"],
@@ -261,6 +266,13 @@ class FinalUseInspection:
         """Styled use-products year-on-year growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
         return _style_final_use_use_products_table(df, self._pct_fmt())
+
+    @property
+    def use_products_summary(self) -> Styler:
+        """Styled per-(transaction, category) product summary statistics for display in a Jupyter notebook."""
+        cfg = self.display_configuration
+        df = _apply_display_config(self.data.use_products_summary, "use_products_summary", self.display_configuration)
+        return _style_final_use_use_products_summary_table(df, "use", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
     def price_layers(self) -> Styler:
@@ -471,6 +483,8 @@ def inspect_final_uses(
     *,
     categories: str | list[str] | None = None,
     ids=None,
+    percentiles: list[float] | None = None,
+    coverage_thresholds: list[float] | None = None,
 ) -> FinalUseInspection:
     """
     Return inspection tables for one or more final use transactions.
@@ -496,6 +510,14 @@ def inspect_final_uses(
         single value (``ids=2021``), a list (``ids=[2019, 2020]``), or a
         range (``ids=range(2015, 2022)``). Column order follows the sorted
         order of the full collection.
+    percentiles : list of float, optional
+        Percentile values in [0, 1] for ``use_products_summary``. Default
+        ``[0.5, 1.0]`` (median and max).
+    coverage_thresholds : list of float, optional
+        Coverage thresholds in [0, 1] for ``use_products_summary``. For each
+        threshold ``t``, the summary includes an ``n_products_p{int(t*100)}``
+        row with the minimum number of products needed to cover ``t * total``.
+        Default ``[0.5, 0.8, 0.95]``.
 
     Returns
     -------
@@ -532,6 +554,11 @@ def inspect_final_uses(
             "inspect_final_uses. Load a classifications file with a "
             "'transactions' sheet."
         )
+
+    if percentiles is None:
+        percentiles = [0.5, 1.0]
+    if coverage_thresholds is None:
+        coverage_thresholds = [0.5, 0.8, 0.95]
 
     trans_df = sut.metadata.classifications.transactions
     cols = sut.metadata.columns
@@ -654,6 +681,9 @@ def inspect_final_uses(
 
     use_products_distribution = _build_final_use_use_distribution(use_products)
     use_products_growth = _build_growth_table(use_products)
+    use_products_summary = _build_final_use_use_products_summary(
+        use_products, percentiles, coverage_thresholds
+    )
 
     price_layers = _build_final_use_price_layers_table(
         use_filtered=use_filtered,
@@ -685,6 +715,7 @@ def inspect_final_uses(
         use_products=use_products,
         use_products_distribution=use_products_distribution,
         use_products_growth=use_products_growth,
+        use_products_summary=use_products_summary,
         price_layers=price_layers,
         price_layers_rates=price_layers_rates,
         price_layers_distribution=price_layers_distribution,
@@ -1446,3 +1477,24 @@ def _build_final_use_price_layers_distribution(price_layers: pd.DataFrame) -> pd
         )
 
     return result_data
+
+
+def _build_final_use_use_products_summary(
+    use_products: pd.DataFrame,
+    percentiles: list[float],
+    coverage_thresholds: list[float],
+) -> pd.DataFrame:
+    """Build per-(transaction, category) summary statistics from a use_products table.
+
+    Aggregates over the product dimension within each ``(transaction, category)``
+    group. Delegates to :func:`~sutlab.inspect._shared._build_summary_table`.
+    """
+    return _build_summary_table(
+        detail_table=use_products,
+        group_levels=["transaction", "transaction_txt", "category", "category_txt"],
+        item_levels=["product", "product_txt"],
+        item_count_label="n_products",
+        total_label="total_use",
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
+    )

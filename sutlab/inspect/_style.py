@@ -644,6 +644,124 @@ def _style_categories_summary_table(
     return styler
 
 
+def _style_final_use_use_products_summary_table(
+    df: pd.DataFrame,
+    color_key: str,
+    display_unit: float | None = None,
+    rel_base: int = 100,
+    all_rel: bool = False,
+    decimals: int = 1,
+) -> Styler:
+    """Apply per-row formatting, colours, and separators to a use_products_summary table.
+
+    Index levels: ``(transaction, transaction_txt, category, category_txt, summary)``.
+
+    Formatting is determined by the ``summary`` label of each row:
+
+    - ``total_*`` → number format
+    - ``n_products`` / ``n_products_*`` → integer (no decimal point)
+    - ``value_*`` → number format
+    - ``share_*`` → percentage format
+
+    When ``all_rel=True``, all cells are formatted as percentages regardless
+    of the summary label.
+
+    Colours: rows alternate between the two lighter shades of the use palette.
+    No bold on any row. Thick border (``2px``) between transaction blocks;
+    thin border (``1px``) between category blocks within a transaction.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Summary table produced by :func:`_build_final_use_use_products_summary`.
+    color_key : str
+        ``"supply"`` or ``"use"`` — selects the colour set from
+        ``_DATA_COLORS`` / ``_INDEX_COLORS``.
+    all_rel : bool, optional
+        When ``True``, all cells are formatted as percentages. Default ``False``.
+    """
+    summary_vals = df.index.get_level_values("summary")
+    unique_labels = list(dict.fromkeys(summary_vals))
+    pct_fmt = _make_percentage_formatter(rel_base, decimals)
+    styler = df.style.format(na_rep="")
+    for label in unique_labels:
+        mask = summary_vals == label
+        row_positions = [i for i, m in enumerate(mask) if m]
+        fmt = pct_fmt if all_rel else _summary_row_format_func(label, display_unit, rel_base, decimals)
+        styler = styler.format(fmt, na_rep="", subset=(df.index[row_positions], df.columns))
+
+    if df.empty:
+        return styler
+
+    data_row_colors = _DATA_COLORS[color_key]
+    idx_row_colors = _INDEX_COLORS[color_key]
+    idx_hdr_color = _INDEX_COLORS[f"{color_key}_total"]
+
+    transaction_vals = df.index.get_level_values("transaction")
+    category_vals = df.index.get_level_values("category")
+    transactions = list(dict.fromkeys(transaction_vals))
+    n = len(df)
+
+    data_css = [""] * n
+    summary_css = [""] * n
+    cat_css = [""] * n
+    cat_txt_css = [""] * n
+    trans_css = [""] * n
+    trans_txt_css = [""] * n
+
+    for trans_idx, transaction in enumerate(transactions):
+        is_last_transaction = (trans_idx == len(transactions) - 1)
+        trans_positions = [i for i, v in enumerate(transaction_vals) if v == transaction]
+
+        if not is_last_transaction:
+            trans_css[trans_positions[0]] = "border-bottom: 2px solid #999"
+            trans_txt_css[trans_positions[0]] = "border-bottom: 2px solid #999"
+
+        cat_row_counter = {}
+        prev_cat = None
+        run_start_i_abs = None
+
+        for pos_idx, i_abs in enumerate(trans_positions):
+            cat = category_vals[i_abs]
+            is_last_pos = (pos_idx == len(trans_positions) - 1)
+            next_cat = (
+                category_vals[trans_positions[pos_idx + 1]]
+                if not is_last_pos
+                else None
+            )
+
+            if is_last_pos:
+                sep = "; border-bottom: 2px solid #999" if not is_last_transaction else ""
+            elif next_cat != cat:
+                sep = "; border-bottom: 1px solid #ccc"
+            else:
+                sep = ""
+
+            if cat != prev_cat:
+                run_start_i_abs = i_abs
+                prev_cat = cat
+
+            if next_cat != cat:
+                cat_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
+                cat_txt_css[run_start_i_abs] = f"background-color: {idx_hdr_color}{sep}"
+
+            row_pos = cat_row_counter.get(cat, 0)
+            cat_row_counter[cat] = row_pos + 1
+            data_css[i_abs] = f"background-color: {data_row_colors[row_pos % 2]}{sep}"
+            summary_css[i_abs] = f"background-color: {idx_row_colors[row_pos % 2]}{sep}"
+
+    styler = styler.apply(
+        lambda d: pd.DataFrame({col: data_css for col in d.columns}, index=d.index),
+        axis=None,
+    )
+    styler = styler.apply_index(lambda s, css=summary_css: css, level="summary", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_css: css, level="category", axis=0)
+    styler = styler.apply_index(lambda s, css=cat_txt_css: css, level="category_txt", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_css: css, level="transaction", axis=0)
+    styler = styler.apply_index(lambda s, css=trans_txt_css: css, level="transaction_txt", axis=0)
+    return styler
+
+
 def _style_price_layers_table(
     df: pd.DataFrame,
     format_func,

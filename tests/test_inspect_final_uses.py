@@ -728,6 +728,102 @@ def test_use_products_properties_return_styler(sut):
 
 
 # ---------------------------------------------------------------------------
+# use_products_summary
+# ---------------------------------------------------------------------------
+#
+# Fixture use data (purchasers' prices):
+#   3110/FKO1: product A = 50 (2020), 55 (2021)
+#   3110/FKO2: product B = 35 (2020), 38 (2021)
+#   3200/GOV:  product A = 55 (2020), 60 (2021)
+#   6001/"":   product A = 60 (2020), 66 (2021)
+# ---------------------------------------------------------------------------
+
+
+def test_use_products_summary_is_dataframe(sut):
+    result = inspect_final_uses(sut, ["3110", "3200", "6001"])
+    assert isinstance(result.data.use_products_summary, pd.DataFrame)
+
+
+def test_use_products_summary_index_names(sut):
+    result = inspect_final_uses(sut, ["3110", "3200", "6001"])
+    assert result.data.use_products_summary.index.names == [
+        "transaction", "transaction_txt", "category", "category_txt", "summary"
+    ]
+
+
+def test_use_products_summary_columns_are_ids(sut):
+    result = inspect_final_uses(sut, ["3110", "3200", "6001"])
+    assert list(result.data.use_products_summary.columns) == [2020, 2021]
+
+
+def _summary_row(summary, transaction, category, summary_label):
+    """Select a single row from use_products_summary by (transaction, category, summary_label)."""
+    idx = summary.index
+    mask = (
+        (idx.get_level_values("transaction") == transaction)
+        & (idx.get_level_values("category") == category)
+        & (idx.get_level_values("summary") == summary_label)
+    )
+    return summary[mask].iloc[0]
+
+
+def test_use_products_summary_total_p31_fko1(sut):
+    """total_use for 3110/FKO1 = purchasers' price sum = 50 in 2020."""
+    summary = inspect_final_uses(sut, "3110").data.use_products_summary
+    row = _summary_row(summary, "3110", "FKO1", "total_use")
+    assert row[2020] == pytest.approx(50.0)
+
+
+def test_use_products_summary_n_products_single(sut):
+    """3110/FKO1 and 3200/GOV each have one product."""
+    summary = inspect_final_uses(sut, ["3110", "3200"]).data.use_products_summary
+    assert _summary_row(summary, "3110", "FKO1", "n_products")[2020] == 1
+    assert _summary_row(summary, "3200", "GOV", "n_products")[2020] == 1
+
+
+def test_use_products_summary_n_products_fko2(sut):
+    """3110/FKO2 has one product (B)."""
+    summary = inspect_final_uses(sut, "3110").data.use_products_summary
+    assert _summary_row(summary, "3110", "FKO2", "n_products")[2020] == 1
+
+
+def test_use_products_summary_uncategorised_transaction(sut):
+    """6001 (P6, uncategorised) appears in summary with category == ''."""
+    summary = inspect_final_uses(sut, "6001").data.use_products_summary
+    cat_vals = summary.index.get_level_values("category").tolist()
+    assert "" in cat_vals
+
+
+def test_use_products_summary_total_uncategorised(sut):
+    """total_use for 6001 uncategorised = 60 in 2020."""
+    summary = inspect_final_uses(sut, "6001").data.use_products_summary
+    row = _summary_row(summary, "6001", "", "total_use")
+    assert row[2020] == pytest.approx(60.0)
+
+
+def test_use_products_summary_property_returns_styler(sut):
+    result = inspect_final_uses(sut, ["3110", "3200", "6001"])
+    assert isinstance(result.use_products_summary, Styler)
+
+
+def test_use_products_summary_custom_percentiles(sut):
+    """Custom percentiles argument propagates to use_products_summary."""
+    result = inspect_final_uses(sut, "3110", percentiles=[0.0, 1.0])
+    summary = result.data.use_products_summary
+    summary_labels = summary.index.get_level_values("summary").tolist()
+    assert "value_min" in summary_labels
+    assert "value_max" in summary_labels
+
+
+def test_use_products_summary_custom_coverage_thresholds(sut):
+    """Custom coverage_thresholds argument propagates to use_products_summary."""
+    result = inspect_final_uses(sut, "3110", coverage_thresholds=[0.9])
+    summary = result.data.use_products_summary
+    summary_labels = summary.index.get_level_values("summary").tolist()
+    assert "n_products_p90" in summary_labels
+
+
+# ---------------------------------------------------------------------------
 # price_layers fixtures — use data extended with a VAT column
 # ---------------------------------------------------------------------------
 
