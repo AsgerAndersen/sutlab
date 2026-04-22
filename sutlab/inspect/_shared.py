@@ -576,3 +576,70 @@ def _display_index(inspection_obj: Any, values, level: str) -> Any:
     data_cls = type(inspection_obj.data)
     new_data = data_cls(**filtered_fields)
     return dataclasses.replace(inspection_obj, data=new_data)
+
+
+def _get_index_values(
+    inspection_obj: Any,
+    table: str,
+    levels: str | list[str],
+) -> pd.DataFrame:
+    """Return unique index value combinations for a table after applying display config.
+
+    Parameters
+    ----------
+    inspection_obj : inspection result object
+        Any inspection result with a ``.data`` attribute that is a dataclass
+        and a ``.display_configuration`` attribute.
+    table : str
+        Name of a DataFrame field on ``inspection_obj.data``.
+    levels : str or list of str
+        One or more index level names whose unique combinations to return.
+
+    Returns
+    -------
+    pd.DataFrame
+        One column per requested level, unique combinations only.
+        Rows where all values are ``""`` or ``NaN`` are dropped.
+        Index is a default RangeIndex.
+
+    Raises
+    ------
+    ValueError
+        If ``table`` is not a DataFrame field on ``inspection_obj.data``,
+        if the field is ``None``, or if any of ``levels`` is not an index
+        level of that table.
+    """
+    data_field_names = {f.name for f in dataclasses.fields(inspection_obj.data)}
+    if table not in data_field_names:
+        available = sorted(data_field_names)
+        raise ValueError(
+            f"Table {table!r} not found. Available tables: {available}."
+        )
+
+    df = getattr(inspection_obj.data, table)
+
+    if df is None:
+        raise ValueError(
+            f"Table {table!r} is None (no data available for this table)."
+        )
+
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError(
+            f"Table {table!r} is not a DataFrame."
+        )
+
+    df = _apply_display_config(df, table, inspection_obj.display_configuration)
+
+    level_list = [levels] if isinstance(levels, str) else list(levels)
+
+    missing = [lv for lv in level_list if lv not in df.index.names]
+    if missing:
+        raise ValueError(
+            f"Level(s) {missing} not found in table {table!r}. "
+            f"Available levels: {list(df.index.names)}."
+        )
+
+    result = df.index.to_frame(index=False)[level_list].drop_duplicates().reset_index(drop=True)
+
+    all_empty = result.apply(lambda col: col.isna() | (col == ""), axis=0).all(axis=1)
+    return result[~all_empty].reset_index(drop=True)
