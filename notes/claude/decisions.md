@@ -988,6 +988,8 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-04-22 (session 2)**: `tables_description` DataFrames on all 7 inspection data classes now sorted lexically by index. `get_index_values(table, levels)` added to all 7 inspection result classes and `TablesComparison`: applies display config first, returns unique combinations of requested index levels, drops all-empty rows, raises informative errors. `TablesComparison` uses dot notation (`"diff.<table>"` / `"rel.<table>"`). Shared helper `_get_index_values` in `_shared.py`.
 
+- **2026-04-22 (session 3)**: Price layer palette assignment is now identity-based across all inspection tables. Each price layer column always gets the same background colour regardless of which table it appears in or which other layers are co-present. Implemented via `_price_layer_columns: list[str]` field on all 4 inspection result classes (`ProductInspection`, `IndustryInspection`, `FinalUseInspection`, `SUTComparisonInspection`) and `price_layer_columns` parameter on `_style_price_layers_table`, `_style_final_use_price_layers_table`, `_style_comparison_layers_table`. Palette assignment uses `SUTColumns` role order as the canonical ordering.
+
 - **2026-04-22**: Fixed two bugs in `SUTComparisonInspection` display configuration:
   1. `supply_products_summary`, `supply_columns_summary`, `use_products_summary`, `use_columns_summary` were incorrectly in `protected_tables` — moved them to `index_grouping` with `[id_col]`.
   2. The same 4 styled properties were not calling `_apply_display_config` before styling — added the call, same pattern as the other 8 data table properties.
