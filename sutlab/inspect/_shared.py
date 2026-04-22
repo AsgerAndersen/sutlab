@@ -657,10 +657,10 @@ def _apply_n_largest_filter(
     grouping: list[str] | None,
     protected_index_values: dict[str, list],
 ) -> pd.DataFrame:
-    """Keep n largest non-protected rows per group by column value.
+    """Keep n largest non-protected rows per group by absolute column value.
 
     Within each group (defined by ``grouping``), keeps the ``n`` non-protected
-    rows with the largest values in ``column``. Protected rows are always kept
+    rows with the largest absolute values in ``column``. Protected rows are always kept
     and come after the top-n rows. Rows are returned in their original order
     within each group (sorting is handled separately by ``_apply_column_sort``).
     """
@@ -678,8 +678,8 @@ def _apply_n_largest_filter(
             keep[non_protected_pos] = True
         else:
             group_vals = col_values[non_protected_pos]
-            # argsort ascending → take last n for largest
-            top_local = np.argsort(group_vals)[::-1][:n]
+            # argsort by absolute value → take last n for largest magnitude
+            top_local = np.argsort(np.abs(group_vals))[::-1][:n]
             keep[non_protected_pos[top_local]] = True
     # Preserve original row order
     return df.iloc[keep.nonzero()[0]]
@@ -692,11 +692,11 @@ def _apply_column_sort(
     grouping: list[str] | None,
     protected_index_values: dict[str, list],
 ) -> pd.DataFrame:
-    """Sort non-protected rows within each group by ``column``.
+    """Sort non-protected rows within each group by absolute ``column`` value.
 
     Within each group (defined by ``grouping``), non-protected rows are sorted
-    by ``column``; protected rows are appended after them in their original
-    relative order.
+    by the absolute value of ``column``; protected rows are appended after them
+    in their original relative order.
     """
     if df.empty:
         return df
@@ -706,11 +706,12 @@ def _apply_column_sort(
         group_protected = protected[positions]
         data_pos = positions[~group_protected]
         prot_pos = positions[group_protected]
-        sorted_block = (
-            df.iloc[data_pos].sort_values(by=column, ascending=ascending, na_position="last")
-            if len(data_pos) > 0
-            else df.iloc[[]]
-        )
+        if len(data_pos) > 0:
+            group_df = df.iloc[data_pos].copy()
+            group_df["_abs_sort"] = group_df[column].abs()
+            sorted_block = group_df.sort_values(by="_abs_sort", ascending=ascending, na_position="last").drop(columns="_abs_sort")
+        else:
+            sorted_block = df.iloc[[]]
         prot_block = df.iloc[prot_pos] if len(prot_pos) > 0 else df.iloc[[]]
         if len(sorted_block) > 0 or len(prot_block) > 0:
             blocks.append(pd.concat([sorted_block, prot_block]))
