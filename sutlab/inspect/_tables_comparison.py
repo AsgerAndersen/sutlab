@@ -145,7 +145,7 @@ class TablesComparison:
         new_cfg = new_diff.display_configuration
         return dataclasses.replace(self, diff=new_diff, rel=new_rel, display_configuration=new_cfg)
 
-    def get_index_values(self, table: str, levels: str | list[str]) -> pd.DataFrame:
+    def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations using dot notation to address inner tables.
 
         Use ``"diff.<table>"`` or ``"rel.<table>"`` to address a table within
@@ -160,19 +160,25 @@ class TablesComparison:
             ``"rel.supply"``.
         levels : str or list of str
             One or more index level names whose unique value combinations to return.
+        as_list : bool, default False
+            If ``True``, return a plain list of unique values. Requires exactly
+            one level; raises ``ValueError`` if more than one level is requested.
 
         Returns
         -------
-        pd.DataFrame
-            One column per requested level, unique combinations only.
-            Rows where all values are ``""`` or ``NaN`` are dropped.
-            Index is a default RangeIndex.
+        pd.DataFrame or list
+            When ``as_list=False``: one column per requested level, unique
+            combinations only. Rows where all values are ``""`` or ``NaN`` are
+            dropped. Index is a default RangeIndex.
+            When ``as_list=True``: a plain list of unique values for the single
+            requested level.
 
         Raises
         ------
         ValueError
             If ``table`` does not use dot notation, if the prefix is not
-            ``"diff"`` or ``"rel"``, or if the inner object raises.
+            ``"diff"`` or ``"rel"``, if the inner object raises, or if
+            ``as_list=True`` and more than one level is requested.
         """
         if "." not in table:
             raise ValueError(
@@ -185,7 +191,7 @@ class TablesComparison:
                 f"First part of dot-notation table name must be 'diff' or 'rel'. "
                 f"Got {attr!r}."
             )
-        return getattr(self, attr).get_index_values(table_name, levels)
+        return getattr(self, attr).get_index_values(table_name, levels, as_list=as_list)
 
 
 def _compute_comparison_table_fields(

@@ -809,7 +809,9 @@ def _get_index_values(
     inspection_obj: Any,
     table: str,
     levels: str | list[str],
-) -> pd.DataFrame:
+    *,
+    as_list: bool = False,
+) -> pd.DataFrame | list:
     """Return unique index value combinations for a table after applying display config.
 
     Parameters
@@ -821,20 +823,26 @@ def _get_index_values(
         Name of a DataFrame field on ``inspection_obj.data``.
     levels : str or list of str
         One or more index level names whose unique combinations to return.
+    as_list : bool, default False
+        If ``True``, return a plain list of unique values. Requires exactly
+        one level; raises ``ValueError`` if more than one level is requested.
 
     Returns
     -------
-    pd.DataFrame
-        One column per requested level, unique combinations only.
-        Rows where all values are ``""`` or ``NaN`` are dropped.
-        Index is a default RangeIndex.
+    pd.DataFrame or list
+        When ``as_list=False``: one column per requested level, unique
+        combinations only. Rows where all values are ``""`` or ``NaN`` are
+        dropped. Index is a default RangeIndex.
+        When ``as_list=True``: a plain list of unique values for the single
+        requested level.
 
     Raises
     ------
     ValueError
         If ``table`` is not a DataFrame field on ``inspection_obj.data``,
-        if the field is ``None``, or if any of ``levels`` is not an index
-        level of that table.
+        if the field is ``None``, if any of ``levels`` is not an index
+        level of that table, or if ``as_list=True`` and more than one level
+        is requested.
     """
     data_field_names = {f.name for f in dataclasses.fields(inspection_obj.data)}
     if table not in data_field_names:
@@ -859,6 +867,11 @@ def _get_index_values(
 
     level_list = [levels] if isinstance(levels, str) else list(levels)
 
+    if as_list and len(level_list) > 1:
+        raise ValueError(
+            f"as_list=True requires exactly one level, but {len(level_list)} were given: {level_list}."
+        )
+
     missing = [lv for lv in level_list if lv not in df.index.names]
     if missing:
         raise ValueError(
@@ -869,4 +882,8 @@ def _get_index_values(
     result = df.index.to_frame(index=False)[level_list].drop_duplicates().reset_index(drop=True)
 
     all_empty = result.apply(lambda col: col.isna() | (col == ""), axis=0).all(axis=1)
-    return result[~all_empty].reset_index(drop=True)
+    result = result[~all_empty].reset_index(drop=True)
+
+    if as_list:
+        return result[level_list[0]].tolist()
+    return result
