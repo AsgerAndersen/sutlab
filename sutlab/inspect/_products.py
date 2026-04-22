@@ -57,14 +57,14 @@ class ProductInspectionData:
     """
 
     balance: pd.DataFrame
-    supply_products: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use: pd.DataFrame = field(default_factory=pd.DataFrame)
     balance_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     balance_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    supply_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -94,14 +94,14 @@ class ProductInspectionData:
             index=pd.Index(
                 [
                     "balance",
-                    "supply_products",
-                    "use_products",
+                    "supply",
+                    "use",
                     "balance_distribution",
-                    "supply_products_distribution",
-                    "use_products_distribution",
+                    "supply_distribution",
+                    "use_distribution",
                     "balance_growth",
-                    "supply_products_growth",
-                    "use_products_growth",
+                    "supply_growth",
+                    "use_growth",
                     "price_layers",
                     "price_layers_distribution",
                     "price_layers_growth",
@@ -121,12 +121,12 @@ _PRODUCT_PROTECTED_TABLES = frozenset({
 _PRODUCT_PROTECTED_INDEX_VALUES = {"transaction": [""]}
 
 _PRODUCT_INDEX_GROUPING: dict[str, list[str] | None] = {
-    "supply_products": ["product"],
-    "supply_products_distribution": ["product"],
-    "supply_products_growth": ["product"],
-    "use_products": ["product"],
-    "use_products_distribution": ["product"],
-    "use_products_growth": ["product"],
+    "supply": ["product"],
+    "supply_distribution": ["product"],
+    "supply_growth": ["product"],
+    "use": ["product"],
+    "use_distribution": ["product"],
+    "use_growth": ["product"],
     "price_layers": ["product", "price_layer"],
     "price_layers_rates": ["product", "price_layer"],
     "price_layers_distribution": ["product", "price_layer"],
@@ -177,7 +177,7 @@ class ProductInspection:
         purchasers' prices. Columns are the collection ids (e.g. years).
         Missing cells are filled with ``0``.
 
-    supply_products : pd.DataFrame
+    supply : pd.DataFrame
         Wide-format category breakdown for supply transactions. Rows have a
         six-level MultiIndex with names ``product``, ``product_txt``,
         ``transaction``, ``transaction_txt``, ``category``, ``category_txt``:
@@ -200,8 +200,8 @@ class ProductInspection:
         are omitted. Columns are the collection ids (e.g. years). Values are
         at basic prices. Missing cells are filled with ``0``.
 
-    use_products : pd.DataFrame
-        Same structure as ``supply_products``, for use-side transactions.
+    use : pd.DataFrame
+        Same structure as ``supply``, for use-side transactions.
         Values are at purchasers' prices.
 
     balance_distribution : pd.DataFrame
@@ -212,15 +212,15 @@ class ProductInspection:
         ``"Total supply"``. Where the denominator is zero the result is
         ``NaN``.
 
-    supply_products_distribution : pd.DataFrame
-        Same structure as ``supply_products``. For each product and year, every
+    supply_distribution : pd.DataFrame
+        Same structure as ``supply``. For each product and year, every
         value is divided by the sum across all transactions and categories for
         that product in that year. Values therefore express each category's
         share of total supply for the product in each year.
 
-    use_products_distribution : pd.DataFrame
-        Same structure as ``use_products``, with the same normalization as
-        ``supply_products_distribution`` but relative to total use.
+    use_distribution : pd.DataFrame
+        Same structure as ``use``, with the same normalization as
+        ``supply_distribution`` but relative to total use.
 
     balance_growth : pd.DataFrame
         Same structure as ``balance``. Each value is the change relative to
@@ -228,12 +228,12 @@ class ProductInspection:
         is stored as ``0.05``. The first year column is ``NaN`` throughout.
         Division by zero also yields ``NaN``.
 
-    supply_products_growth : pd.DataFrame
-        Same structure as ``supply_products``, with the same year-on-year
+    supply_growth : pd.DataFrame
+        Same structure as ``supply``, with the same year-on-year
         growth calculation as ``balance_growth``.
 
-    use_products_growth : pd.DataFrame
-        Same structure as ``use_products``, with the same year-on-year
+    use_growth : pd.DataFrame
+        Same structure as ``use``, with the same year-on-year
         growth calculation as ``balance_growth``.
 
     price_layers : pd.DataFrame
@@ -296,13 +296,13 @@ class ProductInspection:
         return _style_balance_table(self.data.balance, self._number_fmt())
 
     @property
-    def supply_products(self) -> Styler:
-        df = _apply_display_config(self.data.supply_products, "supply_products", self.display_configuration)
+    def supply(self) -> Styler:
+        df = _apply_display_config(self.data.supply, "supply", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "supply")
 
     @property
-    def use_products(self) -> Styler:
-        df = _apply_display_config(self.data.use_products, "use_products", self.display_configuration)
+    def use(self) -> Styler:
+        df = _apply_display_config(self.data.use, "use", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "use")
 
     @property
@@ -310,13 +310,13 @@ class ProductInspection:
         return _style_balance_table(self.data.balance_distribution, self._pct_fmt())
 
     @property
-    def supply_products_distribution(self) -> Styler:
-        df = _apply_display_config(self.data.supply_products_distribution, "supply_products_distribution", self.display_configuration)
+    def supply_distribution(self) -> Styler:
+        df = _apply_display_config(self.data.supply_distribution, "supply_distribution", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "supply")
 
     @property
-    def use_products_distribution(self) -> Styler:
-        df = _apply_display_config(self.data.use_products_distribution, "use_products_distribution", self.display_configuration)
+    def use_distribution(self) -> Styler:
+        df = _apply_display_config(self.data.use_distribution, "use_distribution", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use")
 
     @property
@@ -324,13 +324,13 @@ class ProductInspection:
         return _style_balance_table(self.data.balance_growth, self._pct_fmt())
 
     @property
-    def supply_products_growth(self) -> Styler:
-        df = _apply_display_config(self.data.supply_products_growth, "supply_products_growth", self.display_configuration)
+    def supply_growth(self) -> Styler:
+        df = _apply_display_config(self.data.supply_growth, "supply_growth", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "supply")
 
     @property
-    def use_products_growth(self) -> Styler:
-        df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
+    def use_growth(self) -> Styler:
+        df = _apply_display_config(self.data.use_growth, "use_growth", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use")
 
     @property
@@ -476,7 +476,7 @@ class ProductInspection:
         Parameters
         ----------
         table : str
-            Name of a table field (e.g. ``"balance"``, ``"supply_products"``).
+            Name of a table field (e.g. ``"balance"``, ``"supply"``).
         levels : str or list of str
             One or more index level names whose unique value combinations to return.
 
@@ -666,7 +666,7 @@ def inspect_products(
     balance = _build_balance_table(
         sut, matched_products, trans_names, product_names, all_ids
     )
-    supply_products = _append_detail_total(
+    supply = _append_detail_total(
         _build_detail_df(
             sut.supply, matched_products, product_names,
             trans_names, category_names_by_trans, cols, all_ids,
@@ -675,7 +675,7 @@ def inspect_products(
         all_ids,
         total_label="Total supply",
     )
-    use_products = _append_detail_total(
+    use = _append_detail_total(
         _build_detail_df(
             sut.use, matched_products, product_names,
             trans_names, category_names_by_trans, cols, all_ids,
@@ -685,14 +685,14 @@ def inspect_products(
         total_label="Total use",
     )
     balance_distribution = _build_balance_distribution(balance)
-    supply_products_distribution = _build_detail_distribution(supply_products)
-    use_products_distribution = _build_detail_distribution(use_products)
+    supply_distribution = _build_detail_distribution(supply)
+    use_distribution = _build_detail_distribution(use)
     balance_growth = _build_growth_table(balance)
     if "transaction_txt" in balance_growth.index.names:
         _balance_mask = balance_growth.index.get_level_values("transaction_txt") == "Balance"
         balance_growth = balance_growth[~_balance_mask]
-    supply_products_growth = _build_growth_table(supply_products)
-    use_products_growth = _build_growth_table(use_products)
+    supply_growth = _build_growth_table(supply)
+    use_growth = _build_growth_table(use)
     price_layers = _build_price_layers_table(
         sut, matched_products, trans_names, product_names, all_ids
     )
@@ -712,14 +712,14 @@ def inspect_products(
 
     data = ProductInspectionData(
         balance=balance,
-        supply_products=supply_products,
-        use_products=use_products,
+        supply=supply,
+        use=use,
         balance_distribution=balance_distribution,
-        supply_products_distribution=supply_products_distribution,
-        use_products_distribution=use_products_distribution,
+        supply_distribution=supply_distribution,
+        use_distribution=use_distribution,
         balance_growth=balance_growth,
-        supply_products_growth=supply_products_growth,
-        use_products_growth=use_products_growth,
+        supply_growth=supply_growth,
+        use_growth=use_growth,
         price_layers=price_layers,
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
