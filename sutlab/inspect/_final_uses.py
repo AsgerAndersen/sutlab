@@ -380,7 +380,7 @@ class FinalUseInspection:
         """Return a copy with all user-settable display settings reset to defaults."""
         return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
-    def get_index_values(self, table: str, levels: str | list[str]) -> pd.DataFrame:
+    def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations for a table after applying display config.
 
         The display configuration (index filter, n-largest filter, sort) is applied
@@ -393,21 +393,27 @@ class FinalUseInspection:
             Name of a table field (e.g. ``"use"``, ``"use_products"``).
         levels : str or list of str
             One or more index level names whose unique value combinations to return.
+        as_list : bool, default False
+            If ``True``, return a plain list of unique values. Requires exactly
+            one level; raises ``ValueError`` if more than one level is requested.
 
         Returns
         -------
-        pd.DataFrame
-            One column per requested level, unique combinations only.
-            Rows where all values are ``""`` or ``NaN`` are dropped.
-            Index is a default RangeIndex.
+        pd.DataFrame or list
+            When ``as_list=False``: one column per requested level, unique
+            combinations only. Rows where all values are ``""`` or ``NaN`` are
+            dropped. Index is a default RangeIndex.
+            When ``as_list=True``: a plain list of unique values for the single
+            requested level.
 
         Raises
         ------
         ValueError
-            If ``table`` does not exist or is ``None``, or if any entry in
-            ``levels`` is not an index level of that table.
+            If ``table`` does not exist or is ``None``, if any entry in
+            ``levels`` is not an index level of that table, or if
+            ``as_list=True`` and more than one level is requested.
         """
-        return _get_index_values(self, table, levels)
+        return _get_index_values(self, table, levels, as_list=as_list)
 
     @property
     def tables_description(self) -> Styler:
