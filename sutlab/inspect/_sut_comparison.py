@@ -189,6 +189,7 @@ class SUTComparisonInspection:
         index_grouping={},
     ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
+    _price_layer_columns: list[str] = dataclasses.field(default_factory=list, repr=False)
 
     def _rel_col(self, df: pd.DataFrame) -> str:
         return next((c for c in df.columns if c.startswith("rel_")), "")
@@ -222,7 +223,7 @@ class SUTComparisonInspection:
         """Styled price layers comparison table."""
         cfg = self._cfg()
         df = _apply_display_config(self.data.use_price_layers, "use_price_layers", cfg)
-        return _style_comparison_layers_table(df, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        return _style_comparison_layers_table(df, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals, price_layer_columns=self._price_layer_columns)
 
     @property
     def balancing_targets_supply(self) -> Styler | None:
@@ -258,7 +259,7 @@ class SUTComparisonInspection:
             return None
         cfg = self._cfg()
         df = _apply_display_config(self.data.balancing_targets_use_price_layers, "balancing_targets_use_price_layers", cfg)
-        return _style_comparison_layers_table(df, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
+        return _style_comparison_layers_table(df, display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals, price_layer_columns=self._price_layer_columns)
 
     @property
     def summary(self) -> Styler:
@@ -446,11 +447,13 @@ class SUTComparisonInspection:
         diff = SUTComparisonInspection(
             data=SUTComparisonData(**diff_fields),
             display_configuration=self.display_configuration,
+            _price_layer_columns=self._price_layer_columns,
         )
         rel = SUTComparisonInspection(
             data=SUTComparisonData(**rel_fields),
             display_configuration=self.display_configuration,
             _all_rel=True,
+            _price_layer_columns=self._price_layer_columns,
         )
         return TablesComparison(
             diff=diff,
@@ -725,6 +728,7 @@ def inspect_sut_comparison(
             use_columns_summary=use_columns_summary,
         ),
         display_configuration=display_config,
+        _price_layer_columns=layer_cols,
     )
 
 
