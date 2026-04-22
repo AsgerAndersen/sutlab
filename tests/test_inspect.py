@@ -1842,4 +1842,188 @@ class TestPriceLayersStyling:
         assert "border-bottom" not in data_css[-1]
 
 
+# ---------------------------------------------------------------------------
+# supply_summary / use_summary
+# ---------------------------------------------------------------------------
+
+class TestSupplySummary:
+    """Tests for ProductInspectionData.supply_summary."""
+
+    def test_is_dataframe(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.data.supply_summary, pd.DataFrame)
+
+    def test_index_names(self, sut):
+        result = inspect_products(sut, "A")
+        assert result.data.supply_summary.index.names == ["product", "product_txt", "summary"]
+
+    def test_columns_are_ids(self, sut):
+        result = inspect_products(sut, "A")
+        assert list(result.data.supply_summary.columns) == [2020, 2021]
+
+    def test_default_row_labels(self, sut):
+        result = inspect_products(sut, "A")
+        summary_vals = result.data.supply_summary.index.get_level_values("summary").tolist()
+        assert summary_vals == [
+            "total_supply",
+            "n_categories",
+            "n_categories_p50",
+            "n_categories_p80",
+            "n_categories_p95",
+            "value_max",
+            "value_median",
+            "share_max",
+            "share_median",
+        ]
+
+    def test_total_supply(self, sut):
+        # Product A: (0100,X)=100 + (0700,"")=20 = 120 in 2020; 110+25=135 in 2021
+        summary = inspect_products(sut, "A").data.supply_summary
+        row = summary.xs("total_supply", level="summary")
+        assert row.loc[("A", ""), 2020] == pytest.approx(120.0)
+        assert row.loc[("A", ""), 2021] == pytest.approx(135.0)
+
+    def test_n_categories(self, sut):
+        # Product A has 2 (transaction, category) rows on supply side
+        summary = inspect_products(sut, "A").data.supply_summary
+        row = summary.xs("n_categories", level="summary")
+        assert row.loc[("A", ""), 2020] == 2
+        assert row.loc[("A", ""), 2021] == 2
+
+    def test_value_max(self, sut):
+        # Largest supply row for A is (0100,X): 100 in 2020, 110 in 2021
+        summary = inspect_products(sut, "A").data.supply_summary
+        row = summary.xs("value_max", level="summary")
+        assert row.loc[("A", ""), 2020] == pytest.approx(100.0)
+        assert row.loc[("A", ""), 2021] == pytest.approx(110.0)
+
+    def test_share_max(self, sut):
+        # Largest share for A: 100/120 in 2020, 110/135 in 2021
+        summary = inspect_products(sut, "A").data.supply_summary
+        row = summary.xs("share_max", level="summary")
+        assert row.loc[("A", ""), 2020] == pytest.approx(100 / 120)
+        assert row.loc[("A", ""), 2021] == pytest.approx(110 / 135)
+
+    def test_coverage_p50(self, sut):
+        # 50% of 120=60; largest cat is 100 which already covers 60 → 1 category needed
+        summary = inspect_products(sut, "A").data.supply_summary
+        row = summary.xs("n_categories_p50", level="summary")
+        assert row.loc[("A", ""), 2020] == 1
+
+    def test_coverage_p95(self, sut):
+        # 95% of 120=114; 100 < 114, need both cats → 2
+        summary = inspect_products(sut, "A").data.supply_summary
+        row = summary.xs("n_categories_p95", level="summary")
+        assert row.loc[("A", ""), 2020] == 2
+
+    def test_supply_only_product_present(self, sut):
+        # Product T has supply but no use; should appear in supply_summary
+        result = inspect_products(sut, ["A", "T"])
+        products_in_summary = list(dict.fromkeys(
+            result.data.supply_summary.index.get_level_values("product")
+        ))
+        assert "T" in products_in_summary
+
+    def test_two_products_correct_blocks(self, sut):
+        result = inspect_products(sut, ["A", "T"])
+        products_in_summary = list(dict.fromkeys(
+            result.data.supply_summary.index.get_level_values("product")
+        ))
+        assert products_in_summary == ["A", "T"]
+
+    def test_multi_cat_n_categories(self, sut_multi_cat):
+        # Product A supply has 3 (trans,cat) rows: (0100,X), (0100,Y), (0700,"")
+        summary = inspect_products(sut_multi_cat, "A").data.supply_summary
+        row = summary.xs("n_categories", level="summary")
+        assert row.loc[("A", ""), 2020] == 3
+
+    def test_custom_percentiles(self, sut):
+        result = inspect_products(sut, "A", percentiles=[1.0])
+        summary_vals = result.data.supply_summary.index.get_level_values("summary").tolist()
+        assert "value_max" in summary_vals
+        assert "value_median" not in summary_vals
+
+    def test_custom_coverage_thresholds(self, sut):
+        result = inspect_products(sut, "A", coverage_thresholds=[0.9])
+        summary_vals = result.data.supply_summary.index.get_level_values("summary").tolist()
+        assert "n_categories_p90" in summary_vals
+        assert "n_categories_p50" not in summary_vals
+
+    def test_styled_property_returns_styler(self, sut):
+        from pandas.io.formats.style import Styler
+        result = inspect_products(sut, "A")
+        assert isinstance(result.supply_summary, Styler)
+
+    def test_in_protected_tables(self, sut):
+        result = inspect_products(sut, "A")
+        assert "supply_summary" in result.display_configuration.protected_tables
+
+    def test_in_tables_description(self, sut):
+        result = inspect_products(sut, "A")
+        assert "supply_summary" in result.data.tables_description.index
+
+
+class TestUseSummary:
+    """Tests for ProductInspectionData.use_summary."""
+
+    def test_is_dataframe(self, sut):
+        result = inspect_products(sut, "A")
+        assert isinstance(result.data.use_summary, pd.DataFrame)
+
+    def test_index_names(self, sut):
+        result = inspect_products(sut, "A")
+        assert result.data.use_summary.index.names == ["product", "product_txt", "summary"]
+
+    def test_columns_are_ids(self, sut):
+        result = inspect_products(sut, "A")
+        assert list(result.data.use_summary.columns) == [2020, 2021]
+
+    def test_total_use(self, sut):
+        # Product A: (2000,X)=80 + (6001,"")=40 = 120 in 2020; 85+50=135 in 2021
+        summary = inspect_products(sut, "A").data.use_summary
+        row = summary.xs("total_use", level="summary")
+        assert row.loc[("A", ""), 2020] == pytest.approx(120.0)
+        assert row.loc[("A", ""), 2021] == pytest.approx(135.0)
+
+    def test_n_categories(self, sut):
+        # Product A has 2 (transaction, category) rows on use side
+        summary = inspect_products(sut, "A").data.use_summary
+        row = summary.xs("n_categories", level="summary")
+        assert row.loc[("A", ""), 2020] == 2
+
+    def test_value_max(self, sut):
+        # Largest use row for A is (2000,X): 80 in 2020, 85 in 2021
+        summary = inspect_products(sut, "A").data.use_summary
+        row = summary.xs("value_max", level="summary")
+        assert row.loc[("A", ""), 2020] == pytest.approx(80.0)
+        assert row.loc[("A", ""), 2021] == pytest.approx(85.0)
+
+    def test_coverage_p80_needs_both_cats(self, sut):
+        # 80% of 120=96; (2000,X)=80 < 96, need both → 2
+        summary = inspect_products(sut, "A").data.use_summary
+        row = summary.xs("n_categories_p80", level="summary")
+        assert row.loc[("A", ""), 2020] == 2
+
+    def test_supply_only_product_absent(self, sut):
+        # Product T has no use rows; should not appear in use_summary
+        result = inspect_products(sut, ["A", "T"])
+        products_in_summary = list(dict.fromkeys(
+            result.data.use_summary.index.get_level_values("product")
+        ))
+        assert "T" not in products_in_summary
+        assert "A" in products_in_summary
+
+    def test_styled_property_returns_styler(self, sut):
+        from pandas.io.formats.style import Styler
+        result = inspect_products(sut, "A")
+        assert isinstance(result.use_summary, Styler)
+
+    def test_in_protected_tables(self, sut):
+        result = inspect_products(sut, "A")
+        assert "use_summary" in result.display_configuration.protected_tables
+
+    def test_in_tables_description(self, sut):
+        result = inspect_products(sut, "A")
+        assert "use_summary" in result.data.tables_description.index
+
 

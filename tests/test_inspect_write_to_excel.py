@@ -525,11 +525,13 @@ def test_write_to_excel_writes_empty_dataframes(
     path = tmp_path / "out.xlsx"
     product_result_with_empty_tables.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    # All 13 fields should be present — empty DataFrames are not skipped
+    # All 15 fields should be present — empty DataFrames are not skipped
     assert "balance" in wb.sheetnames
     assert "supply" in wb.sheetnames
+    assert "supply_summary" in wb.sheetnames
+    assert "use_summary" in wb.sheetnames
     assert "price_layers_rates" in wb.sheetnames
-    assert len(wb.sheetnames) == 13
+    assert len(wb.sheetnames) == 15
 
 
 # ---------------------------------------------------------------------------
