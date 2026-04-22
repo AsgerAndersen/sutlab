@@ -754,6 +754,29 @@ class TestGetProductCodes:
         result = get_product_codes(sut, products="ZZZZ")
         assert len(result) == 0
 
+    def test_as_list_returns_list(self, sut):
+        result = get_product_codes(sut, as_list=True)
+        assert isinstance(result, list)
+        assert set(result) == {"P1", "P2"}
+
+    def test_as_list_omits_txt_column(self, sut_with_product_labels):
+        result = get_product_codes(sut_with_product_labels, as_list=True)
+        assert isinstance(result, list)
+        assert all(isinstance(v, str) for v in result)
+
+    def test_table_supply_returns_only_supply_products(self, sut):
+        result = get_product_codes(sut, table="supply")
+        assert set(result["nrnr"]) == set(sut.supply["nrnr"].dropna().unique())
+
+    def test_table_use_returns_only_use_products(self, sut):
+        result = get_product_codes(sut, table="use")
+        assert set(result["nrnr"]) == set(sut.use["nrnr"].dropna().unique())
+
+    def test_table_supply_as_list(self, sut):
+        result = get_product_codes(sut, as_list=True, table="supply")
+        assert isinstance(result, list)
+        assert set(result) == set(sut.supply["nrnr"].dropna().unique())
+
 
 class TestGetTransactionCodes:
 
@@ -804,6 +827,29 @@ class TestGetTransactionCodes:
     def test_filter_negation(self, sut):
         result = get_transaction_codes(sut, transactions="~0100")
         assert list(result["trans"]) == ["2000"]
+
+    def test_as_list_returns_list(self, sut):
+        result = get_transaction_codes(sut, as_list=True)
+        assert isinstance(result, list)
+        assert set(result) == {"0100", "2000"}
+
+    def test_as_list_omits_txt_column(self, sut_classified):
+        result = get_transaction_codes(sut_classified, as_list=True)
+        assert isinstance(result, list)
+        assert all(isinstance(v, str) for v in result)
+
+    def test_table_supply_returns_only_supply_transactions(self, sut):
+        # supply has "0100", use has "2000"
+        result = get_transaction_codes(sut, table="supply")
+        assert list(result["trans"]) == ["0100"]
+
+    def test_table_use_returns_only_use_transactions(self, sut):
+        result = get_transaction_codes(sut, table="use")
+        assert list(result["trans"]) == ["2000"]
+
+    def test_table_supply_as_list(self, sut):
+        result = get_transaction_codes(sut, as_list=True, table="supply")
+        assert result == ["0100"]
 
 
 class TestGetIndustryCodes:
@@ -857,6 +903,31 @@ class TestGetIndustryCodes:
         result = get_industry_codes(sut_classified, industries="~X")
         assert list(result["brch"]) == ["Y"]
 
+    def test_as_list_returns_list(self, sut_classified):
+        result = get_industry_codes(sut_classified, as_list=True)
+        assert isinstance(result, list)
+        assert set(result) == {"X", "Y"}
+
+    def test_as_list_omits_txt_column(self, sut_with_industry_labels):
+        result = get_industry_codes(sut_with_industry_labels, as_list=True)
+        assert isinstance(result, list)
+        assert all(isinstance(v, str) for v in result)
+
+    def test_table_supply_returns_codes_from_p1_rows(self, sut_classified):
+        # supply has P1 rows with brch X, Y
+        result = get_industry_codes(sut_classified, table="supply")
+        assert set(result["brch"]) == {"X", "Y"}
+
+    def test_table_use_returns_codes_from_p2_rows(self, sut_classified):
+        # use has P2 rows with brch X, Y
+        result = get_industry_codes(sut_classified, table="use")
+        assert set(result["brch"]) == {"X", "Y"}
+
+    def test_table_supply_as_list(self, sut_classified):
+        result = get_industry_codes(sut_classified, as_list=True, table="supply")
+        assert isinstance(result, list)
+        assert set(result) == {"X", "Y"}
+
 
 class TestGetIndividualConsumptionCodes:
 
@@ -903,6 +974,24 @@ class TestGetIndividualConsumptionCodes:
         result = get_individual_consumption_codes(sut_classified, categories="GOV")
         assert len(result) == 0
 
+    def test_as_list_returns_list(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, as_list=True)
+        assert isinstance(result, list)
+        assert set(result) == {"HH"}
+
+    def test_table_supply_returns_empty_dataframe(self, sut_classified):
+        # P31 never appears in supply
+        result = get_individual_consumption_codes(sut_classified, table="supply")
+        assert len(result) == 0
+
+    def test_table_supply_returns_empty_list(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, as_list=True, table="supply")
+        assert result == []
+
+    def test_table_use_returns_codes(self, sut_classified):
+        result = get_individual_consumption_codes(sut_classified, table="use")
+        assert set(result["brch"]) == {"HH"}
+
 
 class TestGetCollectiveConsumptionCodes:
 
@@ -948,6 +1037,24 @@ class TestGetCollectiveConsumptionCodes:
     def test_filter_no_match(self, sut_classified):
         result = get_collective_consumption_codes(sut_classified, categories="HH")
         assert len(result) == 0
+
+    def test_as_list_returns_list(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, as_list=True)
+        assert isinstance(result, list)
+        assert set(result) == {"GOV"}
+
+    def test_table_supply_returns_empty_dataframe(self, sut_classified):
+        # P32 never appears in supply
+        result = get_collective_consumption_codes(sut_classified, table="supply")
+        assert len(result) == 0
+
+    def test_table_supply_returns_empty_list(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, as_list=True, table="supply")
+        assert result == []
+
+    def test_table_use_returns_codes(self, sut_classified):
+        result = get_collective_consumption_codes(sut_classified, table="use")
+        assert set(result["brch"]) == {"GOV"}
 
 
 class TestGetIds:
