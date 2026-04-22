@@ -35,13 +35,19 @@ class DisplayConfiguration:
         and kept at the end of each group.
     sort_ascending : bool
         Direction for ``sort_column``. Default ``False`` (descending).
+    sort_ids_ascending : bool
+        Sort direction for id columns (wide-format tables) and the id index
+        level (tall-format tables). ``True`` (default) = ascending left-to-right
+        for columns and top-to-bottom for rows. ``False`` = descending.
     display_values_n_largest : tuple[int, str] or None
         ``(n, column)`` — keep only the n rows with the largest values for
         the given column within each ``index_grouping`` group. Protected rows
         are always kept.
     protected_tables : frozenset[str]
-        Table field names excluded from all display operations. Hard-coded
-        per class; preserved by ``set_display_configuration_to_defaults``.
+        Table field names excluded from row-level display operations
+        (``display_index``, ``display_values_n_largest``, ``sort_column``).
+        Id-column and id-index sorting still apply to protected tables.
+        Hard-coded per class; preserved by ``set_display_configuration_to_defaults``.
     protected_index_values : dict[str, list]
         Index level name → values always shown, pinned to end of their group.
         Hard-coded per class; preserved by ``set_display_configuration_to_defaults``.
@@ -50,6 +56,15 @@ class DisplayConfiguration:
         ``sort_column`` and ``display_values_n_largest`` operate. ``None``
         means the whole table is one group (global). Hard-coded per class;
         preserved by ``set_display_configuration_to_defaults``.
+    id_columns : bool
+        When ``True``, all data columns in every table are id values (wide-format
+        layout). ``_apply_display_config`` will sort columns according to
+        ``sort_ids_ascending``. Hard-coded per class; preserved by reset.
+    id_index_level : str or None
+        Name of the index level that holds id values in tall-format tables
+        (e.g. ``"year"``). When set, ``_apply_display_config`` sorts rows at
+        that level according to ``sort_ids_ascending``. Set at construction
+        time by the inspect function; preserved by reset.
     """
 
     # User-settable
@@ -59,12 +74,15 @@ class DisplayConfiguration:
     display_index: dict[str, list] = field(default_factory=dict)
     sort_column: str | None = None
     sort_ascending: bool = False
+    sort_ids_ascending: bool = True
     display_values_n_largest: tuple[int, str] | None = None
 
     # Hard-coded per class (preserved by reset)
     protected_tables: frozenset = field(default_factory=frozenset)
     protected_index_values: dict[str, list] = field(default_factory=dict)
     index_grouping: dict[str, list | None] = field(default_factory=dict)
+    id_columns: bool = False
+    id_index_level: str | None = None
 
 
 def _validate_display_unit(display_unit: float | None) -> None:
@@ -127,6 +145,13 @@ def _cfg_set_display_sort_column(
     return dataclasses.replace(config, sort_column=column, sort_ascending=ascending)
 
 
+def _cfg_set_display_sort_ids_ascending(
+    config: DisplayConfiguration,
+    ascending: bool,
+) -> DisplayConfiguration:
+    return dataclasses.replace(config, sort_ids_ascending=ascending)
+
+
 def _cfg_set_display_values_n_largest(
     config: DisplayConfiguration,
     n: int,
@@ -143,4 +168,6 @@ def _cfg_reset_to_defaults(config: DisplayConfiguration) -> DisplayConfiguration
         protected_tables=config.protected_tables,
         protected_index_values=config.protected_index_values,
         index_grouping=config.index_grouping,
+        id_columns=config.id_columns,
+        id_index_level=config.id_index_level,
     )

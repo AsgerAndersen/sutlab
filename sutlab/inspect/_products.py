@@ -19,6 +19,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_decimals,
     _cfg_set_display_index,
     _cfg_set_display_sort_column,
+    _cfg_set_display_sort_ids_ascending,
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
@@ -148,6 +149,7 @@ def _product_default_config() -> DisplayConfiguration:
         protected_tables=_PRODUCT_PROTECTED_TABLES,
         protected_index_values=_PRODUCT_PROTECTED_INDEX_VALUES,
         index_grouping=_PRODUCT_INDEX_GROUPING,
+        id_columns=True,
     )
 
 
@@ -302,7 +304,8 @@ class ProductInspection:
 
     @property
     def balance(self) -> Styler:
-        return _style_balance_table(self.data.balance, self._number_fmt())
+        df = _apply_display_config(self.data.balance, "balance", self.display_configuration)
+        return _style_balance_table(df, self._number_fmt())
 
     @property
     def supply(self) -> Styler:
@@ -316,23 +319,26 @@ class ProductInspection:
 
     @property
     def supply_summary(self) -> Styler:
+        df = _apply_display_config(self.data.supply_summary, "supply_summary", self.display_configuration)
         cfg = self.display_configuration
         return _style_categories_summary_table(
-            self.data.supply_summary, "supply", cfg.display_unit, cfg.rel_base,
+            df, "supply", cfg.display_unit, cfg.rel_base,
             all_rel=self._all_rel, decimals=cfg.decimals,
         )
 
     @property
     def use_summary(self) -> Styler:
+        df = _apply_display_config(self.data.use_summary, "use_summary", self.display_configuration)
         cfg = self.display_configuration
         return _style_categories_summary_table(
-            self.data.use_summary, "use", cfg.display_unit, cfg.rel_base,
+            df, "use", cfg.display_unit, cfg.rel_base,
             all_rel=self._all_rel, decimals=cfg.decimals,
         )
 
     @property
     def balance_distribution(self) -> Styler:
-        return _style_balance_table(self.data.balance_distribution, self._pct_fmt())
+        df = _apply_display_config(self.data.balance_distribution, "balance_distribution", self.display_configuration)
+        return _style_balance_table(df, self._pct_fmt())
 
     @property
     def supply_distribution(self) -> Styler:
@@ -346,7 +352,8 @@ class ProductInspection:
 
     @property
     def balance_growth(self) -> Styler:
-        return _style_balance_table(self.data.balance_growth, self._pct_fmt())
+        df = _apply_display_config(self.data.balance_growth, "balance_growth", self.display_configuration)
+        return _style_balance_table(df, self._pct_fmt())
 
     @property
     def supply_growth(self) -> Styler:
@@ -466,6 +473,20 @@ class ProductInspection:
             Sort direction. Default ``False`` (descending).
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "ProductInspection":
+        """Return a copy with id columns sorted ascending or descending.
+
+        Controls left-to-right column order for all tables (id values are the
+        columns in wide-format inspection tables). Default ``True`` (ascending,
+        i.e. earliest year on the left).
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
     def set_display_values_n_largest(self, n: int, column: str) -> "ProductInspection":
         """Return a copy showing only the n rows with the largest values for ``column``.

@@ -28,6 +28,7 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_decimals,
     _cfg_set_display_index,
     _cfg_set_display_sort_column,
+    _cfg_set_display_sort_ids_ascending,
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
@@ -366,6 +367,21 @@ class SUTComparisonInspection:
             Sort direction. Default ``False`` (descending).
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "SUTComparisonInspection":
+        """Return a copy with ids sorted ascending or descending.
+
+        For SUTComparisonInspection, id values appear embedded in column names
+        (e.g. ``before_2020``) rather than as plain column headers, so this
+        setting has no visible effect on the current tables. Included for API
+        consistency with other inspection classes.
+
+        Parameters
+        ----------
+        ascending : bool
+            ``True`` for ascending (default), ``False`` for descending.
+        """
+        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
     def set_display_values_n_largest(self, n: int, column: str) -> "SUTComparisonInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
