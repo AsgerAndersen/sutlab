@@ -990,6 +990,8 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-04-22 (session 3)**: Price layer palette assignment is now identity-based across all inspection tables. Each price layer column always gets the same background colour regardless of which table it appears in or which other layers are co-present. Implemented via `_price_layer_columns: list[str]` field on all 4 inspection result classes (`ProductInspection`, `IndustryInspection`, `FinalUseInspection`, `SUTComparisonInspection`) and `price_layer_columns` parameter on `_style_price_layers_table`, `_style_final_use_price_layers_table`, `_style_comparison_layers_table`. Palette assignment uses `SUTColumns` role order as the canonical ordering.
 
+- **2026-04-22 (session 4)**: Renamed `supply_products`, `use_products`, `supply_products_distribution`, `use_products_distribution`, `supply_products_growth`, `use_products_growth` to `supply`, `use`, `supply_distribution`, `use_distribution`, `supply_growth`, `use_growth` in `ProductInspection` and `ProductInspectionData` only. The same-named tables in `IndustryInspection`, `FinalUseInspection`, and `SUTComparisonInspection` are unchanged.
+
 - **2026-04-22**: Fixed two bugs in `SUTComparisonInspection` display configuration:
   1. `supply_products_summary`, `supply_columns_summary`, `use_products_summary`, `use_columns_summary` were incorrectly in `protected_tables` — moved them to `index_grouping` with `[id_col]`.
   2. The same 4 styled properties were not calling `_apply_display_config` before styling — added the call, same pattern as the other 8 data table properties.
