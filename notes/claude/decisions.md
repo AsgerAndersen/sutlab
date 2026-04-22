@@ -986,6 +986,8 @@ Append-only. Each entry: date, decision, brief rationale.
   - `DisplayConfiguration` exported from `sutlab/inspect/__init__.py`.
   - All tests updated accordingly; 1554 tests pass.
 
+- **2026-04-22 (session 2)**: `tables_description` DataFrames on all 7 inspection data classes now sorted lexically by index. `get_index_values(table, levels)` added to all 7 inspection result classes and `TablesComparison`: applies display config first, returns unique combinations of requested index levels, drops all-empty rows, raises informative errors. `TablesComparison` uses dot notation (`"diff.<table>"` / `"rel.<table>"`). Shared helper `_get_index_values` in `_shared.py`.
+
 - **2026-04-22**: Fixed two bugs in `SUTComparisonInspection` display configuration:
   1. `supply_products_summary`, `supply_columns_summary`, `use_products_summary`, `use_columns_summary` were incorrectly in `protected_tables` — moved them to `index_grouping` with `[id_col]`.
   2. The same 4 styled properties were not calling `_apply_display_config` before styling — added the call, same pattern as the other 8 data table properties.
