@@ -98,7 +98,7 @@ def test_preserves_display_settings(inspection):
 
 def test_exact_match_filters_transaction_level(inspection):
     result = inspection.set_display_index("transaction", "2000")
-    trans_vals = result.use_products.data.index.get_level_values("transaction")
+    trans_vals = result.use.data.index.get_level_values("transaction")
     # Total rows (empty string) are also present — only data rows with "2000" remain
     data_rows = trans_vals[trans_vals != ""]
     assert set(data_rows) == {"2000"}
@@ -106,7 +106,7 @@ def test_exact_match_filters_transaction_level(inspection):
 
 def test_list_of_values_keeps_multiple_transactions(inspection):
     result = inspection.set_display_index("transaction", ["2000", "6001"])
-    trans_vals = result.use_products.data.index.get_level_values("transaction")
+    trans_vals = result.use.data.index.get_level_values("transaction")
     data_rows = set(trans_vals[trans_vals != ""])
     assert data_rows == {"2000", "6001"}
 
@@ -114,7 +114,7 @@ def test_list_of_values_keeps_multiple_transactions(inspection):
 def test_wildcard_pattern(inspection):
     # "2*" should match "2000" but not "6001" or "0100"
     result = inspection.set_display_index("transaction", "2*")
-    trans_vals = result.use_products.data.index.get_level_values("transaction")
+    trans_vals = result.use.data.index.get_level_values("transaction")
     data_rows = set(trans_vals[trans_vals != ""])
     assert data_rows == {"2000"}
 
@@ -122,7 +122,7 @@ def test_wildcard_pattern(inspection):
 def test_negation_pattern(inspection):
     # "~6001" should exclude "6001"
     result = inspection.set_display_index("transaction", "~6001")
-    trans_vals = result.use_products.data.index.get_level_values("transaction")
+    trans_vals = result.use.data.index.get_level_values("transaction")
     assert "6001" not in set(trans_vals)
 
 
@@ -134,7 +134,7 @@ def test_negation_pattern(inspection):
 def test_filters_product_level(inspection):
     result = inspection.set_display_index("product", "A")
     # balance is protected — filtering does not apply to it
-    for field_name in ("supply_products", "use_products"):
+    for field_name in ("supply", "use"):
         styled = getattr(result, field_name)
         prod_vals = styled.data.index.get_level_values("product")
         assert set(prod_vals) == {"A"}, f"field {field_name!r} still has unexpected products"

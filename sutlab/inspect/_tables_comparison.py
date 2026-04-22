@@ -157,7 +157,7 @@ class TablesComparison:
         ----------
         table : str
             Dot-prefixed table name, e.g. ``"diff.balance"`` or
-            ``"rel.supply_products"``.
+            ``"rel.supply"``.
         levels : str or list of str
             One or more index level names whose unique value combinations to return.
 
