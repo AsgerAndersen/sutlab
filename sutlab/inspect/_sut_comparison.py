@@ -45,7 +45,7 @@ class SUTComparisonData:
     Attributes
     ----------
     supply : pd.DataFrame
-        Row-level comparison of supply at basic prices. One row per
+        Cell-level comparison of supply at basic prices. One row per
         (id, product, transaction, category) combination present in
         either SUT. Columns: ``before_{price_basic}``,
         ``after_{price_basic}``, ``diff_{price_basic}``,
@@ -54,10 +54,10 @@ class SUTComparisonData:
         only one SUT are always included unless ``filter_nan_as_zero=True``
         suppresses the NaN-vs-zero cases.
     use_basic : pd.DataFrame
-        Row-level comparison of use at basic prices. Same structure as
+        Cell-level comparison of use at basic prices. Same structure as
         ``supply`` but drawn from the use DataFrames.
     use_purchasers : pd.DataFrame
-        Row-level comparison of use at purchasers' prices. Columns:
+        Cell-level comparison of use at purchasers' prices. Columns:
         ``before_{price_purchasers}``, ``after_{price_purchasers}``,
         ``diff_{price_purchasers}``, ``rel_{price_purchasers}``.
     use_price_layers : pd.DataFrame
@@ -67,15 +67,15 @@ class SUTComparisonData:
         actual column name (e.g. ``"vat"``). Value columns: ``before``,
         ``after``, ``diff``, ``rel``.
     balancing_targets_supply : pd.DataFrame or None
-        Row-level comparison of supply balancing targets at basic prices.
+        Cell-level comparison of supply balancing targets at basic prices.
         Same column structure as ``supply`` but indexed on
         (id, transaction, category) — no product dimension. ``None`` when
         either SUT has no balancing targets.
     balancing_targets_use_basic : pd.DataFrame or None
-        Row-level comparison of use balancing targets at basic prices.
+        Cell-level comparison of use balancing targets at basic prices.
         ``None`` when either SUT has no balancing targets.
     balancing_targets_use_purchasers : pd.DataFrame or None
-        Row-level comparison of use balancing targets at purchasers' prices.
+        Cell-level comparison of use balancing targets at purchasers' prices.
         ``None`` when either SUT has no balancing targets.
     balancing_targets_use_price_layers : pd.DataFrame or None
         Long-format comparison of use balancing target price layer columns.
@@ -125,14 +125,14 @@ class SUTComparisonData:
         return pd.DataFrame(
             {
                 "description": [
-                    "Row-level differences in supply at basic prices between the two SUTs.",
-                    "Row-level differences in use at basic prices between the two SUTs.",
-                    "Row-level differences in use at purchasers' prices between the two SUTs.",
-                    "Row-level differences in individual price layer columns between the two SUTs.",
-                    "Row-level differences in supply balancing targets (None if either SUT has no targets).",
-                    "Row-level differences in use balancing targets at basic prices (None if either SUT has no targets).",
-                    "Row-level differences in use balancing targets at purchasers' prices (None if either SUT has no targets).",
-                    "Row-level differences in use balancing target price layers (None if either SUT has no targets).",
+                    "Cell-level differences in supply at basic prices between the two SUTs.",
+                    "Cell-level differences in use at basic prices between the two SUTs.",
+                    "Cell-level differences in use at purchasers' prices between the two SUTs.",
+                    "Cell-level differences in individual price layer columns between the two SUTs.",
+                    "Cell-level differences in supply balancing targets (None if either SUT has no targets).",
+                    "Cell-level differences in use balancing targets at basic prices (None if either SUT has no targets).",
+                    "Cell-level differences in use balancing targets at purchasers' prices (None if either SUT has no targets).",
+                    "Cell-level differences in use balancing target price layers (None if either SUT has no targets).",
                     "Number of changed rows per comparison table.",
                     "Change magnitude per product in the supply comparison.",
                     "Change magnitude per transaction-category column in the supply comparison.",
