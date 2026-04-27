@@ -1,5 +1,5 @@
 """
-inspect_sut_comparison: row-level differences between two SUT objects.
+inspect_sut_comparison: cell-level differences between two SUT objects.
 """
 
 from __future__ import annotations
@@ -498,7 +498,7 @@ def inspect_sut_comparison(
     percentiles: list[float] = [0.0, 0.5, 1.0],
 ) -> SUTComparisonInspection:
     """
-    Return a row-level comparison between two SUT objects.
+    Return a cell-level comparison between two SUT objects.
 
     Computes the difference between ``before`` and ``after`` for every
     price column, and returns only the rows that differ beyond the given
