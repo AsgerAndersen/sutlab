@@ -296,21 +296,25 @@ class SUTComparisonInspection:
         df = _apply_display_config(self.data.use_columns_summary, "use_columns_summary", cfg)
         return _style_comparison_summary_table(df, "use", display_unit=cfg.display_unit, rel_base=cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
-    def write_to_excel(self, path) -> None:
-        """Write all tables to an Excel file, one sheet per table.
+    def write_to_excel(self, path, *, tables: str | list[str] | None = None) -> None:
+        """Write tables to an Excel file, one sheet per table.
 
-        Each field in ``self.data`` is written to a separate sheet. Fields
-        whose value is ``None`` are skipped. Sheet names match the field name;
-        names exceeding Excel's 31-character limit are shortened by truncating
-        each underscore-separated segment to its first three characters.
+        ``tables_description`` is always written as the first sheet. All other
+        tables are written in alphabetical order. Fields whose value is
+        ``None`` are skipped. Sheet names match the field name; names
+        exceeding Excel's 31-character limit are shortened by truncating each
+        underscore-separated segment to its first three characters.
 
         Parameters
         ----------
         path : str or Path
             Destination ``.xlsx`` file path.
+        tables : str or list of str or None
+            Names of tables to write. ``None`` (default) writes all tables.
+            ``tables_description`` is always written regardless of this argument.
         """
         cfg = self._cfg()
-        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals, tables=tables)
 
     def set_display_unit(self, display_unit: float | None) -> "SUTComparisonInspection":
         """Return a copy with ``display_unit`` set to the given value.
