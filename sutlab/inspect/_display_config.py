@@ -26,8 +26,8 @@ class DisplayConfiguration:
         Number of decimal places in formatted numbers and percentages.
     display_index : dict[str, list]
         Mapping of index level name → list of values/patterns to keep.
-        Applied additively across ``set_display_index`` calls (same level
-        merges). Pattern syntax: exact codes, wildcards (``*``), ranges
+        ``set_display_index`` replaces the values for an existing level or adds
+        a new key. Pattern syntax: exact codes, wildcards (``*``), ranges
         (``:``), negation (``~``). Protected index values are always included.
     sort_column : str or None
         Column name to sort rows by. Applied within each table's
@@ -129,11 +129,9 @@ def _cfg_set_display_index(
     level: str,
     values,
 ) -> DisplayConfiguration:
-    """Return a copy with the given level's values merged (union) into display_index."""
+    """Return a copy with the given level's values set; replaces existing values for that level."""
     new_values = list(values) if isinstance(values, list) else [values]
-    existing = list(config.display_index.get(level, []))
-    merged = existing + [v for v in new_values if v not in existing]
-    new_display_index = {**config.display_index, level: merged}
+    new_display_index = {**config.display_index, level: new_values}
     return dataclasses.replace(config, display_index=new_display_index)
 
 
