@@ -149,16 +149,22 @@ class AggregatesNominalInspection:
         df = _apply_display_config(self.data.gdp_distribution, "gdp_distribution", self.display_configuration)
         return _style_aggregates_nominal_table(df, self._pct_fmt())
 
-    def write_to_excel(self, path: str | Path) -> None:
-        """Write the inspection tables to an Excel file.
+    def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
+        """Write tables to an Excel file, one sheet per table.
+
+        ``tables_description`` is always written as the first sheet. All other
+        tables are written in alphabetical order.
 
         Parameters
         ----------
         path : str or Path
             Destination ``.xlsx`` file path.
+        tables : str or list of str or None
+            Names of tables to write. ``None`` (default) writes all tables.
+            ``tables_description`` is always written regardless of this argument.
         """
         cfg = self.display_configuration
-        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals, tables=tables)
 
     def set_display_unit(self, display_unit: float | None) -> "AggregatesNominalInspection":
         """Return a copy with ``display_unit`` set to the given value.

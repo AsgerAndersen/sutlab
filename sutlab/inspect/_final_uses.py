@@ -300,21 +300,25 @@ class FinalUseInspection:
         df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
         return _style_final_use_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
-    def write_to_excel(self, path) -> None:
-        """Write all tables to an Excel file, one sheet per table.
+    def write_to_excel(self, path, *, tables: str | list[str] | None = None) -> None:
+        """Write tables to an Excel file, one sheet per table.
 
-        Each field in ``self.data`` is written to a separate sheet. Fields
-        whose value is ``None`` are skipped. Sheet names match the field name;
-        names exceeding Excel's 31-character limit are shortened by truncating
-        each underscore-separated segment to its first three characters.
+        ``tables_description`` is always written as the first sheet. All other
+        tables are written in alphabetical order. Fields whose value is
+        ``None`` are skipped. Sheet names match the field name; names
+        exceeding Excel's 31-character limit are shortened by truncating each
+        underscore-separated segment to its first three characters.
 
         Parameters
         ----------
         path : str or Path
             Destination ``.xlsx`` file path.
+        tables : str or list of str or None
+            Names of tables to write. ``None`` (default) writes all tables.
+            ``tables_description`` is always written regardless of this argument.
         """
         cfg = self.display_configuration
-        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals, tables=tables)
 
     def set_display_unit(self, display_unit: float | None) -> "FinalUseInspection":
         """Return a copy with ``display_unit`` set to the given value.

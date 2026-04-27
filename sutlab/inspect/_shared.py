@@ -525,14 +525,12 @@ def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
     return growth
 
 
-def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None, rel_base: int = 100, decimals: int = 1) -> None:
-    """Write all non-None tables in an inspection result to an Excel file.
+def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_unit: float | None = None, rel_base: int = 100, decimals: int = 1, tables: str | list[str] | None = None) -> None:
+    """Write non-None tables in an inspection result to an Excel file.
 
-    Each field on ``inspection_obj.data`` that holds a
-    :class:`~pandas.DataFrame` is written to a separate sheet. Fields whose
-    value is not a DataFrame (e.g. ``None`` or internal non-table attributes)
-    are skipped silently. Fields whose value is an empty DataFrame are written
-    as empty sheets.
+    ``tables_description`` is always written as the first sheet (if present).
+    All other tables are written in alphabetical order by field name. Fields
+    whose value is not a DataFrame are skipped silently.
 
     Where a matching styled property exists on ``inspection_obj``, it is used
     to write the sheet so that colours, number formats, and other Styler
@@ -551,18 +549,46 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
         (e.g. :class:`~sutlab.inspect.ProductInspection`).
     path : str or Path
         Destination ``.xlsx`` file path.
+    tables : str or list of str or None
+        Names of tables to write. ``None`` (default) writes all tables.
+        ``tables_description`` is always written regardless of this argument.
     """
+    if isinstance(tables, str):
+        tables = [tables]
+
+    all_fields = [
+        f for f in dataclasses.fields(inspection_obj.data)
+        if isinstance(getattr(inspection_obj.data, f.name), pd.DataFrame)
+    ]
+    all_field_names = {f.name for f in all_fields}
+
+    if tables is not None:
+        unknown = set(tables) - all_field_names
+        if unknown:
+            raise ValueError(
+                f"Unknown table(s): {sorted(unknown)}. Available: {sorted(all_field_names)}"
+            )
+        fields_to_write = sorted(
+            [f for f in all_fields if f.name in set(tables)],
+            key=lambda f: f.name,
+        )
+    else:
+        fields_to_write = sorted(all_fields, key=lambda f: f.name)
+
+    has_td = (
+        hasattr(inspection_obj.data, "tables_description")
+        and isinstance(inspection_obj.data.tables_description, pd.DataFrame)
+    )
+    names_to_write = (["tables_description"] if has_td else []) + [f.name for f in fields_to_write]
+
     path = Path(path)
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
-        for f in dataclasses.fields(inspection_obj.data):
-            raw = getattr(inspection_obj.data, f.name)
-            if not isinstance(raw, pd.DataFrame):
-                continue
-
-            sheet_name = _make_sheet_name(f.name)
+        for name in names_to_write:
+            raw = getattr(inspection_obj.data, name)
+            sheet_name = _make_sheet_name(name)
 
             try:
-                styled = getattr(inspection_obj, f.name, None)
+                styled = getattr(inspection_obj, name, None)
             except Exception:
                 styled = None
 
@@ -570,8 +596,6 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
                 try:
                     styled.to_excel(writer, sheet_name=sheet_name)
                 except Exception:
-                    # Styling failed (e.g. DataFrame structure doesn't match
-                    # what the style function expects). Fall back to raw data.
                     raw.to_excel(writer, sheet_name=sheet_name)
             else:
                 raw.to_excel(writer, sheet_name=sheet_name)
@@ -581,7 +605,7 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
             _apply_bold_headers(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
-            _apply_number_formats(ws, raw, f.name, display_unit, rel_base, all_rel, decimals)
+            _apply_number_formats(ws, raw, name, display_unit, rel_base, all_rel, decimals)
 
 
 def _is_protected_row_mask(

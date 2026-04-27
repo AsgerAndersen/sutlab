@@ -484,6 +484,7 @@ def test_write_to_excel_writes_all_fields_when_no_none(
     balancing_result_with_violations.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
     expected = {
+        "tables_description",
         "supply_categories",
         "use_categories",
         "supply_categories_violations",
@@ -525,13 +526,14 @@ def test_write_to_excel_writes_empty_dataframes(
     path = tmp_path / "out.xlsx"
     product_result_with_empty_tables.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
-    # All 15 fields should be present — empty DataFrames are not skipped
+    # tables_description + 15 fields should be present — empty DataFrames are not skipped
+    assert "tables_description" in wb.sheetnames
     assert "balance" in wb.sheetnames
     assert "supply" in wb.sheetnames
     assert "supply_summary" in wb.sheetnames
     assert "use_summary" in wb.sheetnames
     assert "price_layers_rates" in wb.sheetnames
-    assert len(wb.sheetnames) == 15
+    assert len(wb.sheetnames) == 16
 
 
 # ---------------------------------------------------------------------------
@@ -633,3 +635,60 @@ def test_write_to_excel_falls_back_to_raw_when_styling_fails(
     balancing_result_with_none.write_to_excel(path)
     wb = openpyxl.load_workbook(path)
     assert "supply_categories" in wb.sheetnames
+
+
+# ---------------------------------------------------------------------------
+# write_to_excel — tables argument and sheet ordering
+# ---------------------------------------------------------------------------
+
+
+def test_write_to_excel_tables_description_always_first(
+    tmp_path, balancing_result_with_violations
+):
+    """tables_description is always the first sheet regardless of alphabetical order."""
+    path = tmp_path / "out.xlsx"
+    balancing_result_with_violations.write_to_excel(path)
+    wb = openpyxl.load_workbook(path)
+    assert wb.sheetnames[0] == "tables_description"
+
+
+def test_write_to_excel_other_sheets_alphabetical(
+    tmp_path, balancing_result_with_violations
+):
+    """Sheets after tables_description are in alphabetical order."""
+    path = tmp_path / "out.xlsx"
+    balancing_result_with_violations.write_to_excel(path)
+    wb = openpyxl.load_workbook(path)
+    non_td = [n for n in wb.sheetnames if n != "tables_description"]
+    assert non_td == sorted(non_td)
+
+
+def test_write_to_excel_tables_filter_single_string(
+    tmp_path, balancing_result_with_violations
+):
+    """Passing a single table name as a string writes only that table (plus tables_description)."""
+    path = tmp_path / "out.xlsx"
+    balancing_result_with_violations.write_to_excel(path, tables="summary")
+    wb = openpyxl.load_workbook(path)
+    assert set(wb.sheetnames) == {"tables_description", "summary"}
+
+
+def test_write_to_excel_tables_filter_list(
+    tmp_path, balancing_result_with_violations
+):
+    """Passing a list of table names writes only those tables (plus tables_description)."""
+    path = tmp_path / "out.xlsx"
+    balancing_result_with_violations.write_to_excel(
+        path, tables=["supply_categories", "use_categories"]
+    )
+    wb = openpyxl.load_workbook(path)
+    assert set(wb.sheetnames) == {"tables_description", "supply_categories", "use_categories"}
+
+
+def test_write_to_excel_tables_filter_unknown_raises(
+    tmp_path, balancing_result_with_violations
+):
+    """An unknown table name raises ValueError with an informative message."""
+    path = tmp_path / "out.xlsx"
+    with pytest.raises(ValueError, match="Unknown table"):
+        balancing_result_with_violations.write_to_excel(path, tables="nonexistent")

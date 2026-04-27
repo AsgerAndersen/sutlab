@@ -416,16 +416,22 @@ class IndustryInspection:
         df = _apply_display_config(self.data.balance_growth, "balance_growth", self.display_configuration)
         return _style_industry_balance_table(df, self._p1_trans, format_func=self._pct_fmt())
 
-    def write_to_excel(self, path) -> None:
-        """Write all tables to an Excel file, one sheet per table.
+    def write_to_excel(self, path, *, tables: str | list[str] | None = None) -> None:
+        """Write tables to an Excel file, one sheet per table.
+
+        ``tables_description`` is always written as the first sheet. All other
+        tables are written in alphabetical order.
 
         Parameters
         ----------
         path : str or Path
             Destination ``.xlsx`` file path.
+        tables : str or list of str or None
+            Names of tables to write. ``None`` (default) writes all tables.
+            ``tables_description`` is always written regardless of this argument.
         """
         cfg = self.display_configuration
-        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals)
+        _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals, tables=tables)
 
     def set_display_unit(self, display_unit: float | None) -> "IndustryInspection":
         """Return a copy with ``display_unit`` set to the given value.
