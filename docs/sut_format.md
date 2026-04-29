@@ -49,21 +49,21 @@ These functions return the unique codes present in the data as a sorted single-c
 
 ```python
 from sutlab.sut import (
-    get_product_codes,
-    get_transaction_codes,
+    get_codes_products,
+    get_codes_transactions,
     get_ids,
-    get_industry_codes,
-    get_individual_consumption_codes,
-    get_collective_consumption_codes,
+    get_codes_industries,
+    get_codes_individual_consumption,
+    get_codes_collective_consumption,
 )
 
-get_product_codes(sut)                  # unique product codes
-get_transaction_codes(sut)              # unique transaction codes
+get_codes_products(sut)                  # unique product codes
+get_codes_transactions(sut)              # unique transaction codes
 get_ids(sut)                            # unique id values
 
-get_industry_codes(sut)                 # category codes from output (P1) and intermediate consumption (P2) rows
-get_individual_consumption_codes(sut)   # category codes from individual consumption (P31) rows
-get_collective_consumption_codes(sut)   # category codes from collective consumption (P32) rows
+get_codes_industries(sut)                 # category codes from output (P1) and intermediate consumption (P2) rows
+get_codes_individual_consumption(sut)   # category codes from individual consumption (P31) rows
+get_codes_collective_consumption(sut)   # category codes from collective consumption (P32) rows
 ```
 
 The three category functions require a classifications file with a `transactions` sheet including an `esa_code` column — see `metadata_format.md`.

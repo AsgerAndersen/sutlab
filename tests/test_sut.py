@@ -13,13 +13,13 @@ from sutlab.sut import (
     SUTMetadata,
     _match_codes,
     _natural_sort_key,
-    get_collective_consumption_codes,
+    get_codes_collective_consumption,
     get_ids,
-    get_individual_consumption_codes,
-    get_industry_codes,
-    get_product_codes,
+    get_codes_individual_consumption,
+    get_codes_industries,
+    get_codes_products,
     filter_rows,
-    get_transaction_codes,
+    get_codes_transactions,
     set_balancing_id,
     set_balancing_targets,
     set_metadata,
@@ -596,8 +596,8 @@ class TestFilterRows:
 
 
 # ---------------------------------------------------------------------------
-# Tests for get_product_codes, get_transaction_codes, get_ids,
-# get_industry_codes, get_individual_consumption_codes, get_collective_consumption_codes
+# Tests for get_codes_products, get_codes_transactions, get_ids,
+# get_codes_industries, get_codes_individual_consumption, get_codes_collective_consumption
 # ---------------------------------------------------------------------------
 
 
@@ -704,76 +704,76 @@ def sut_with_collective_labels(supply_classified, use_classified, columns, class
 class TestGetProductCodes:
 
     def test_returns_dataframe_with_product_column(self, sut):
-        result = get_product_codes(sut)
+        result = get_codes_products(sut)
         assert list(result.columns) == ["nrnr"]
 
     def test_returns_unique_values_from_supply_and_use(self, sut):
-        result = get_product_codes(sut)
+        result = get_codes_products(sut)
         assert set(result["nrnr"]) == {"P1", "P2"}
 
     def test_sorted_ascending(self, sut):
-        result = get_product_codes(sut)
+        result = get_codes_products(sut)
         assert list(result["nrnr"]) == sorted(result["nrnr"])
 
     def test_index_is_reset(self, sut):
-        result = get_product_codes(sut)
+        result = get_codes_products(sut)
         assert list(result.index) == list(range(len(result)))
 
     def test_raises_when_metadata_is_none(self, supply, use):
         sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
         with pytest.raises(ValueError, match="metadata"):
-            get_product_codes(sut_no_meta)
+            get_codes_products(sut_no_meta)
 
     def test_includes_txt_column_when_products_classification_present(self, sut_with_product_labels):
-        result = get_product_codes(sut_with_product_labels)
+        result = get_codes_products(sut_with_product_labels)
         assert list(result.columns) == ["nrnr", "nrnr_txt"]
 
     def test_txt_values_match_classification(self, sut_with_product_labels):
-        result = get_product_codes(sut_with_product_labels)
+        result = get_codes_products(sut_with_product_labels)
         row_p1 = result[result["nrnr"] == "P1"].iloc[0]
         assert row_p1["nrnr_txt"] == "Product 1"
 
     def test_no_txt_column_when_products_classification_absent(self, sut_classified):
         # sut_classified has transactions classification but no products
-        result = get_product_codes(sut_classified)
+        result = get_codes_products(sut_classified)
         assert list(result.columns) == ["nrnr"]
 
     def test_filter_exact(self, sut):
-        result = get_product_codes(sut, products="P1")
+        result = get_codes_products(sut, products="P1")
         assert list(result["nrnr"]) == ["P1"]
 
     def test_filter_wildcard(self, sut):
-        result = get_product_codes(sut, products="P*")
+        result = get_codes_products(sut, products="P*")
         assert set(result["nrnr"]) == {"P1", "P2"}
 
     def test_filter_negation(self, sut):
-        result = get_product_codes(sut, products="~P1")
+        result = get_codes_products(sut, products="~P1")
         assert list(result["nrnr"]) == ["P2"]
 
     def test_filter_returns_empty_when_no_match(self, sut):
-        result = get_product_codes(sut, products="ZZZZ")
+        result = get_codes_products(sut, products="ZZZZ")
         assert len(result) == 0
 
     def test_as_list_returns_list(self, sut):
-        result = get_product_codes(sut, as_list=True)
+        result = get_codes_products(sut, as_list=True)
         assert isinstance(result, list)
         assert set(result) == {"P1", "P2"}
 
     def test_as_list_omits_txt_column(self, sut_with_product_labels):
-        result = get_product_codes(sut_with_product_labels, as_list=True)
+        result = get_codes_products(sut_with_product_labels, as_list=True)
         assert isinstance(result, list)
         assert all(isinstance(v, str) for v in result)
 
     def test_table_supply_returns_only_supply_products(self, sut):
-        result = get_product_codes(sut, table="supply")
+        result = get_codes_products(sut, table="supply")
         assert set(result["nrnr"]) == set(sut.supply["nrnr"].dropna().unique())
 
     def test_table_use_returns_only_use_products(self, sut):
-        result = get_product_codes(sut, table="use")
+        result = get_codes_products(sut, table="use")
         assert set(result["nrnr"]) == set(sut.use["nrnr"].dropna().unique())
 
     def test_table_supply_as_list(self, sut):
-        result = get_product_codes(sut, as_list=True, table="supply")
+        result = get_codes_products(sut, as_list=True, table="supply")
         assert isinstance(result, list)
         assert set(result) == set(sut.supply["nrnr"].dropna().unique())
 
@@ -781,150 +781,150 @@ class TestGetProductCodes:
 class TestGetTransactionCodes:
 
     def test_returns_dataframe_with_transaction_column(self, sut):
-        result = get_transaction_codes(sut)
+        result = get_codes_transactions(sut)
         assert list(result.columns) == ["trans"]
 
     def test_includes_codes_from_both_supply_and_use(self, sut):
         # supply has "0100", use has "2000"
-        result = get_transaction_codes(sut)
+        result = get_codes_transactions(sut)
         assert set(result["trans"]) == {"0100", "2000"}
 
     def test_sorted_ascending(self, sut):
-        result = get_transaction_codes(sut)
+        result = get_codes_transactions(sut)
         assert list(result["trans"]) == sorted(result["trans"])
 
     def test_index_is_reset(self, sut):
-        result = get_transaction_codes(sut)
+        result = get_codes_transactions(sut)
         assert list(result.index) == list(range(len(result)))
 
     def test_raises_when_metadata_is_none(self, supply, use):
         sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
         with pytest.raises(ValueError, match="metadata"):
-            get_transaction_codes(sut_no_meta)
+            get_codes_transactions(sut_no_meta)
 
     def test_includes_txt_column_when_transactions_classification_present(self, sut_classified):
-        result = get_transaction_codes(sut_classified)
+        result = get_codes_transactions(sut_classified)
         assert list(result.columns) == ["trans", "trans_txt"]
 
     def test_txt_values_match_classification(self, sut_classified):
-        result = get_transaction_codes(sut_classified)
+        result = get_codes_transactions(sut_classified)
         row = result[result["trans"] == "0100"].iloc[0]
         assert row["trans_txt"] == "Output"
 
     def test_no_txt_column_when_classifications_absent(self, sut):
         # sut has no classifications at all
-        result = get_transaction_codes(sut)
+        result = get_codes_transactions(sut)
         assert list(result.columns) == ["trans"]
 
     def test_filter_exact(self, sut):
-        result = get_transaction_codes(sut, transactions="0100")
+        result = get_codes_transactions(sut, transactions="0100")
         assert list(result["trans"]) == ["0100"]
 
     def test_filter_wildcard(self, sut):
-        result = get_transaction_codes(sut, transactions="0*")
+        result = get_codes_transactions(sut, transactions="0*")
         assert list(result["trans"]) == ["0100"]
 
     def test_filter_negation(self, sut):
-        result = get_transaction_codes(sut, transactions="~0100")
+        result = get_codes_transactions(sut, transactions="~0100")
         assert list(result["trans"]) == ["2000"]
 
     def test_as_list_returns_list(self, sut):
-        result = get_transaction_codes(sut, as_list=True)
+        result = get_codes_transactions(sut, as_list=True)
         assert isinstance(result, list)
         assert set(result) == {"0100", "2000"}
 
     def test_as_list_omits_txt_column(self, sut_classified):
-        result = get_transaction_codes(sut_classified, as_list=True)
+        result = get_codes_transactions(sut_classified, as_list=True)
         assert isinstance(result, list)
         assert all(isinstance(v, str) for v in result)
 
     def test_table_supply_returns_only_supply_transactions(self, sut):
         # supply has "0100", use has "2000"
-        result = get_transaction_codes(sut, table="supply")
+        result = get_codes_transactions(sut, table="supply")
         assert list(result["trans"]) == ["0100"]
 
     def test_table_use_returns_only_use_transactions(self, sut):
-        result = get_transaction_codes(sut, table="use")
+        result = get_codes_transactions(sut, table="use")
         assert list(result["trans"]) == ["2000"]
 
     def test_table_supply_as_list(self, sut):
-        result = get_transaction_codes(sut, as_list=True, table="supply")
+        result = get_codes_transactions(sut, as_list=True, table="supply")
         assert result == ["0100"]
 
 
 class TestGetIndustryCodes:
 
     def test_returns_dataframe_with_category_column(self, sut_classified):
-        result = get_industry_codes(sut_classified)
+        result = get_codes_industries(sut_classified)
         assert list(result.columns) == ["brch"]
 
     def test_returns_codes_from_p1_and_p2_transactions(self, sut_classified):
         # supply has X, Y (P1); use has X, Y (P2); HH and GOV are P31/P32
-        result = get_industry_codes(sut_classified)
+        result = get_codes_industries(sut_classified)
         assert set(result["brch"]) == {"X", "Y"}
 
     def test_sorted_ascending(self, sut_classified):
-        result = get_industry_codes(sut_classified)
+        result = get_codes_industries(sut_classified)
         assert list(result["brch"]) == sorted(result["brch"])
 
     def test_index_is_reset(self, sut_classified):
-        result = get_industry_codes(sut_classified)
+        result = get_codes_industries(sut_classified)
         assert list(result.index) == list(range(len(result)))
 
     def test_raises_when_metadata_is_none(self, supply_classified, use_classified):
         sut_no_meta = SUT(price_basis="current_year", supply=supply_classified, use=use_classified)
         with pytest.raises(ValueError, match="metadata"):
-            get_industry_codes(sut_no_meta)
+            get_codes_industries(sut_no_meta)
 
     def test_raises_when_classifications_is_none(self, supply_classified, use_classified, columns):
         meta = SUTMetadata(columns=columns)
         sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
         with pytest.raises(ValueError, match="classifications"):
-            get_industry_codes(sut_no_class)
+            get_codes_industries(sut_no_class)
 
     def test_includes_txt_column_when_industries_classification_present(self, sut_with_industry_labels):
-        result = get_industry_codes(sut_with_industry_labels)
+        result = get_codes_industries(sut_with_industry_labels)
         assert list(result.columns) == ["brch", "brch_txt"]
 
     def test_txt_values_match_classification(self, sut_with_industry_labels):
-        result = get_industry_codes(sut_with_industry_labels)
+        result = get_codes_industries(sut_with_industry_labels)
         row = result[result["brch"] == "X"].iloc[0]
         assert row["brch_txt"] == "Industry X"
 
     def test_no_txt_column_when_industries_classification_absent(self, sut_classified):
-        result = get_industry_codes(sut_classified)
+        result = get_codes_industries(sut_classified)
         assert list(result.columns) == ["brch"]
 
     def test_filter_exact(self, sut_classified):
-        result = get_industry_codes(sut_classified, industries="X")
+        result = get_codes_industries(sut_classified, industries="X")
         assert list(result["brch"]) == ["X"]
 
     def test_filter_negation(self, sut_classified):
-        result = get_industry_codes(sut_classified, industries="~X")
+        result = get_codes_industries(sut_classified, industries="~X")
         assert list(result["brch"]) == ["Y"]
 
     def test_as_list_returns_list(self, sut_classified):
-        result = get_industry_codes(sut_classified, as_list=True)
+        result = get_codes_industries(sut_classified, as_list=True)
         assert isinstance(result, list)
         assert set(result) == {"X", "Y"}
 
     def test_as_list_omits_txt_column(self, sut_with_industry_labels):
-        result = get_industry_codes(sut_with_industry_labels, as_list=True)
+        result = get_codes_industries(sut_with_industry_labels, as_list=True)
         assert isinstance(result, list)
         assert all(isinstance(v, str) for v in result)
 
     def test_table_supply_returns_codes_from_p1_rows(self, sut_classified):
         # supply has P1 rows with brch X, Y
-        result = get_industry_codes(sut_classified, table="supply")
+        result = get_codes_industries(sut_classified, table="supply")
         assert set(result["brch"]) == {"X", "Y"}
 
     def test_table_use_returns_codes_from_p2_rows(self, sut_classified):
         # use has P2 rows with brch X, Y
-        result = get_industry_codes(sut_classified, table="use")
+        result = get_codes_industries(sut_classified, table="use")
         assert set(result["brch"]) == {"X", "Y"}
 
     def test_table_supply_as_list(self, sut_classified):
-        result = get_industry_codes(sut_classified, as_list=True, table="supply")
+        result = get_codes_industries(sut_classified, as_list=True, table="supply")
         assert isinstance(result, list)
         assert set(result) == {"X", "Y"}
 
@@ -932,128 +932,128 @@ class TestGetIndustryCodes:
 class TestGetIndividualConsumptionCodes:
 
     def test_returns_dataframe_with_category_column(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified)
+        result = get_codes_individual_consumption(sut_classified)
         assert list(result.columns) == ["brch"]
 
     def test_returns_codes_from_p31_transactions(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified)
+        result = get_codes_individual_consumption(sut_classified)
         assert set(result["brch"]) == {"HH"}
 
     def test_sorted_ascending(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified)
+        result = get_codes_individual_consumption(sut_classified)
         assert list(result["brch"]) == sorted(result["brch"])
 
     def test_index_is_reset(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified)
+        result = get_codes_individual_consumption(sut_classified)
         assert list(result.index) == list(range(len(result)))
 
     def test_raises_when_classifications_is_none(self, supply_classified, use_classified, columns):
         meta = SUTMetadata(columns=columns)
         sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
         with pytest.raises(ValueError, match="classifications"):
-            get_individual_consumption_codes(sut_no_class)
+            get_codes_individual_consumption(sut_no_class)
 
     def test_includes_txt_column_when_individual_consumption_classification_present(self, sut_with_individual_labels):
-        result = get_individual_consumption_codes(sut_with_individual_labels)
+        result = get_codes_individual_consumption(sut_with_individual_labels)
         assert list(result.columns) == ["brch", "brch_txt"]
 
     def test_txt_values_match_classification(self, sut_with_individual_labels):
-        result = get_individual_consumption_codes(sut_with_individual_labels)
+        result = get_codes_individual_consumption(sut_with_individual_labels)
         row = result[result["brch"] == "HH"].iloc[0]
         assert row["brch_txt"] == "Households"
 
     def test_no_txt_column_when_individual_consumption_classification_absent(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified)
+        result = get_codes_individual_consumption(sut_classified)
         assert list(result.columns) == ["brch"]
 
     def test_filter_exact(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified, categories="HH")
+        result = get_codes_individual_consumption(sut_classified, categories="HH")
         assert list(result["brch"]) == ["HH"]
 
     def test_filter_no_match(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified, categories="GOV")
+        result = get_codes_individual_consumption(sut_classified, categories="GOV")
         assert len(result) == 0
 
     def test_as_list_returns_list(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified, as_list=True)
+        result = get_codes_individual_consumption(sut_classified, as_list=True)
         assert isinstance(result, list)
         assert set(result) == {"HH"}
 
     def test_table_supply_returns_empty_dataframe(self, sut_classified):
         # P31 never appears in supply
-        result = get_individual_consumption_codes(sut_classified, table="supply")
+        result = get_codes_individual_consumption(sut_classified, table="supply")
         assert len(result) == 0
 
     def test_table_supply_returns_empty_list(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified, as_list=True, table="supply")
+        result = get_codes_individual_consumption(sut_classified, as_list=True, table="supply")
         assert result == []
 
     def test_table_use_returns_codes(self, sut_classified):
-        result = get_individual_consumption_codes(sut_classified, table="use")
+        result = get_codes_individual_consumption(sut_classified, table="use")
         assert set(result["brch"]) == {"HH"}
 
 
 class TestGetCollectiveConsumptionCodes:
 
     def test_returns_dataframe_with_category_column(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified)
+        result = get_codes_collective_consumption(sut_classified)
         assert list(result.columns) == ["brch"]
 
     def test_returns_codes_from_p32_transactions(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified)
+        result = get_codes_collective_consumption(sut_classified)
         assert set(result["brch"]) == {"GOV"}
 
     def test_sorted_ascending(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified)
+        result = get_codes_collective_consumption(sut_classified)
         assert list(result["brch"]) == sorted(result["brch"])
 
     def test_index_is_reset(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified)
+        result = get_codes_collective_consumption(sut_classified)
         assert list(result.index) == list(range(len(result)))
 
     def test_raises_when_classifications_is_none(self, supply_classified, use_classified, columns):
         meta = SUTMetadata(columns=columns)
         sut_no_class = SUT(price_basis="current_year", supply=supply_classified, use=use_classified, metadata=meta)
         with pytest.raises(ValueError, match="classifications"):
-            get_collective_consumption_codes(sut_no_class)
+            get_codes_collective_consumption(sut_no_class)
 
     def test_includes_txt_column_when_collective_consumption_classification_present(self, sut_with_collective_labels):
-        result = get_collective_consumption_codes(sut_with_collective_labels)
+        result = get_codes_collective_consumption(sut_with_collective_labels)
         assert list(result.columns) == ["brch", "brch_txt"]
 
     def test_txt_values_match_classification(self, sut_with_collective_labels):
-        result = get_collective_consumption_codes(sut_with_collective_labels)
+        result = get_codes_collective_consumption(sut_with_collective_labels)
         row = result[result["brch"] == "GOV"].iloc[0]
         assert row["brch_txt"] == "Government"
 
     def test_no_txt_column_when_collective_consumption_classification_absent(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified)
+        result = get_codes_collective_consumption(sut_classified)
         assert list(result.columns) == ["brch"]
 
     def test_filter_exact(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified, categories="GOV")
+        result = get_codes_collective_consumption(sut_classified, categories="GOV")
         assert list(result["brch"]) == ["GOV"]
 
     def test_filter_no_match(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified, categories="HH")
+        result = get_codes_collective_consumption(sut_classified, categories="HH")
         assert len(result) == 0
 
     def test_as_list_returns_list(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified, as_list=True)
+        result = get_codes_collective_consumption(sut_classified, as_list=True)
         assert isinstance(result, list)
         assert set(result) == {"GOV"}
 
     def test_table_supply_returns_empty_dataframe(self, sut_classified):
         # P32 never appears in supply
-        result = get_collective_consumption_codes(sut_classified, table="supply")
+        result = get_codes_collective_consumption(sut_classified, table="supply")
         assert len(result) == 0
 
     def test_table_supply_returns_empty_list(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified, as_list=True, table="supply")
+        result = get_codes_collective_consumption(sut_classified, as_list=True, table="supply")
         assert result == []
 
     def test_table_use_returns_codes(self, sut_classified):
-        result = get_collective_consumption_codes(sut_classified, table="use")
+        result = get_codes_collective_consumption(sut_classified, table="use")
         assert set(result["brch"]) == {"GOV"}
 
 

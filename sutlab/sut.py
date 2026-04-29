@@ -471,55 +471,55 @@ class SUT:
         """Delegates to :func:`get_ids`."""
         return get_ids(self)
 
-    def get_product_codes(
+    def get_codes_products(
         self,
         products: str | list[str] | None = None,
         *,
         as_list: bool = False,
         table: str | None = None,
     ) -> pd.DataFrame | list:
-        """Delegates to :func:`get_product_codes`."""
-        return get_product_codes(self, products=products, as_list=as_list, table=table)
+        """Delegates to :func:`get_codes_products`."""
+        return get_codes_products(self, products=products, as_list=as_list, table=table)
 
-    def get_transaction_codes(
+    def get_codes_transactions(
         self,
         transactions: str | list[str] | None = None,
         *,
         as_list: bool = False,
         table: str | None = None,
     ) -> pd.DataFrame | list:
-        """Delegates to :func:`get_transaction_codes`."""
-        return get_transaction_codes(self, transactions=transactions, as_list=as_list, table=table)
+        """Delegates to :func:`get_codes_transactions`."""
+        return get_codes_transactions(self, transactions=transactions, as_list=as_list, table=table)
 
-    def get_industry_codes(
+    def get_codes_industries(
         self,
         industries: str | list[str] | None = None,
         *,
         as_list: bool = False,
         table: str | None = None,
     ) -> pd.DataFrame | list:
-        """Delegates to :func:`get_industry_codes`."""
-        return get_industry_codes(self, industries=industries, as_list=as_list, table=table)
+        """Delegates to :func:`get_codes_industries`."""
+        return get_codes_industries(self, industries=industries, as_list=as_list, table=table)
 
-    def get_individual_consumption_codes(
+    def get_codes_individual_consumption(
         self,
         categories: str | list[str] | None = None,
         *,
         as_list: bool = False,
         table: str | None = None,
     ) -> pd.DataFrame | list:
-        """Delegates to :func:`get_individual_consumption_codes`."""
-        return get_individual_consumption_codes(self, categories=categories, as_list=as_list, table=table)
+        """Delegates to :func:`get_codes_individual_consumption`."""
+        return get_codes_individual_consumption(self, categories=categories, as_list=as_list, table=table)
 
-    def get_collective_consumption_codes(
+    def get_codes_collective_consumption(
         self,
         categories: str | list[str] | None = None,
         *,
         as_list: bool = False,
         table: str | None = None,
     ) -> pd.DataFrame | list:
-        """Delegates to :func:`get_collective_consumption_codes`."""
-        return get_collective_consumption_codes(self, categories=categories, as_list=as_list, table=table)
+        """Delegates to :func:`get_codes_collective_consumption`."""
+        return get_codes_collective_consumption(self, categories=categories, as_list=as_list, table=table)
 
     def compute_price_layer_rates(
         self,
@@ -1228,7 +1228,7 @@ def _add_txt_column(
     return codes_df.merge(labels, on=key_col, how="left")
 
 
-def get_product_codes(
+def get_codes_products(
     sut: SUT,
     products: str | list[str] | None = None,
     *,
@@ -1276,7 +1276,7 @@ def get_product_codes(
     """
     if sut.metadata is None:
         raise ValueError(
-            "sut.metadata is required to call get_product_codes. "
+            "sut.metadata is required to call get_codes_products. "
             "Provide a SUTMetadata with column name mappings."
         )
     prod_col = sut.metadata.columns.product
@@ -1292,7 +1292,7 @@ def get_product_codes(
     return result
 
 
-def get_transaction_codes(
+def get_codes_transactions(
     sut: SUT,
     transactions: str | list[str] | None = None,
     *,
@@ -1307,7 +1307,7 @@ def get_transaction_codes(
         The SUT collection to inspect.
     transactions : str, list of str, or None
         Optional filter. Same pattern syntax as ``products`` in
-        :func:`get_product_codes`. When ``None`` (default), all codes are
+        :func:`get_codes_products`. When ``None`` (default), all codes are
         returned.
     as_list : bool, optional
         If ``True``, return a plain list of code values instead of a
@@ -1332,7 +1332,7 @@ def get_transaction_codes(
     """
     if sut.metadata is None:
         raise ValueError(
-            "sut.metadata is required to call get_transaction_codes. "
+            "sut.metadata is required to call get_codes_transactions. "
             "Provide a SUTMetadata with column name mappings."
         )
     trans_col = sut.metadata.columns.transaction
@@ -1385,7 +1385,7 @@ def _require_transaction_classifications(sut: SUT, function_name: str) -> None:
         )
 
 
-def get_industry_codes(
+def get_codes_industries(
     sut: SUT,
     industries: str | list[str] | None = None,
     *,
@@ -1403,7 +1403,7 @@ def get_industry_codes(
         The SUT collection to inspect.
     industries : str, list of str, or None
         Optional filter. Same pattern syntax as ``products`` in
-        :func:`get_product_codes`. When ``None`` (default), all codes are
+        :func:`get_codes_products`. When ``None`` (default), all codes are
         returned.
     as_list : bool, optional
         If ``True``, return a plain list of code values instead of a
@@ -1427,7 +1427,7 @@ def get_industry_codes(
         If ``sut.metadata`` or ``sut.metadata.classifications.transactions``
         is ``None``.
     """
-    _require_transaction_classifications(sut, "get_industry_codes")
+    _require_transaction_classifications(sut, "get_codes_industries")
     cat_col = sut.metadata.columns.category
     result = _category_codes_for_esa(sut, ["P1", "P2"], table=table)
     if industries is not None:
@@ -1440,7 +1440,7 @@ def get_industry_codes(
     return result
 
 
-def get_individual_consumption_codes(
+def get_codes_individual_consumption(
     sut: SUT,
     categories: str | list[str] | None = None,
     *,
@@ -1458,7 +1458,7 @@ def get_individual_consumption_codes(
         The SUT collection to inspect.
     categories : str, list of str, or None
         Optional filter. Same pattern syntax as ``products`` in
-        :func:`get_product_codes`. When ``None`` (default), all codes are
+        :func:`get_codes_products`. When ``None`` (default), all codes are
         returned.
     as_list : bool, optional
         If ``True``, return a plain list of code values instead of a
@@ -1483,7 +1483,7 @@ def get_individual_consumption_codes(
         If ``sut.metadata`` or ``sut.metadata.classifications.transactions``
         is ``None``.
     """
-    _require_transaction_classifications(sut, "get_individual_consumption_codes")
+    _require_transaction_classifications(sut, "get_codes_individual_consumption")
     cat_col = sut.metadata.columns.category
     result = _category_codes_for_esa(sut, ["P31"], table=table)
     if categories is not None:
@@ -1496,7 +1496,7 @@ def get_individual_consumption_codes(
     return result
 
 
-def get_collective_consumption_codes(
+def get_codes_collective_consumption(
     sut: SUT,
     categories: str | list[str] | None = None,
     *,
@@ -1514,7 +1514,7 @@ def get_collective_consumption_codes(
         The SUT collection to inspect.
     categories : str, list of str, or None
         Optional filter. Same pattern syntax as ``products`` in
-        :func:`get_product_codes`. When ``None`` (default), all codes are
+        :func:`get_codes_products`. When ``None`` (default), all codes are
         returned.
     as_list : bool, optional
         If ``True``, return a plain list of code values instead of a
@@ -1539,7 +1539,7 @@ def get_collective_consumption_codes(
         If ``sut.metadata`` or ``sut.metadata.classifications.transactions``
         is ``None``.
     """
-    _require_transaction_classifications(sut, "get_collective_consumption_codes")
+    _require_transaction_classifications(sut, "get_codes_collective_consumption")
     cat_col = sut.metadata.columns.category
     result = _category_codes_for_esa(sut, ["P32"], table=table)
     if categories is not None:
@@ -1591,9 +1591,9 @@ SUT.set_balancing_targets.__doc__ = set_balancing_targets.__doc__
 SUT.set_balancing_config.__doc__ = set_balancing_config.__doc__
 SUT.filter_rows.__doc__ = filter_rows.__doc__
 SUT.get_ids.__doc__ = get_ids.__doc__
-SUT.get_product_codes.__doc__ = get_product_codes.__doc__
-SUT.get_transaction_codes.__doc__ = get_transaction_codes.__doc__
-SUT.get_industry_codes.__doc__ = get_industry_codes.__doc__
-SUT.get_individual_consumption_codes.__doc__ = get_individual_consumption_codes.__doc__
-SUT.get_collective_consumption_codes.__doc__ = get_collective_consumption_codes.__doc__
+SUT.get_codes_products.__doc__ = get_codes_products.__doc__
+SUT.get_codes_transactions.__doc__ = get_codes_transactions.__doc__
+SUT.get_codes_industries.__doc__ = get_codes_industries.__doc__
+SUT.get_codes_individual_consumption.__doc__ = get_codes_individual_consumption.__doc__
+SUT.get_codes_collective_consumption.__doc__ = get_codes_collective_consumption.__doc__
 
