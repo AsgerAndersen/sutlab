@@ -7,7 +7,7 @@ import math
 import pytest
 import pandas as pd
 
-from sutlab.adjust import adjust_add_sut
+from sutlab.adjust import adjust_add_sut, adjust_subtract_sut, adjust_substitute_sut
 from sutlab.sut import (
     BalancingTargets,
     BalancingConfig,
@@ -475,3 +475,394 @@ class TestAdjustAddSutErrors:
             result_method.supply.reset_index(drop=True),
             result_free.supply.reset_index(drop=True),
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_subtract_sut — supply side
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubtractSutSupply:
+
+    def test_matching_row_values_are_subtracted(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        # 2018/P1/0100/I1: 100.0 - 10.0 = 90.0
+        row = result.supply[
+            (result.supply["year"] == 2018) &
+            (result.supply["nrnr"] == "P1")
+        ]
+        assert row["bas"].iloc[0] == pytest.approx(90.0)
+
+    def test_unmatched_rows_in_base_unchanged(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        # 2019/P1/0100/I1 only exists in sut → unchanged
+        row = result.supply[
+            (result.supply["year"] == 2019) &
+            (result.supply["nrnr"] == "P1")
+        ]
+        assert row["bas"].iloc[0] == pytest.approx(110.0)
+
+    def test_new_rows_from_adjustments_appended_as_negated(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        # P3 only in adjustments → appended as 0 - 50.0 = -50.0
+        new_row = result.supply[result.supply["nrnr"] == "P3"]
+        assert len(new_row) == 1
+        assert new_row["bas"].iloc[0] == pytest.approx(-50.0)
+
+    def test_total_row_count(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        # base 4 rows + P3 appended → 5
+        assert len(result.supply) == 5
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_subtract_sut — use side
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubtractSutUse:
+
+    def test_all_price_columns_subtracted_for_matching_row(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        row = result.use[
+            (result.use["year"] == 2018) &
+            (result.use["nrnr"] == "P1")
+        ]
+        # sut: bas=60, eng=5, det=3, afg=2, moms=10, koeb=80
+        # adjustments subtracts: bas=6, eng=0.5, det=0.3, afg=0.2, moms=1, koeb=8
+        assert row["bas"].iloc[0] == pytest.approx(54.0)
+        assert row["eng"].iloc[0] == pytest.approx(4.5)
+        assert row["det"].iloc[0] == pytest.approx(2.7)
+        assert row["afg"].iloc[0] == pytest.approx(1.8)
+        assert row["moms"].iloc[0] == pytest.approx(9.0)
+        assert row["koeb"].iloc[0] == pytest.approx(72.0)
+
+    def test_new_use_row_appended_as_negated(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        new_row = result.use[result.use["nrnr"] == "P3"]
+        assert len(new_row) == 1
+        assert new_row["koeb"].iloc[0] == pytest.approx(-6.5)
+
+    def test_unmatched_base_rows_unchanged(self, sut, adjustments):
+        result = adjust_subtract_sut(sut, adjustments)
+        row = result.use[
+            (result.use["year"] == 2019) &
+            (result.use["nrnr"] == "P1")
+        ]
+        assert row["koeb"].iloc[0] == pytest.approx(86.8)
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_subtract_sut — NaN handling
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubtractSutNanHandling:
+
+    def test_nan_in_adjustments_treated_as_zero(self, sut, metadata):
+        values_supply = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["0100"], "brch": ["I1"],
+            "bas": [10.0],
+        })
+        values_use = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["2000"], "brch": ["I1"],
+            "bas": [6.0], "eng": [float("nan")], "det": [0.3],
+            "afg": [0.2], "moms": [1.0], "koeb": [8.0],
+        })
+        sv = SUT(price_basis="current_year", supply=values_supply, use=values_use, metadata=metadata)
+        result = adjust_subtract_sut(sut, sv)
+        row = result.use[
+            (result.use["year"] == 2018) & (result.use["nrnr"] == "P1")
+        ]
+        # eng: 5.0 - NaN → 5.0
+        assert row["eng"].iloc[0] == pytest.approx(5.0)
+
+    def test_nan_minus_nan_stays_nan(self, sut, metadata):
+        supply = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["0100"], "brch": ["I1"],
+            "bas": [100.0],
+        })
+        use = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["2000"], "brch": ["I1"],
+            "bas": [60.0], "eng": [float("nan")], "det": [3.0],
+            "afg": [2.0], "moms": [10.0], "koeb": [80.0],
+        })
+        base = SUT(price_basis="current_year", supply=supply, use=use, metadata=metadata)
+        values_use = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["2000"], "brch": ["I1"],
+            "bas": [6.0], "eng": [float("nan")], "det": [0.3],
+            "afg": [0.2], "moms": [1.0], "koeb": [8.0],
+        })
+        values_supply = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["0100"], "brch": ["I1"],
+            "bas": [10.0],
+        })
+        sv = SUT(price_basis="current_year", supply=values_supply, use=values_use, metadata=metadata)
+        result = adjust_subtract_sut(base, sv)
+        row = result.use[result.use["nrnr"] == "P1"]
+        assert math.isnan(row["eng"].iloc[0])
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_subtract_sut — balancing targets
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubtractSutBalancingTargets:
+
+    def test_targets_subtracted_when_both_have_targets(self, sut, adjustments):
+        base_targets = BalancingTargets(
+            supply=pd.DataFrame({
+                "year": [2018], "trans": ["0100"], "brch": ["I1"], "bas": [200.0],
+            }),
+            use=pd.DataFrame({
+                "year": [2018], "trans": ["2000"], "brch": ["I1"], "koeb": [100.0],
+            }),
+        )
+        values_targets = BalancingTargets(
+            supply=pd.DataFrame({
+                "year": [2018], "trans": ["0100"], "brch": ["I1"], "bas": [10.0],
+            }),
+            use=pd.DataFrame({
+                "year": [2018], "trans": ["2000"], "brch": ["I1"], "koeb": [5.0],
+            }),
+        )
+        sut_with_targets = sut.set_balancing_targets(base_targets)
+        sv = SUT(
+            price_basis="current_year",
+            supply=adjustments.supply,
+            use=adjustments.use,
+            balancing_targets=values_targets,
+        )
+        result = adjust_subtract_sut(sut_with_targets, sv)
+        supply_row = result.balancing_targets.supply[
+            result.balancing_targets.supply["trans"] == "0100"
+        ]
+        # 200 - 10 = 190
+        assert supply_row["bas"].iloc[0] == pytest.approx(190.0)
+        use_row = result.balancing_targets.use[
+            result.balancing_targets.use["trans"] == "2000"
+        ]
+        # 100 - 5 = 95
+        assert use_row["koeb"].iloc[0] == pytest.approx(95.0)
+
+    def test_method_delegates_to_free_function(self, sut, adjustments):
+        result_method = sut.adjust_subtract_sut(adjustments)
+        result_free = adjust_subtract_sut(sut, adjustments)
+        pd.testing.assert_frame_equal(
+            result_method.supply.reset_index(drop=True),
+            result_free.supply.reset_index(drop=True),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_subtract_sut — errors
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubtractSutErrors:
+
+    def test_raises_when_metadata_is_none(self, supply, use, adjustments):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+        with pytest.raises(ValueError, match="metadata"):
+            adjust_subtract_sut(sut_no_meta, adjustments)
+
+    def test_raises_on_price_basis_mismatch(self, sut, supply_values, use_values, metadata):
+        sv = SUT(
+            price_basis="previous_year",
+            supply=supply_values,
+            use=use_values,
+            metadata=metadata,
+        )
+        with pytest.raises(ValueError, match="price_basis"):
+            adjust_subtract_sut(sut, sv)
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_substitute_sut — supply side
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubstituteSutSupply:
+
+    def test_matching_row_value_replaced(self, sut, adjustments):
+        result = adjust_substitute_sut(sut, adjustments)
+        # 2018/P1/0100/I1: replaced with 10.0 from adjustments
+        row = result.supply[
+            (result.supply["year"] == 2018) &
+            (result.supply["nrnr"] == "P1")
+        ]
+        assert row["bas"].iloc[0] == pytest.approx(10.0)
+
+    def test_unmatched_rows_in_base_unchanged(self, sut, adjustments):
+        result = adjust_substitute_sut(sut, adjustments)
+        # 2019/P1 not in adjustments → unchanged
+        row = result.supply[
+            (result.supply["year"] == 2019) &
+            (result.supply["nrnr"] == "P1")
+        ]
+        assert row["bas"].iloc[0] == pytest.approx(110.0)
+
+    def test_new_rows_from_adjustments_appended(self, sut, adjustments):
+        result = adjust_substitute_sut(sut, adjustments)
+        new_row = result.supply[result.supply["nrnr"] == "P3"]
+        assert len(new_row) == 1
+        assert new_row["bas"].iloc[0] == pytest.approx(50.0)
+
+    def test_total_row_count(self, sut, adjustments):
+        result = adjust_substitute_sut(sut, adjustments)
+        # base 4 rows + P3 appended → 5
+        assert len(result.supply) == 5
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_substitute_sut — use side
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubstituteSutUse:
+
+    def test_all_price_columns_replaced_for_matching_row(self, sut, adjustments):
+        result = adjust_substitute_sut(sut, adjustments)
+        row = result.use[
+            (result.use["year"] == 2018) &
+            (result.use["nrnr"] == "P1")
+        ]
+        # adjustments values: bas=6, eng=0.5, det=0.3, afg=0.2, moms=1, koeb=8
+        assert row["bas"].iloc[0] == pytest.approx(6.0)
+        assert row["eng"].iloc[0] == pytest.approx(0.5)
+        assert row["det"].iloc[0] == pytest.approx(0.3)
+        assert row["afg"].iloc[0] == pytest.approx(0.2)
+        assert row["moms"].iloc[0] == pytest.approx(1.0)
+        assert row["koeb"].iloc[0] == pytest.approx(8.0)
+
+    def test_unmatched_base_rows_unchanged(self, sut, adjustments):
+        result = adjust_substitute_sut(sut, adjustments)
+        row = result.use[
+            (result.use["year"] == 2019) &
+            (result.use["nrnr"] == "P1")
+        ]
+        assert row["koeb"].iloc[0] == pytest.approx(86.8)
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_substitute_sut — NaN handling
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubstituteSutNanHandling:
+
+    def test_nan_in_adjustments_sets_to_nan(self, sut, metadata):
+        # adjustments has NaN for eng on the overlapping row → result eng is NaN
+        values_supply = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["0100"], "brch": ["I1"],
+            "bas": [10.0],
+        })
+        values_use = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["2000"], "brch": ["I1"],
+            "bas": [6.0], "eng": [float("nan")], "det": [0.3],
+            "afg": [0.2], "moms": [1.0], "koeb": [8.0],
+        })
+        sv = SUT(price_basis="current_year", supply=values_supply, use=values_use, metadata=metadata)
+        result = adjust_substitute_sut(sut, sv)
+        row = result.use[
+            (result.use["year"] == 2018) & (result.use["nrnr"] == "P1")
+        ]
+        # eng: NaN in adjustments → set to NaN (true replacement, not treated as 0)
+        assert math.isnan(row["eng"].iloc[0])
+        # other columns substituted normally
+        assert row["koeb"].iloc[0] == pytest.approx(8.0)
+
+    def test_nan_does_not_affect_unmatched_base_rows(self, sut, metadata):
+        # adjustments only touches 2018/P1; 2019/P1 in sut is untouched
+        values_supply = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["0100"], "brch": ["I1"],
+            "bas": [float("nan")],
+        })
+        values_use = pd.DataFrame({
+            "year": [2018], "nrnr": ["P1"], "trans": ["2000"], "brch": ["I1"],
+            "bas": [float("nan")], "eng": [float("nan")], "det": [float("nan")],
+            "afg": [float("nan")], "moms": [float("nan")], "koeb": [float("nan")],
+        })
+        sv = SUT(price_basis="current_year", supply=values_supply, use=values_use, metadata=metadata)
+        result = adjust_substitute_sut(sut, sv)
+        row = result.use[
+            (result.use["year"] == 2019) & (result.use["nrnr"] == "P1")
+        ]
+        assert row["koeb"].iloc[0] == pytest.approx(86.8)
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_substitute_sut — balancing targets
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubstituteSutBalancingTargets:
+
+    def test_targets_substituted_when_both_have_targets(self, sut, adjustments):
+        base_targets = BalancingTargets(
+            supply=pd.DataFrame({
+                "year": [2018], "trans": ["0100"], "brch": ["I1"], "bas": [200.0],
+            }),
+            use=pd.DataFrame({
+                "year": [2018], "trans": ["2000"], "brch": ["I1"], "koeb": [100.0],
+            }),
+        )
+        values_targets = BalancingTargets(
+            supply=pd.DataFrame({
+                "year": [2018], "trans": ["0100"], "brch": ["I1"], "bas": [999.0],
+            }),
+            use=pd.DataFrame({
+                "year": [2018], "trans": ["2000"], "brch": ["I1"], "koeb": [888.0],
+            }),
+        )
+        sut_with_targets = sut.set_balancing_targets(base_targets)
+        sv = SUT(
+            price_basis="current_year",
+            supply=adjustments.supply,
+            use=adjustments.use,
+            balancing_targets=values_targets,
+        )
+        result = adjust_substitute_sut(sut_with_targets, sv)
+        supply_row = result.balancing_targets.supply[
+            result.balancing_targets.supply["trans"] == "0100"
+        ]
+        assert supply_row["bas"].iloc[0] == pytest.approx(999.0)
+        use_row = result.balancing_targets.use[
+            result.balancing_targets.use["trans"] == "2000"
+        ]
+        assert use_row["koeb"].iloc[0] == pytest.approx(888.0)
+
+    def test_base_targets_preserved_when_adjustments_has_none(self, sut, adjustments):
+        base_targets = BalancingTargets(
+            supply=pd.DataFrame({
+                "year": [2018], "trans": ["0100"], "brch": ["I1"], "bas": [200.0],
+            }),
+            use=pd.DataFrame({
+                "year": [2018], "trans": ["2000"], "brch": ["I1"], "koeb": [100.0],
+            }),
+        )
+        sut_with_targets = sut.set_balancing_targets(base_targets)
+        result = adjust_substitute_sut(sut_with_targets, adjustments)
+        assert result.balancing_targets is base_targets
+
+    def test_method_delegates_to_free_function(self, sut, adjustments):
+        result_method = sut.adjust_substitute_sut(adjustments)
+        result_free = adjust_substitute_sut(sut, adjustments)
+        pd.testing.assert_frame_equal(
+            result_method.supply.reset_index(drop=True),
+            result_free.supply.reset_index(drop=True),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests for adjust_substitute_sut — errors
+# ---------------------------------------------------------------------------
+
+class TestAdjustSubstituteSutErrors:
+
+    def test_raises_when_metadata_is_none(self, supply, use, adjustments):
+        sut_no_meta = SUT(price_basis="current_year", supply=supply, use=use)
+        with pytest.raises(ValueError, match="metadata"):
+            adjust_substitute_sut(sut_no_meta, adjustments)
+
+    def test_raises_on_price_basis_mismatch(self, sut, supply_values, use_values, metadata):
+        sv = SUT(
+            price_basis="previous_year",
+            supply=supply_values,
+            use=use_values,
+            metadata=metadata,
+        )
+        with pytest.raises(ValueError, match="price_basis"):
+            adjust_substitute_sut(sut, sv)
