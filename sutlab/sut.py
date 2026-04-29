@@ -649,6 +649,23 @@ class SUT:
         from sutlab.inspect import inspect_aggregates_nominal
         return inspect_aggregates_nominal(self, gdp_decomp=gdp_decomp)
 
+    def aggregate_classification_products(
+        self,
+        mapping: pd.DataFrame,
+        *,
+        metadata: pd.DataFrame | None = None,
+        full_coverage: bool = True,
+        classification_name: str | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.aggregate.aggregate_classification_products`."""
+        from sutlab.aggregate import aggregate_classification_products
+        return aggregate_classification_products(
+            self, mapping,
+            metadata=metadata,
+            full_coverage=full_coverage,
+            classification_name=classification_name,
+        )
+
     def adjust_add_sut(self, adjustments: SUT) -> SUT:
         """Delegates to :func:`~sutlab.adjust.adjust_add_sut`."""
         from sutlab.adjust import adjust_add_sut
