@@ -654,6 +654,16 @@ class SUT:
         from sutlab.adjust import adjust_add_sut
         return adjust_add_sut(self, adjustments)
 
+    def adjust_subtract_sut(self, adjustments: SUT) -> SUT:
+        """Delegates to :func:`~sutlab.adjust.adjust_subtract_sut`."""
+        from sutlab.adjust import adjust_subtract_sut
+        return adjust_subtract_sut(self, adjustments)
+
+    def adjust_substitute_sut(self, adjustments: SUT) -> SUT:
+        """Delegates to :func:`~sutlab.adjust.adjust_substitute_sut`."""
+        from sutlab.adjust import adjust_substitute_sut
+        return adjust_substitute_sut(self, adjustments)
+
     def write_to_separated_parquet(
         self,
         id_values: list[str | int],
