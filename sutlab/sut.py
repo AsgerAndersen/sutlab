@@ -666,6 +666,74 @@ class SUT:
             classification_name=classification_name,
         )
 
+    def aggregate_classification_transactions(
+        self,
+        mapping: pd.DataFrame,
+        *,
+        metadata: pd.DataFrame | None = None,
+        full_coverage: bool = True,
+        classification_name: str | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.aggregate.aggregate_classification_transactions`."""
+        from sutlab.aggregate import aggregate_classification_transactions
+        return aggregate_classification_transactions(
+            self, mapping,
+            metadata=metadata,
+            full_coverage=full_coverage,
+            classification_name=classification_name,
+        )
+
+    def aggregate_classification_industries(
+        self,
+        mapping: pd.DataFrame,
+        *,
+        metadata: pd.DataFrame | None = None,
+        full_coverage: bool = True,
+        classification_name: str | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.aggregate.aggregate_classification_industries`."""
+        from sutlab.aggregate import aggregate_classification_industries
+        return aggregate_classification_industries(
+            self, mapping,
+            metadata=metadata,
+            full_coverage=full_coverage,
+            classification_name=classification_name,
+        )
+
+    def aggregate_classification_individual_consumption(
+        self,
+        mapping: pd.DataFrame,
+        *,
+        metadata: pd.DataFrame | None = None,
+        full_coverage: bool = True,
+        classification_name: str | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.aggregate.aggregate_classification_individual_consumption`."""
+        from sutlab.aggregate import aggregate_classification_individual_consumption
+        return aggregate_classification_individual_consumption(
+            self, mapping,
+            metadata=metadata,
+            full_coverage=full_coverage,
+            classification_name=classification_name,
+        )
+
+    def aggregate_classification_collective_consumption(
+        self,
+        mapping: pd.DataFrame,
+        *,
+        metadata: pd.DataFrame | None = None,
+        full_coverage: bool = True,
+        classification_name: str | None = None,
+    ) -> SUT:
+        """Delegates to :func:`~sutlab.aggregate.aggregate_classification_collective_consumption`."""
+        from sutlab.aggregate import aggregate_classification_collective_consumption
+        return aggregate_classification_collective_consumption(
+            self, mapping,
+            metadata=metadata,
+            full_coverage=full_coverage,
+            classification_name=classification_name,
+        )
+
     def adjust_add_sut(self, adjustments: SUT) -> SUT:
         """Delegates to :func:`~sutlab.adjust.adjust_add_sut`."""
         from sutlab.adjust import adjust_add_sut
