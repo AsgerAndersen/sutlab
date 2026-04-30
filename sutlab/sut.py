@@ -1114,6 +1114,51 @@ def _match_codes(codes: list[str], patterns: list[str]) -> list[str]:
     return candidates
 
 
+def _filter_targets_by_ids(
+    targets: BalancingTargets,
+    id_col: str,
+    ids: str | int | Iterable[str | int],
+) -> BalancingTargets:
+    """Filter balancing targets to rows matching the given id values or patterns."""
+    if isinstance(ids, (str, int)):
+        ids = [ids]
+    else:
+        ids = list(ids)
+
+    ids_as_str = [str(v) for v in ids]
+    supply_codes = [str(v) for v in targets.supply[id_col].unique()]
+    use_codes = [str(v) for v in targets.use[id_col].unique()]
+    all_unique_codes = list(set(supply_codes) | set(use_codes))
+
+    matched_codes = _match_codes(all_unique_codes, ids_as_str)
+
+    filtered_supply = targets.supply[targets.supply[id_col].astype(str).isin(matched_codes)]
+    filtered_use = targets.use[targets.use[id_col].astype(str).isin(matched_codes)]
+
+    return replace(targets, supply=filtered_supply, use=filtered_use)
+
+
+def _filter_targets_by_column(
+    targets: BalancingTargets,
+    column_name: str,
+    patterns: str | list[str],
+) -> BalancingTargets:
+    """Filter balancing targets to rows where column_name matches any pattern."""
+    if isinstance(patterns, str):
+        patterns = [patterns]
+
+    supply_codes = targets.supply[column_name].dropna().unique().tolist()
+    use_codes = targets.use[column_name].dropna().unique().tolist()
+    all_unique_codes = list(set(supply_codes) | set(use_codes))
+
+    matched_codes = _match_codes(all_unique_codes, patterns)
+
+    filtered_supply = targets.supply[targets.supply[column_name].isin(matched_codes)]
+    filtered_use = targets.use[targets.use[column_name].isin(matched_codes)]
+
+    return replace(targets, supply=filtered_supply, use=filtered_use)
+
+
 def _filter_sut_by_column(sut: SUT, column_name: str, patterns: str | list[str]) -> SUT:
     """Filter supply and use to rows where column_name matches any pattern.
 
@@ -1222,8 +1267,10 @@ def filter_rows(
     -------
     SUT
         A new SUT with the selected table(s) filtered to matching rows.
-        ``balancing_id`` is set to ``None`` — balancing a sub-SUT is not
-        supported. ``price_basis`` and ``metadata`` are carried over
+        ``balancing_targets`` is filtered by the same criteria (``products``
+        excluded — targets have no product dimension). ``balancing_id`` is
+        preserved when the id is still present in the filtered data, otherwise
+        set to ``None``. ``price_basis`` and ``metadata`` are carried over
         unchanged. If no rows match, the result contains empty DataFrames.
 
     Raises
@@ -1255,25 +1302,49 @@ def filter_rows(
 
     original_supply = sut.supply
     original_use = sut.use
+    original_targets = sut.balancing_targets
 
     cols = sut.metadata.columns
     result = sut
 
     if ids is not None:
         result = _filter_sut_by_ids(result, ids)
+        if result.balancing_targets is not None:
+            filtered_targets = _filter_targets_by_ids(result.balancing_targets, cols.id, ids)
+            result = replace(result, balancing_targets=filtered_targets)
+
     if products is not None:
         result = _filter_sut_by_column(result, cols.product, products)
+        # products not filtered on targets — no product dimension in BalancingTargets
+
     if transactions is not None:
         result = _filter_sut_by_column(result, cols.transaction, transactions)
+        if result.balancing_targets is not None:
+            filtered_targets = _filter_targets_by_column(result.balancing_targets, cols.transaction, transactions)
+            result = replace(result, balancing_targets=filtered_targets)
+
     if categories is not None:
         result = _filter_sut_by_column(result, cols.category, categories)
+        if result.balancing_targets is not None:
+            filtered_targets = _filter_targets_by_column(result.balancing_targets, cols.category, categories)
+            result = replace(result, balancing_targets=filtered_targets)
 
     if table == "supply":
         result = replace(result, use=original_use)
+        if original_targets is not None:
+            result = replace(result, balancing_targets=replace(result.balancing_targets, use=original_targets.use))
     elif table == "use":
         result = replace(result, supply=original_supply)
+        if original_targets is not None:
+            result = replace(result, balancing_targets=replace(result.balancing_targets, supply=original_targets.supply))
 
-    return replace(result, balancing_id=None)
+    if sut.balancing_id is not None:
+        id_col = cols.id
+        remaining_ids = set(result.supply[id_col].astype(str).unique()) | set(result.use[id_col].astype(str).unique())
+        if str(sut.balancing_id) not in remaining_ids:
+            result = replace(result, balancing_id=None)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
