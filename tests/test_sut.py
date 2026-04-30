@@ -528,9 +528,14 @@ class TestFilterRows:
 
     # --- return value properties ---
 
-    def test_balancing_id_is_dropped(self, sut_multi):
+    def test_balancing_id_preserved_when_id_still_present(self, sut_multi):
         sut_with_balancing = set_balancing_id(sut_multi, 2019)
         result = filter_rows(sut_with_balancing, products="V10*")
+        assert result.balancing_id == 2019
+
+    def test_balancing_id_cleared_when_id_filtered_out(self, sut_multi_years):
+        sut_with_balancing = set_balancing_id(sut_multi_years, 2019)
+        result = filter_rows(sut_with_balancing, ids="2017:2018")
         assert result.balancing_id is None
 
     def test_price_basis_preserved(self, sut_multi):
@@ -593,6 +598,54 @@ class TestFilterRows:
     def test_table_invalid_raises(self, sut_multi):
         with pytest.raises(ValueError, match="table"):
             filter_rows(sut_multi, products="V10*", table="both")
+
+    # --- balancing targets propagation ---
+
+    def test_targets_filtered_by_ids(self, sut_multi_years):
+        targets = _make_targets(years=[2017, 2018, 2019])
+        sut_with_targets = set_balancing_targets(sut_multi_years, targets)
+        result = filter_rows(sut_with_targets, ids="2017:2018")
+        assert set(result.balancing_targets.supply["year"]) == {2017, 2018}
+        assert set(result.balancing_targets.use["year"]) == {2017, 2018}
+
+    def test_targets_filtered_by_transactions(self, sut_multi_years):
+        targets = _make_targets(years=[2017, 2018, 2019])
+        sut_with_targets = set_balancing_targets(sut_multi_years, targets)
+        result = filter_rows(sut_with_targets, transactions="0100")
+        assert len(result.balancing_targets.supply) == 3  # one row per year
+        assert len(result.balancing_targets.use) == 0
+
+    def test_targets_filtered_by_categories(self, sut_multi_years):
+        targets = _make_targets(years=[2017, 2018, 2019])
+        sut_with_targets = set_balancing_targets(sut_multi_years, targets)
+        result = filter_rows(sut_with_targets, categories="I1")
+        assert len(result.balancing_targets.supply) == 3
+        assert len(result.balancing_targets.use) == 3
+
+    def test_targets_not_filtered_by_products(self, sut_multi_years):
+        targets = _make_targets(years=[2017, 2018, 2019])
+        sut_with_targets = set_balancing_targets(sut_multi_years, targets)
+        result = filter_rows(sut_with_targets, products="V10100")
+        pd.testing.assert_frame_equal(result.balancing_targets.supply, targets.supply)
+        pd.testing.assert_frame_equal(result.balancing_targets.use, targets.use)
+
+    def test_targets_table_supply_leaves_use_targets_unchanged(self, sut_multi_years):
+        targets = _make_targets(years=[2017, 2018, 2019])
+        sut_with_targets = set_balancing_targets(sut_multi_years, targets)
+        result = filter_rows(sut_with_targets, ids="2017", table="supply")
+        assert set(result.balancing_targets.supply["year"]) == {2017}
+        pd.testing.assert_frame_equal(result.balancing_targets.use, targets.use)
+
+    def test_targets_table_use_leaves_supply_targets_unchanged(self, sut_multi_years):
+        targets = _make_targets(years=[2017, 2018, 2019])
+        sut_with_targets = set_balancing_targets(sut_multi_years, targets)
+        result = filter_rows(sut_with_targets, ids="2017", table="use")
+        pd.testing.assert_frame_equal(result.balancing_targets.supply, targets.supply)
+        assert set(result.balancing_targets.use["year"]) == {2017}
+
+    def test_no_targets_no_error(self, sut_multi):
+        result = filter_rows(sut_multi, products="V10*")
+        assert result.balancing_targets is None
 
 
 # ---------------------------------------------------------------------------
