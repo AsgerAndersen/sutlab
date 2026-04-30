@@ -7,113 +7,16 @@ from dataclasses import replace
 import pandas as pd
 
 from sutlab.sut import SUT, SUTClassifications
-
-
-def _validate_mapping(mapping: pd.DataFrame) -> None:
-    if not isinstance(mapping, pd.DataFrame):
-        raise TypeError(
-            f"mapping must be a DataFrame, got {type(mapping).__name__}."
-        )
-    for col in ("from", "to"):
-        if col not in mapping.columns:
-            raise ValueError(
-                f"mapping must have a '{col}' column. "
-                f"Found columns: {list(mapping.columns)}."
-            )
-    if mapping["from"].isna().any():
-        raise ValueError("mapping['from'] must not contain NaN values.")
-    if mapping["to"].isna().any():
-        raise ValueError("mapping['to'] must not contain NaN values.")
-    duplicates = mapping["from"][mapping["from"].duplicated()].tolist()
-    if duplicates:
-        raise ValueError(
-            f"mapping['from'] must not contain duplicate values. "
-            f"Duplicates found: {duplicates}."
-        )
-
-
-def _validate_full_coverage(
-    mapping: pd.DataFrame,
-    supply: pd.DataFrame,
-    use: pd.DataFrame,
-    product_col: str,
-) -> None:
-    data_codes = set(supply[product_col].dropna()) | set(use[product_col].dropna())
-    missing = sorted(data_codes - set(mapping["from"]))
-    if missing:
-        raise ValueError(
-            f"full_coverage=True but the following product codes appear in the "
-            f"data but are not covered by mapping['from']: {missing}."
-        )
-
-
-def _validate_from_in_classification(
-    mapping: pd.DataFrame,
-    products_cls: pd.DataFrame,
-    product_col: str,
-) -> None:
-    known_codes = set(products_cls[product_col].dropna())
-    unknown = sorted(set(mapping["from"]) - known_codes)
-    if unknown:
-        raise ValueError(
-            f"The following codes in mapping['from'] are not present in the "
-            f"existing products classification: {unknown}. "
-            f"Available codes: {sorted(known_codes)}."
-        )
-
-
-def _validate_metadata_columns(metadata: pd.DataFrame, product_col: str) -> None:
-    txt_col = f"{product_col}_txt"
-    if product_col not in metadata.columns:
-        raise ValueError(
-            f"metadata must have a '{product_col}' column. "
-            f"Found columns: {list(metadata.columns)}."
-        )
-    unexpected = set(metadata.columns) - {product_col, txt_col}
-    if unexpected:
-        raise ValueError(
-            f"metadata has unexpected columns: {sorted(unexpected)}. "
-            f"Expected '{product_col}' and optionally '{txt_col}'."
-        )
-
-
-def _validate_no_passthrough_collision(
-    mapping: pd.DataFrame,
-    supply: pd.DataFrame,
-    use: pd.DataFrame,
-    product_col: str,
-) -> None:
-    from_codes = set(mapping["from"])
-    data_codes = set(supply[product_col].dropna()) | set(use[product_col].dropna())
-    passthrough_codes = data_codes - from_codes
-    collisions = sorted(set(mapping["to"]) & passthrough_codes)
-    if collisions:
-        raise ValueError(
-            f"The following 'to' codes also exist as unmapped (pass-through) "
-            f"product codes in the data: {collisions}. "
-            f"This would silently merge aggregated and original rows."
-        )
-
-
-def _aggregate_long_table(
-    df: pd.DataFrame,
-    mapping: pd.DataFrame,
-    key_cols: list[str],
-    product_col: str,
-) -> pd.DataFrame:
-    from_to = dict(zip(mapping["from"], mapping["to"]))
-    original_codes = df[product_col]
-    mapped_codes = original_codes.map(from_to)
-    result = df.copy()
-    result[product_col] = mapped_codes.fillna(original_codes)
-    price_cols = [c for c in result.columns if c not in set(key_cols)]
-    result = (
-        result
-        .groupby(key_cols, dropna=False)[price_cols]
-        .sum(min_count=1)
-        .reset_index()
-    )
-    return result.sort_values(key_cols).reset_index(drop=True)
+from sutlab.aggregate._shared import (
+    _aggregate_long_table,
+    _build_classification,
+    _update_classification_names,
+    _validate_from_in_classification,
+    _validate_full_coverage,
+    _validate_mapping,
+    _validate_metadata_columns_simple,
+    _validate_no_passthrough_collision,
+)
 
 
 def _remap_margin_products(
@@ -177,44 +80,6 @@ def _remap_margin_products(
     return result[col_order]
 
 
-def _build_products_classification(
-    old_cls: SUTClassifications | None,
-    mapping: pd.DataFrame,
-    metadata: pd.DataFrame | None,
-    full_coverage: bool,
-    product_col: str,
-) -> pd.DataFrame | None:
-    if full_coverage:
-        return metadata
-
-    if metadata is None:
-        return None
-
-    # Partial coverage: merge new metadata (for "to" codes) with existing
-    # classification rows for unmapped pass-through codes.
-    if old_cls is None or old_cls.products is None:
-        return metadata
-
-    from_codes = set(mapping["from"])
-    unmapped_rows = old_cls.products[~old_cls.products[product_col].isin(from_codes)]
-    return pd.concat([metadata, unmapped_rows], ignore_index=True)
-
-
-def _update_classification_names(
-    classification_names: pd.DataFrame | None,
-    product_col: str,
-    classification_name: str | None,
-) -> pd.DataFrame | None:
-    if classification_names is None:
-        return None
-    mask = classification_names["dimension"] == product_col
-    if not mask.any():
-        return classification_names
-    result = classification_names.copy()
-    result.loc[mask, "classification"] = classification_name
-    return result
-
-
 def aggregate_classification_products(
     sut: SUT,
     mapping: pd.DataFrame,
@@ -232,8 +97,9 @@ def aggregate_classification_products(
 
     The products classification is rebuilt from ``metadata`` and, when
     ``full_coverage=False``, rows for unmapped pass-through codes from the
-    existing classification. All balancing state (targets and config) is
-    cleared — re-attach after aggregation if needed.
+    existing classification. ``balancing_config`` is cleared — re-attach
+    after aggregation if needed. ``balancing_targets`` is preserved unchanged
+    (targets have no product dimension). ``balancing_id`` is preserved.
 
     Parameters
     ----------
@@ -265,8 +131,8 @@ def aggregate_classification_products(
     -------
     SUT
         New SUT with aggregated supply and use and updated metadata.
-        ``balancing_targets`` and ``balancing_config`` are set to ``None``.
-        ``balancing_id`` and ``price_basis`` are preserved.
+        ``balancing_config`` is set to ``None``. ``balancing_targets``,
+        ``balancing_id``, and ``price_basis`` are preserved.
 
     Raises
     ------
@@ -309,24 +175,28 @@ def aggregate_classification_products(
     _validate_mapping(mapping)
 
     if full_coverage:
-        _validate_full_coverage(mapping, sut.supply, sut.use, product_col)
+        _validate_full_coverage(mapping, [sut.supply, sut.use], product_col)
 
     old_cls = sut.metadata.classifications
     if old_cls is not None and old_cls.products is not None:
-        _validate_from_in_classification(mapping, old_cls.products, product_col)
+        _validate_from_in_classification(mapping, old_cls.products, product_col, "products")
 
     if metadata is not None:
-        _validate_metadata_columns(metadata, product_col)
+        _validate_metadata_columns_simple(metadata, product_col)
 
     if not full_coverage:
-        _validate_no_passthrough_collision(mapping, sut.supply, sut.use, product_col)
+        _validate_no_passthrough_collision(mapping, [sut.supply, sut.use], product_col)
 
     key_cols = [cols.id, product_col, cols.transaction, cols.category]
     new_supply = _aggregate_long_table(sut.supply, mapping, key_cols, product_col)
     new_use = _aggregate_long_table(sut.use, mapping, key_cols, product_col)
 
-    new_products_cls = _build_products_classification(
-        old_cls, mapping, metadata, full_coverage, product_col
+    new_products_cls = _build_classification(
+        old_cls.products if old_cls is not None else None,
+        mapping,
+        metadata,
+        full_coverage,
+        product_col,
     )
 
     if old_cls is None:
@@ -358,6 +228,5 @@ def aggregate_classification_products(
         supply=new_supply,
         use=new_use,
         metadata=new_metadata,
-        balancing_targets=None,
         balancing_config=None,
     )
