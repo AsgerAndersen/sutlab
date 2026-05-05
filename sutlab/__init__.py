@@ -55,7 +55,7 @@ from sutlab.inspect import (
 )
 from sutlab.derive import compute_price_layer_rates, compute_totals
 from sutlab.balancing import balance_columns, balance_products_use, resolve_target_tolerances, filter_free_cells
-from sutlab.adjust import adjust_add_sut
+from sutlab.adjust import adjust_add_sut, adjust_subtract_sut, adjust_substitute_sut
 from sutlab.sut import SUT
 
 # Attach free-function docstrings to SUT methods so that
@@ -67,6 +67,8 @@ SUT.balance_products_use.__doc__ = balance_products_use.__doc__
 SUT.inspect_industries.__doc__ = inspect_industries.__doc__
 SUT.inspect_final_uses.__doc__ = inspect_final_uses.__doc__
 SUT.adjust_add_sut.__doc__ = adjust_add_sut.__doc__
+SUT.adjust_subtract_sut.__doc__ = adjust_subtract_sut.__doc__
+SUT.adjust_substitute_sut.__doc__ = adjust_substitute_sut.__doc__
 SUT.write_to_separated_parquet.__doc__ = write_sut_to_separated_parquet.__doc__
 SUT.write_to_combined_parquet.__doc__ = write_sut_to_combined_parquet.__doc__
 SUT.write_to_separated_csv.__doc__ = write_sut_to_separated_csv.__doc__
