@@ -26,6 +26,9 @@ from sutlab.inspect._shared import (
     _make_sheet_name,
     _apply_bold_headers,
     _apply_number_formats,
+    _apply_freeze_and_filter,
+    _center_header_cells,
+    _fill_repeated_index_styles,
     _fit_index_column_widths,
     _set_value_column_widths,
     _write_inspection_to_excel,
@@ -343,6 +346,77 @@ def test_write_to_excel_value_columns_wider_than_default(tmp_path, balancing_res
 # ---------------------------------------------------------------------------
 # _fit_index_column_widths
 # ---------------------------------------------------------------------------
+
+
+def _write_long_table(path, n_rows):
+    """Write a MultiIndex table through _write_inspection_to_excel-style steps."""
+    df = pd.DataFrame(
+        {"v1": range(n_rows), "v2": range(n_rows)},
+        index=pd.MultiIndex.from_arrays(
+            [["a"] * n_rows, [f"p{i}" for i in range(n_rows)]], names=["id", "product"]
+        ),
+    )
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Sheet1", merge_cells=False)
+        _apply_freeze_and_filter(writer.sheets["Sheet1"], df)
+    return openpyxl.load_workbook(path)["Sheet1"]
+
+
+def test_freeze_and_filter_long_table_has_filter_and_frozen_header(tmp_path):
+    ws = _write_long_table(tmp_path / "long.xlsx", 25)
+    assert ws.freeze_panes == "A2"
+    assert ws.auto_filter.ref == "A1:D26"
+
+
+def test_freeze_and_filter_short_table_has_no_filter(tmp_path):
+    ws = _write_long_table(tmp_path / "short.xlsx", 20)
+    assert ws.freeze_panes == "A2"
+    assert ws.auto_filter.ref is None
+
+
+def test_fill_repeated_index_styles_copies_fill_to_repeated_labels(tmp_path):
+    """Repeated outer-level labels get the fill of the first row in the block."""
+    df = pd.DataFrame(
+        {"v": [1, 2, 3]},
+        index=pd.MultiIndex.from_tuples(
+            [("A", "x"), ("A", "y"), ("B", "x")], names=["outer", "inner"]
+        ),
+    )
+    # Style only the first "A" cell, as the Styler does for the start of a block.
+    styler = df.style.apply_index(
+        lambda s: ["background-color: #ff0000" if v == "A" and i == 0 else "" for i, v in enumerate(s)],
+        level="outer",
+        axis=0,
+    )
+    path = tmp_path / "fill.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        styler.to_excel(writer, sheet_name="Sheet1", merge_cells=False)
+        _fill_repeated_index_styles(writer.sheets["Sheet1"], df)
+
+    ws = openpyxl.load_workbook(path)["Sheet1"]
+    assert ws["A2"].fill.fgColor.rgb.endswith("FF0000")
+    assert ws["A3"].fill.fgColor.rgb.endswith("FF0000")
+    assert ws["A4"].fill.fill_type is None
+
+
+def test_center_header_cells(tmp_path):
+    df = pd.DataFrame({2020: [1.0], 2021: [2.0]})
+    path = tmp_path / "center.xlsx"
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Sheet1", merge_cells=False)
+        _center_header_cells(writer.sheets["Sheet1"], df)
+
+    ws = openpyxl.load_workbook(path)["Sheet1"]
+    assert ws["B1"].alignment.horizontal == "center"
+    assert ws["C1"].alignment.horizontal == "center"
+
+
+def test_write_to_excel_has_no_merged_cells(tmp_path, realistic_balancing_result):
+    path = tmp_path / "merged.xlsx"
+    realistic_balancing_result.write_to_excel(path)
+    wb = openpyxl.load_workbook(path)
+    for ws in wb.worksheets:
+        assert len(ws.merged_cells.ranges) == 0
 
 
 def test_fit_index_column_widths_sets_width(tmp_path):

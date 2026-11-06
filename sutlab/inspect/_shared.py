@@ -227,6 +227,98 @@ def _apply_bold_headers(ws, df: pd.DataFrame) -> None:
             cell.font = font
 
 
+def _header_row_count(df: pd.DataFrame) -> int:
+    """Return the number of header rows pandas writes above the data.
+
+    One row per column level. With multi-level column headers pandas adds one
+    extra row holding the index names (when the index has any names).
+    """
+    n_header_rows = df.columns.nlevels
+    if df.columns.nlevels > 1 and any(name is not None for name in df.index.names):
+        n_header_rows += 1
+    return n_header_rows
+
+
+def _center_header_cells(ws, df: pd.DataFrame) -> None:
+    """Centre the text of all header cells horizontally.
+
+    The autofilter dropdown button sits at the right edge of a header cell and
+    hides right-aligned text (such as year column names). Centred text stays
+    visible next to the button. Other alignment properties are preserved.
+    """
+    n_header_rows = _header_row_count(df)
+    for row in ws.iter_rows(min_row=1, max_row=n_header_rows):
+        for cell in row:
+            alignment = copy(cell.alignment)
+            alignment.horizontal = "center"
+            cell.alignment = alignment
+
+
+def _fill_repeated_index_styles(ws, df: pd.DataFrame) -> None:
+    """Copy fill and font onto repeated index labels written without merging.
+
+    The Styler only styles the first row of each block in the outer index
+    levels (as in a merged cell). With ``merge_cells=False`` the repeated
+    labels in the following rows are written unstyled. For each index column,
+    a cell whose labels in this and all outer levels equal those of the row
+    above, and that has no fill of its own, receives the fill and font of the
+    cell above. Borders are not copied, since they belong to individual rows.
+
+    Parameters
+    ----------
+    ws : openpyxl.worksheet.worksheet.Worksheet
+        The worksheet to modify, in place.
+    df : pd.DataFrame
+        The DataFrame that was written to ``ws``.
+    """
+    n_index_cols = df.index.nlevels
+    first_data_row = _header_row_count(df) + 1
+    for row_idx in range(first_data_row + 1, ws.max_row + 1):
+        for col_idx in range(1, n_index_cols + 1):
+            same_as_above = all(
+                ws.cell(row=row_idx, column=c).value == ws.cell(row=row_idx - 1, column=c).value
+                for c in range(1, col_idx + 1)
+            )
+            if not same_as_above:
+                break
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell_above = ws.cell(row=row_idx - 1, column=col_idx)
+            if cell.fill.fill_type is None and cell_above.fill.fill_type is not None:
+                cell.fill = copy(cell_above.fill)
+                cell.font = copy(cell_above.font)
+
+
+_EXCEL_FILTER_MIN_ROWS = 20
+
+
+def _apply_freeze_and_filter(ws, df: pd.DataFrame) -> None:
+    """Freeze the header rows and add column filters to long tables.
+
+    The header rows are always frozen so they stay visible when scrolling
+    down. When the table has more than ``_EXCEL_FILTER_MIN_ROWS`` data rows,
+    an autofilter is added covering all columns (index and value columns).
+
+    With multi-level column headers pandas writes one extra row holding the
+    index names; the filter sits on the last header row, directly above the
+    data.
+
+    Parameters
+    ----------
+    ws : openpyxl.worksheet.worksheet.Worksheet
+        The worksheet to modify, in place.
+    df : pd.DataFrame
+        The DataFrame that was written to ``ws``.
+    """
+    n_header_rows = _header_row_count(df)
+
+    ws.freeze_panes = ws.cell(row=n_header_rows + 1, column=1)
+
+    n_data_rows = len(df)
+    if n_data_rows > _EXCEL_FILTER_MIN_ROWS:
+        last_col_letter = openpyxl.utils.get_column_letter(ws.max_column)
+        ws.auto_filter.ref = f"A{n_header_rows}:{last_col_letter}{ws.max_row}"
+
+
 def _set_value_column_widths(ws, n_index_cols: int, n_data_cols: int) -> None:
     """Set a fixed default width on all value (non-index) columns.
 
@@ -594,15 +686,18 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
 
             if isinstance(styled, Styler):
                 try:
-                    styled.to_excel(writer, sheet_name=sheet_name)
+                    styled.to_excel(writer, sheet_name=sheet_name, merge_cells=False)
                 except Exception:
-                    raw.to_excel(writer, sheet_name=sheet_name)
+                    raw.to_excel(writer, sheet_name=sheet_name, merge_cells=False)
             else:
-                raw.to_excel(writer, sheet_name=sheet_name)
+                raw.to_excel(writer, sheet_name=sheet_name, merge_cells=False)
 
             ws = writer.sheets[sheet_name]
             all_rel = getattr(inspection_obj, "_all_rel", False)
             _apply_bold_headers(ws, raw)
+            _fill_repeated_index_styles(ws, raw)
+            _center_header_cells(ws, raw)
+            _apply_freeze_and_filter(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
             _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
             _apply_number_formats(ws, raw, name, display_unit, rel_base, all_rel, decimals)
