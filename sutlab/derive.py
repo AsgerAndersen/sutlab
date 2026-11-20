@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 
+import numpy as np
 import pandas as pd
 
 from sutlab.sut import SUT
@@ -386,3 +387,261 @@ def compute_totals(
     )
 
     return result
+
+
+@dataclasses.dataclass
+class ChainedSeries:
+    """Result of ``compute_chained_series_annual``.
+
+    All five tables have the same row index as the ``current`` table passed
+    to the function. Columns are the original time labels, sorted
+    numerically in ascending order.
+
+    Attributes
+    ----------
+    volume_index : pd.DataFrame
+        Chained volume index; 100 in the reference year.
+    volumes : pd.DataFrame
+        Chained volumes in reference-year prices (volume index / 100 times
+        the current-price value in the reference year). Not additive across
+        rows, except in the reference year.
+    volume_growth : pd.DataFrame
+        Laspeyres volume growth, ``previous[t] / current[t-1] - 1``.
+        ``NaN`` in the first year.
+    price_index : pd.DataFrame
+        Implicit price index, ``100 * current / volumes``; 100 in the
+        reference year.
+    price_growth : pd.DataFrame
+        Paasche price growth, ``current[t] / previous[t] - 1``. ``NaN`` in
+        the first year.
+    """
+
+    volume_index: pd.DataFrame
+    volumes: pd.DataFrame
+    volume_growth: pd.DataFrame
+    price_index: pd.DataFrame
+    price_growth: pd.DataFrame
+
+
+def _parse_integer_labels(columns: pd.Index, table_name: str) -> dict:
+    """Map each column label to the integer it represents.
+
+    Accepts integers and strings containing an integer (e.g. ``"2020"``).
+    """
+    message = (
+        "Column label {label!r} in '{table}' is not an integer. "
+        "compute_chained_series_annual requires annual ids given as "
+        "integers or strings containing integers (e.g. 2020 or '2020')."
+    )
+
+    parsed = {}
+    for label in columns:
+        is_integer = isinstance(label, (int, np.integer)) and not isinstance(
+            label, bool
+        )
+        if is_integer:
+            parsed[label] = int(label)
+        elif isinstance(label, str):
+            try:
+                parsed[label] = int(label.strip())
+            except ValueError:
+                raise ValueError(
+                    message.format(label=label, table=table_name)
+                ) from None
+        else:
+            raise ValueError(message.format(label=label, table=table_name))
+
+    if len(set(parsed.values())) != len(parsed):
+        raise ValueError(
+            f"Column labels in '{table_name}' contain duplicates once read as "
+            f"integers (e.g. both 2020 and '2020'): {list(columns)}."
+        )
+    return parsed
+
+
+def compute_chained_series_annual(
+    current: pd.DataFrame,
+    previous: pd.DataFrame,
+    *,
+    reference_id: int | str | None = None,
+) -> ChainedSeries:
+    """Chain-link annual series from current and previous year's prices.
+
+    Works on any pair of tables with the same rows, where the columns are
+    consecutive years. Every row is chained independently (chain-linking is
+    not additive), so derived rows such as GDP must be supplied as rows in
+    both tables, not computed from chained component rows.
+
+    The method is annual overlap. For year ``t``, ``previous[t]`` is the
+    value of year ``t`` at the prices of year ``t-1``. The Laspeyres volume
+    growth is ``previous[t] / current[t-1]``, and the chained volume index
+    is the running product of these growth factors.
+
+    Parameters
+    ----------
+    current : pd.DataFrame
+        Values in current prices. Rows are arbitrary series; columns are
+        years, given as integers or strings containing integers (e.g.
+        ``2020`` or ``"2020"``). Years must be consecutive; column order
+        does not matter.
+    previous : pd.DataFrame
+        Values in previous year's prices. Must have exactly the same row
+        labels and the same year columns as ``current`` (row order does not
+        matter). The value for the first year is not used.
+    reference_id : int or str or None, optional
+        The reference year: the volume index is 100 in this year and
+        ``volumes`` are in this year's prices. ``None`` (the default) uses
+        the first year.
+
+    Returns
+    -------
+    ChainedSeries
+        Volume index, volumes in reference-year prices, volume growth,
+        price index and price growth. See ``ChainedSeries``.
+
+    Raises
+    ------
+    ValueError
+        If row labels are not unique or differ between the tables, if the
+        year columns differ between the tables, if a column label is not an
+        integer, if years are not consecutive, or if ``reference_id`` is not
+        one of the years.
+
+    Notes
+    -----
+    Zero and missing values give ``NaN`` rather than an error:
+
+    - A zero or ``NaN`` in ``current[t-1]``, or a ``NaN`` in ``previous[t]``,
+      makes the growth factor for year ``t`` ``NaN``. The chain stays
+      ``NaN`` for that row from year ``t`` onwards.
+    - A zero ``previous[t]`` with non-zero ``current[t-1]`` is a valid
+      growth factor of 0 (index 0).
+    - If the index in the reference year is zero or ``NaN``, the whole row
+      is ``NaN``.
+    - Zero ``previous[t]`` or zero volumes give ``NaN`` price growth or
+      price index.
+
+    Negative values are not rejected. Rows that change sign give
+    meaningless results.
+
+    Examples
+    --------
+    >>> result = compute_chained_series_annual(gdp_current, gdp_previous)
+    >>> result.volume_index
+    >>> result.volume_growth
+
+    Use 2020 as the reference year:
+
+    >>> result = compute_chained_series_annual(
+    ...     gdp_current, gdp_previous, reference_id=2020
+    ... )
+    """
+    # --- Validate rows ---
+    for table_name, table in [("current", current), ("previous", previous)]:
+        if not table.index.is_unique:
+            raise ValueError(f"Row labels in '{table_name}' must be unique.")
+
+    rows_only_in_current = current.index.difference(previous.index)
+    rows_only_in_previous = previous.index.difference(current.index)
+    if len(rows_only_in_current) > 0 or len(rows_only_in_previous) > 0:
+        raise ValueError(
+            "current and previous must have the same rows. "
+            f"Only in current: {list(rows_only_in_current)}. "
+            f"Only in previous: {list(rows_only_in_previous)}."
+        )
+
+    # --- Validate and sort year columns ---
+    current_labels = _parse_integer_labels(current.columns, "current")
+    previous_labels = _parse_integer_labels(previous.columns, "previous")
+
+    if len(current_labels) == 0:
+        raise ValueError("current must have at least one year column.")
+
+    years_current = set(current_labels.values())
+    years_previous = set(previous_labels.values())
+    if years_current != years_previous:
+        raise ValueError(
+            "current and previous must have the same year columns. "
+            f"Only in current: {sorted(years_current - years_previous)}. "
+            f"Only in previous: {sorted(years_previous - years_current)}."
+        )
+
+    years = sorted(years_current)
+    missing_years = sorted(set(range(years[0], years[-1] + 1)) - years_current)
+    if missing_years:
+        raise ValueError(
+            f"Years must be consecutive. Missing between {years[0]} and "
+            f"{years[-1]}: {missing_years}. Subset the columns to a "
+            f"consecutive range."
+        )
+
+    first_year = years[0]
+    if reference_id is None:
+        reference_year = first_year
+    else:
+        reference_year = _parse_integer_labels(
+            pd.Index([reference_id]), "reference_id"
+        )[reference_id]
+        if reference_year not in years_current:
+            raise ValueError(
+                f"reference_id {reference_id!r} is not one of the years. "
+                f"Available: {years}."
+            )
+
+    # --- Align both tables: same row order, columns = sorted integer years ---
+    current_label_by_year = {year: label for label, year in current_labels.items()}
+    previous_label_by_year = {year: label for label, year in previous_labels.items()}
+
+    current_sorted = current[[current_label_by_year[y] for y in years]].astype(float)
+    current_sorted.columns = years
+    previous_sorted = previous.reindex(current.index)[
+        [previous_label_by_year[y] for y in years]
+    ].astype(float)
+    previous_sorted.columns = years
+
+    # --- Volume growth factor: previous[t] / current[t-1] ---
+    # A zero base is undefined; treat as NaN so the chain breaks.
+    current_last_year = current_sorted.shift(1, axis=1)
+    current_last_year = current_last_year.where(current_last_year != 0)
+    growth_factor = previous_sorted / current_last_year
+    growth_factor[first_year] = float("nan")
+
+    # --- Chain from the first year, then rescale to the reference year ---
+    # skipna=False makes NaN propagate along the row (the default would
+    # silently continue the chain after a NaN).
+    factor_for_chain = growth_factor.copy()
+    factor_for_chain[first_year] = 1.0
+    unscaled_index = 100.0 * factor_for_chain.cumprod(axis=1, skipna=False)
+
+    reference_value = unscaled_index[reference_year]
+    reference_value = reference_value.where(reference_value != 0)
+    volume_index = unscaled_index.div(reference_value, axis=0) * 100.0
+
+    # --- Volumes in reference-year prices ---
+    volumes = (volume_index / 100.0).mul(current_sorted[reference_year], axis=0)
+
+    # --- Price index and growth ---
+    volumes_nonzero = volumes.where(volumes != 0)
+    price_index = 100.0 * current_sorted / volumes_nonzero
+
+    previous_nonzero = previous_sorted.where(previous_sorted != 0)
+    price_growth = current_sorted / previous_nonzero - 1.0
+    price_growth[first_year] = float("nan")
+
+    volume_growth = growth_factor - 1.0
+
+    # --- Restore the original column labels ---
+    output_labels = [current_label_by_year[y] for y in years]
+    result_tables = []
+    for table in [volume_index, volumes, volume_growth, price_index, price_growth]:
+        table = table.copy()
+        table.columns = output_labels
+        result_tables.append(table)
+
+    return ChainedSeries(
+        volume_index=result_tables[0],
+        volumes=result_tables[1],
+        volume_growth=result_tables[2],
+        price_index=result_tables[3],
+        price_growth=result_tables[4],
+    )

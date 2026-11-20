@@ -6,7 +6,11 @@ from numpy import nan as NAN
 
 import pandas as pd
 
-from sutlab.derive import compute_price_layer_rates, compute_totals
+from sutlab.derive import (
+    compute_chained_series_annual,
+    compute_price_layer_rates,
+    compute_totals,
+)
 from sutlab.sut import SUT, SUTColumns, SUTMetadata
 
 
@@ -793,3 +797,256 @@ class TestComputeTotalsUsePriceColumns:
         result_free = compute_totals(sut, "product", use_price_columns="koeb")
         result_method = sut.compute_totals("product", use_price_columns="koeb")
         pd.testing.assert_frame_equal(result_free, result_method)
+
+
+# ---------------------------------------------------------------------------
+# compute_chained_series_annual
+# ---------------------------------------------------------------------------
+
+
+def _chain_tables(current_rows, previous_rows, years=(2019, 2020, 2021)):
+    """Build current/previous DataFrames from {row_label: [values per year]}."""
+    current = pd.DataFrame(current_rows, index=list(years)).T
+    previous = pd.DataFrame(previous_rows, index=list(years)).T
+    return current, previous
+
+
+@pytest.fixture
+def simple_tables():
+    # One row. Growth factors: 105/100 = 1.05 and 115.5/110 = 1.05.
+    # The 2019 previous-price value is unused.
+    return _chain_tables(
+        {"gdp": [100.0, 110.0, 121.0]},
+        {"gdp": [95.0, 105.0, 115.5]},
+    )
+
+
+class TestChainedSeriesValues:
+    def test_volume_index_first_year_reference(self, simple_tables):
+        current, previous = simple_tables
+        result = compute_chained_series_annual(current, previous)
+        row = result.volume_index.loc["gdp"]
+        assert row[2019] == pytest.approx(100.0)
+        assert row[2020] == pytest.approx(105.0)
+        assert row[2021] == pytest.approx(110.25)
+
+    def test_volumes_in_reference_year_prices(self, simple_tables):
+        current, previous = simple_tables
+        result = compute_chained_series_annual(current, previous)
+        row = result.volumes.loc["gdp"]
+        assert row[2019] == pytest.approx(100.0)
+        assert row[2020] == pytest.approx(105.0)
+        assert row[2021] == pytest.approx(110.25)
+
+    def test_volume_growth(self, simple_tables):
+        current, previous = simple_tables
+        result = compute_chained_series_annual(current, previous)
+        row = result.volume_growth.loc["gdp"]
+        assert pd.isna(row[2019])
+        assert row[2020] == pytest.approx(0.05)
+        assert row[2021] == pytest.approx(0.05)
+
+    def test_price_index(self, simple_tables):
+        current, previous = simple_tables
+        result = compute_chained_series_annual(current, previous)
+        row = result.price_index.loc["gdp"]
+        assert row[2019] == pytest.approx(100.0)
+        assert row[2020] == pytest.approx(110.0 / 105.0 * 100.0)
+        assert row[2021] == pytest.approx(121.0 / 110.25 * 100.0)
+
+    def test_price_growth(self, simple_tables):
+        current, previous = simple_tables
+        result = compute_chained_series_annual(current, previous)
+        row = result.price_growth.loc["gdp"]
+        assert pd.isna(row[2019])
+        assert row[2020] == pytest.approx(110.0 / 105.0 - 1)
+        assert row[2021] == pytest.approx(121.0 / 115.5 - 1)
+
+    def test_other_reference_year(self, simple_tables):
+        current, previous = simple_tables
+        result = compute_chained_series_annual(current, previous, reference_id=2020)
+        index_row = result.volume_index.loc["gdp"]
+        assert index_row[2019] == pytest.approx(100.0 / 1.05)
+        assert index_row[2020] == pytest.approx(100.0)
+        assert index_row[2021] == pytest.approx(105.0)
+        volumes_row = result.volumes.loc["gdp"]
+        assert volumes_row[2020] == pytest.approx(110.0)
+        assert volumes_row[2021] == pytest.approx(110.0 * 1.05)
+        assert result.price_index.loc["gdp", 2020] == pytest.approx(100.0)
+
+    def test_reference_year_growth_unchanged(self, simple_tables):
+        current, previous = simple_tables
+        first = compute_chained_series_annual(current, previous)
+        other = compute_chained_series_annual(current, previous, reference_id=2021)
+        pd.testing.assert_frame_equal(first.volume_growth, other.volume_growth)
+
+    def test_nominal_growth_identity(self):
+        current, previous = _chain_tables(
+            {"a": [100.0, 120.0, 130.0], "b": [50.0, 45.0, 60.0]},
+            {"a": [0.0, 110.0, 128.0], "b": [0.0, 48.0, 50.0]},
+        )
+        result = compute_chained_series_annual(current, previous)
+        nominal_growth = current / current.shift(1, axis=1) - 1
+        combined = (1 + result.volume_growth) * (1 + result.price_growth) - 1
+        pd.testing.assert_frame_equal(
+            combined.iloc[:, 1:], nominal_growth.iloc[:, 1:], check_names=False
+        )
+
+    def test_rows_chained_independently(self):
+        current, previous = _chain_tables(
+            {"a": [100.0, 100.0], "b": [100.0, 100.0], "total": [200.0, 200.0]},
+            {"a": [0.0, 120.0], "b": [0.0, 90.0], "total": [0.0, 200.0]},
+            years=(2019, 2020),
+        )
+        result = compute_chained_series_annual(current, previous)
+        # Growth of "total" is its own previous/current, not the sum of rows.
+        assert result.volume_growth.loc["total", 2020] == pytest.approx(0.0)
+        assert result.volume_growth.loc["a", 2020] == pytest.approx(0.2)
+        assert result.volume_growth.loc["b", 2020] == pytest.approx(-0.1)
+
+
+class TestChainedSeriesLabelsAndOrder:
+    def test_string_year_labels_preserved_in_output(self):
+        current = pd.DataFrame(
+            {"2019": [100.0], "2020": [110.0], "2021": [121.0]}, index=["gdp"]
+        )
+        previous = pd.DataFrame(
+            {"2019": [0.0], "2020": [105.0], "2021": [115.5]}, index=["gdp"]
+        )
+        result = compute_chained_series_annual(current, previous, reference_id=2020)
+        assert list(result.volume_index.columns) == ["2019", "2020", "2021"]
+        assert result.volume_index.loc["gdp", "2020"] == pytest.approx(100.0)
+
+    def test_reference_id_as_string(self, simple_tables):
+        current, previous = simple_tables
+        as_int = compute_chained_series_annual(current, previous, reference_id=2020)
+        as_str = compute_chained_series_annual(current, previous, reference_id="2020")
+        pd.testing.assert_frame_equal(as_int.volume_index, as_str.volume_index)
+
+    def test_numeric_sorting_of_string_labels(self):
+        current = pd.DataFrame(
+            {"1000": [10.0], "999": [10.0]}, index=["x"]
+        )
+        previous = pd.DataFrame(
+            {"1000": [11.0], "999": [0.0]}, index=["x"]
+        )
+        result = compute_chained_series_annual(current, previous)
+        assert list(result.volume_index.columns) == ["999", "1000"]
+        assert result.volume_index.loc["x", "1000"] == pytest.approx(110.0)
+
+    def test_unsorted_columns_and_rows_are_aligned(self, simple_tables):
+        current, previous = simple_tables
+        expected = compute_chained_series_annual(current, previous)
+        shuffled_previous = previous[[2021, 2019, 2020]]
+        result = compute_chained_series_annual(current[[2020, 2021, 2019]], shuffled_previous)
+        pd.testing.assert_frame_equal(result.volume_index, expected.volume_index[[2020, 2021, 2019]].sort_index(axis=1))
+
+    def test_rows_aligned_by_label(self):
+        current, previous = _chain_tables(
+            {"a": [100.0, 100.0], "b": [100.0, 100.0]},
+            {"a": [0.0, 120.0], "b": [0.0, 90.0]},
+            years=(2019, 2020),
+        )
+        result = compute_chained_series_annual(current, previous.loc[["b", "a"]])
+        assert list(result.volume_index.index) == ["a", "b"]
+        assert result.volume_growth.loc["a", 2020] == pytest.approx(0.2)
+
+    def test_single_year(self):
+        current = pd.DataFrame({2020: [5.0]}, index=["x"])
+        previous = pd.DataFrame({2020: [4.0]}, index=["x"])
+        result = compute_chained_series_annual(current, previous)
+        assert result.volume_index.loc["x", 2020] == pytest.approx(100.0)
+        assert pd.isna(result.volume_growth.loc["x", 2020])
+
+
+class TestChainedSeriesZerosAndNaN:
+    def test_zero_base_breaks_chain_from_that_year(self):
+        current, previous = _chain_tables(
+            {"x": [100.0, 0.0, 50.0]},
+            {"x": [0.0, 0.0, 40.0]},
+        )
+        result = compute_chained_series_annual(current, previous)
+        row = result.volume_index.loc["x"]
+        assert row[2019] == pytest.approx(100.0)
+        assert row[2020] == pytest.approx(0.0)  # previous[2020] = 0, base 100: factor 0
+        assert pd.isna(row[2021])  # base current[2020] = 0
+
+    def test_zero_first_base_makes_rest_nan(self):
+        current, previous = _chain_tables(
+            {"x": [0.0, 10.0, 12.0]},
+            {"x": [0.0, 10.0, 12.0]},
+        )
+        result = compute_chained_series_annual(current, previous)
+        row = result.volume_index.loc["x"]
+        assert row[2019] == pytest.approx(100.0)
+        assert pd.isna(row[2020])
+        assert pd.isna(row[2021])
+
+    def test_nan_propagates_and_does_not_resume(self):
+        current, previous = _chain_tables(
+            {"x": [100.0, 100.0, 100.0]},
+            {"x": [0.0, NAN, 100.0]},
+        )
+        result = compute_chained_series_annual(current, previous)
+        row = result.volume_index.loc["x"]
+        assert row[2019] == pytest.approx(100.0)
+        assert pd.isna(row[2020])
+        assert pd.isna(row[2021])
+
+    def test_zero_reference_value_makes_row_nan(self):
+        current, previous = _chain_tables(
+            {"x": [100.0, 100.0, 100.0], "y": [100.0, 100.0, 100.0]},
+            {"x": [0.0, 0.0, 100.0], "y": [0.0, 100.0, 100.0]},
+        )
+        result = compute_chained_series_annual(current, previous, reference_id=2020)
+        assert result.volume_index.loc["x"].isna().all()
+        assert result.volume_index.loc["y", 2020] == pytest.approx(100.0)
+
+    def test_zero_previous_gives_nan_price_growth(self):
+        current, previous = _chain_tables(
+            {"x": [100.0, 10.0, 10.0]},
+            {"x": [0.0, 0.0, 10.0]},
+        )
+        result = compute_chained_series_annual(current, previous)
+        assert pd.isna(result.price_growth.loc["x", 2020])
+        assert result.price_growth.loc["x", 2021] == pytest.approx(0.0)
+        assert pd.isna(result.price_index.loc["x", 2020])  # zero volume
+
+
+class TestChainedSeriesErrors:
+    def test_row_mismatch_raises(self):
+        current = pd.DataFrame({2019: [1.0], 2020: [1.0]}, index=["a"])
+        previous = pd.DataFrame({2019: [1.0], 2020: [1.0]}, index=["b"])
+        with pytest.raises(ValueError, match="same rows"):
+            compute_chained_series_annual(current, previous)
+
+    def test_column_mismatch_raises(self):
+        current = pd.DataFrame({2019: [1.0], 2020: [1.0]}, index=["a"])
+        previous = pd.DataFrame({2019: [1.0], 2021: [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match="same year columns"):
+            compute_chained_series_annual(current, previous)
+
+    def test_gap_raises_and_names_missing_year(self):
+        current = pd.DataFrame({2019: [1.0], 2021: [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match=r"\[2020\]"):
+            compute_chained_series_annual(current, current)
+
+    def test_non_integer_label_raises(self):
+        current = pd.DataFrame({"2019": [1.0], "2020Q1": [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match="not an integer"):
+            compute_chained_series_annual(current, current)
+
+    def test_duplicate_years_after_parsing_raises(self):
+        current = pd.DataFrame({2020: [1.0], "2020": [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match="duplicates"):
+            compute_chained_series_annual(current, current)
+
+    def test_unknown_reference_id_raises(self, simple_tables):
+        current, previous = simple_tables
+        with pytest.raises(ValueError, match="not one of the years"):
+            compute_chained_series_annual(current, previous, reference_id=2030)
+
+    def test_duplicate_row_labels_raise(self):
+        current = pd.DataFrame({2019: [1.0, 2.0], 2020: [1.0, 2.0]}, index=["a", "a"])
+        with pytest.raises(ValueError, match="unique"):
+            compute_chained_series_annual(current, current)
