@@ -951,6 +951,23 @@ class TestChainedSeriesLabelsAndOrder:
         assert list(result.volume_index.index) == ["a", "b"]
         assert result.volume_growth.loc["a", 2020] == pytest.approx(0.2)
 
+    def test_previous_may_start_one_year_later(self, simple_tables):
+        current, previous = simple_tables
+        with_first_year = compute_chained_series_annual(current, previous)
+        without_first_year = compute_chained_series_annual(
+            current, previous[[2020, 2021]]
+        )
+        for name in [
+            "volume_index",
+            "volumes",
+            "volume_growth",
+            "price_index",
+            "price_growth",
+        ]:
+            pd.testing.assert_frame_equal(
+                getattr(with_first_year, name), getattr(without_first_year, name)
+            )
+
     def test_single_year(self):
         current = pd.DataFrame({2020: [5.0]}, index=["x"])
         previous = pd.DataFrame({2020: [4.0]}, index=["x"])
@@ -1020,10 +1037,22 @@ class TestChainedSeriesErrors:
         with pytest.raises(ValueError, match="same rows"):
             compute_chained_series_annual(current, previous)
 
-    def test_column_mismatch_raises(self):
+    def test_previous_missing_later_year_raises(self):
+        current = pd.DataFrame({2019: [1.0], 2020: [1.0], 2021: [1.0]}, index=["a"])
+        previous = pd.DataFrame({2019: [1.0], 2020: [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match=r"Missing in previous: \[2021\]"):
+            compute_chained_series_annual(current, previous)
+
+    def test_previous_starting_two_years_later_raises(self):
+        current = pd.DataFrame({2019: [1.0], 2020: [1.0], 2021: [1.0]}, index=["a"])
+        previous = pd.DataFrame({2021: [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match=r"Missing in previous: \[2020\]"):
+            compute_chained_series_annual(current, previous)
+
+    def test_previous_with_year_outside_current_raises(self):
         current = pd.DataFrame({2019: [1.0], 2020: [1.0]}, index=["a"])
-        previous = pd.DataFrame({2019: [1.0], 2021: [1.0]}, index=["a"])
-        with pytest.raises(ValueError, match="same year columns"):
+        previous = pd.DataFrame({2018: [1.0], 2019: [1.0], 2020: [1.0]}, index=["a"])
+        with pytest.raises(ValueError, match=r"not in current: \[2018\]"):
             compute_chained_series_annual(current, previous)
 
     def test_gap_raises_and_names_missing_year(self):

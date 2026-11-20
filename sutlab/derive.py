@@ -486,8 +486,10 @@ def compute_chained_series_annual(
         does not matter.
     previous : pd.DataFrame
         Values in previous year's prices. Must have exactly the same row
-        labels and the same year columns as ``current`` (row order does not
-        matter). The value for the first year is not used.
+        labels as ``current`` (row order does not matter). Must contain
+        every year in ``current`` except the first, and no years outside
+        ``current``. The first year is optional and never used, so
+        ``previous`` may start one year later than ``current``.
     reference_id : int or str or None, optional
         The reference year: the volume index is 100 in this year and
         ``volumes`` are in this year's prices. ``None`` (the default) uses
@@ -503,9 +505,10 @@ def compute_chained_series_annual(
     ------
     ValueError
         If row labels are not unique or differ between the tables, if the
-        year columns differ between the tables, if a column label is not an
-        integer, if years are not consecutive, or if ``reference_id`` is not
-        one of the years.
+        ``previous`` lacks a year of ``current`` (other than the first) or
+        has a year outside ``current``, if a column label is not an
+        integer, if years in ``current`` are not consecutive, or if
+        ``reference_id`` is not one of the years.
 
     Notes
     -----
@@ -559,12 +562,6 @@ def compute_chained_series_annual(
 
     years_current = set(current_labels.values())
     years_previous = set(previous_labels.values())
-    if years_current != years_previous:
-        raise ValueError(
-            "current and previous must have the same year columns. "
-            f"Only in current: {sorted(years_current - years_previous)}. "
-            f"Only in previous: {sorted(years_previous - years_current)}."
-        )
 
     years = sorted(years_current)
     missing_years = sorted(set(range(years[0], years[-1] + 1)) - years_current)
@@ -575,7 +572,22 @@ def compute_chained_series_annual(
             f"consecutive range."
         )
 
+    # previous must cover every year of current except the first (its
+    # first-year value would need a base year before the series starts).
+    # It may also contain the first year, which is then ignored.
     first_year = years[0]
+    years_needed_in_previous = years_current - {first_year}
+    years_allowed_in_previous = years_current
+    missing_in_previous = sorted(years_needed_in_previous - years_previous)
+    not_in_current = sorted(years_previous - years_allowed_in_previous)
+    if missing_in_previous or not_in_current:
+        raise ValueError(
+            f"previous must contain every year in current except the first "
+            f"({first_year}), and no other years. "
+            f"Missing in previous: {missing_in_previous}. "
+            f"In previous but not in current: {not_in_current}."
+        )
+
     if reference_id is None:
         reference_year = first_year
     else:
@@ -590,14 +602,14 @@ def compute_chained_series_annual(
 
     # --- Align both tables: same row order, columns = sorted integer years ---
     current_label_by_year = {year: label for label, year in current_labels.items()}
-    previous_label_by_year = {year: label for label, year in previous_labels.items()}
 
     current_sorted = current[[current_label_by_year[y] for y in years]].astype(float)
     current_sorted.columns = years
-    previous_sorted = previous.reindex(current.index)[
-        [previous_label_by_year[y] for y in years]
-    ].astype(float)
-    previous_sorted.columns = years
+
+    # previous may lack the first year; reindexing fills it with NaN (unused).
+    previous_by_year = previous.reindex(current.index)
+    previous_by_year.columns = [previous_labels[label] for label in previous.columns]
+    previous_sorted = previous_by_year.reindex(columns=years).astype(float)
 
     # --- Volume growth factor: previous[t] / current[t-1] ---
     # A zero base is undefined; treat as NaN so the chain breaks.
