@@ -913,3 +913,300 @@ def test_contributions_distribution_zero_growth_gives_nan(sut):
     )
     df = inspect_gdp(sut_same).data.gdp_growth_contributions_distribution
     assert df[2022].isna().all()
+
+
+# ---------------------------------------------------------------------------
+# previous= : .previous and .real inspections
+# ---------------------------------------------------------------------------
+#
+# The previous-price SUT is the 2022 rows of the fixture with every supply
+# value x 0.9 and every use value x 0.95 (so derived rows do not simply scale).
+# Hand-computed 2022 values in the previous year's (2021) prices, Production block:
+#   P1: X = (110 + 33) * 0.9 = 128.7, Y = 55 * 0.9 = 49.5
+#   P2: X = 102.3 * 0.95 = 97.185
+#   GVA: X = 31.515, Y = 49.5, total 81.015
+#   taxes: moms 15.4 * 0.95 = 14.63, import duties 11 * 0.9 = 9.9 -> 24.53
+#   GDP = 105.545
+# Expenditure block: final use (50.6 + 25.3) * 0.95 = 72.105, imports -65 * 0.9 = -58.5
+#   GDP = 13.605
+# Current-price 2021 values: Production GDP 111, X GVA 37, Expenditure GDP 9.
+
+_ALL_TABLES = [
+    "gdp", "gdp_growth", "gdp_distribution",
+    "gdp_growth_contributions", "gdp_growth_contributions_distribution",
+    "gdp_industries", "gdp_industries_growth", "gdp_industries_distribution",
+    "gdp_industries_growth_contributions",
+    "gdp_industries_growth_contributions_distribution",
+]
+
+
+def _make_previous_sut(sut, years=(2022,)):
+    supply = sut.supply[sut.supply["year"].isin(years)].copy()
+    use = sut.use[sut.use["year"].isin(years)].copy()
+    supply_value_columns = ["bas", "koeb"]
+    use_value_columns = ["bas", "ava", "moms", "koeb"]
+    supply[supply_value_columns] = supply[supply_value_columns] * 0.9
+    use[use_value_columns] = use[use_value_columns] * 0.95
+    return SUT(
+        price_basis="previous_year",
+        supply=supply,
+        use=use,
+        metadata=sut.metadata,
+    )
+
+
+@pytest.fixture
+def previous_sut(sut):
+    return _make_previous_sut(sut)
+
+
+def test_without_previous_no_previous_or_real(sut):
+    result = inspect_gdp(sut)
+    assert result.previous is None
+    assert result.real is None
+
+
+def test_reference_id_without_previous_raises(sut):
+    with pytest.raises(ValueError, match="reference_id"):
+        inspect_gdp(sut, reference_id=2021)
+
+
+def test_previous_and_real_are_same_class(sut, previous_sut):
+    result = inspect_gdp(sut, previous=previous_sut)
+    assert isinstance(result.previous, GdpInspection)
+    assert isinstance(result.real, GdpInspection)
+    # current-price tables are unchanged by previous=
+    pd.testing.assert_frame_equal(result.data.gdp, inspect_gdp(sut).data.gdp)
+
+
+def test_previous_holds_only_levels_and_shares(sut, previous_sut):
+    data = inspect_gdp(sut, previous=previous_sut).previous.data
+    present = {"gdp", "gdp_distribution", "gdp_industries", "gdp_industries_distribution"}
+    for name in _ALL_TABLES:
+        if name in present:
+            assert getattr(data, name) is not None, name
+        else:
+            assert getattr(data, name) is None, name
+
+
+def test_real_holds_volumes_growth_and_contributions(sut, previous_sut):
+    data = inspect_gdp(sut, previous=previous_sut).real.data
+    absent = {"gdp_distribution", "gdp_industries_distribution"}
+    for name in _ALL_TABLES:
+        if name in absent:
+            assert getattr(data, name) is None, name
+        else:
+            assert getattr(data, name) is not None, name
+
+
+def test_previous_values_are_previous_price_tables(sut, previous_sut):
+    previous = inspect_gdp(sut, previous=previous_sut).previous.data
+    assert list(previous.gdp.columns) == [2022]
+    assert previous.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(105.545)
+    assert previous.gdp.loc[("Expenditure", "GDP"), 2022] == pytest.approx(13.605)
+    assert previous.gdp_industries.loc[("Production", "X"), 2022] == pytest.approx(31.515)
+
+
+def test_real_volumes_reference_first_year(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut).real.data
+    # Reference year 2021: volumes equal current prices in 2021 ...
+    assert real.gdp.loc[("Production", "GDP"), 2021] == pytest.approx(111.0)
+    # ... and 2022 volumes equal the 2022 values in 2021 prices.
+    assert real.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(105.545)
+    assert real.gdp.loc[("Production", "Gross Value Added"), 2022] == pytest.approx(81.015)
+    assert real.gdp_industries.loc[("Production", "X"), 2022] == pytest.approx(31.515)
+    assert real.gdp_industries.loc[("Production", "GDP"), 2022] == pytest.approx(105.545)
+
+
+def test_real_volumes_other_reference_year(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut, reference_id=2022).real.data
+    # Reference year 2022: 2022 equals current prices; 2021 is scaled back.
+    assert real.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(122.1)
+    assert real.gdp.loc[("Production", "GDP"), 2021] == pytest.approx(122.1 * 111.0 / 105.545)
+
+
+def test_real_growth_is_volume_growth(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut).real.data
+    assert np.isnan(real.gdp_growth.loc[("Production", "GDP"), 2021])
+    assert real.gdp_growth.loc[("Production", "GDP"), 2022] == pytest.approx(105.545 / 111.0 - 1)
+    assert real.gdp_growth.loc[("Expenditure", "GDP"), 2022] == pytest.approx(13.605 / 9.0 - 1)
+    assert "Balance" not in real.gdp_growth.index.get_level_values(0)
+
+
+def test_real_balance_is_difference_of_chained_gdp_rows(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut).real.data
+    assert real.gdp.loc[("Balance", "GDP"), 2021] == pytest.approx(111.0 - 9.0)
+    assert real.gdp.loc[("Balance", "GDP"), 2022] == pytest.approx(105.545 - 13.605)
+
+
+def test_real_contributions_values(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut).real.data
+    contributions = real.gdp_growth_contributions
+    assert contributions[2021].isna().all()
+    # Gross Value Added: (81.015 - 87) / 111
+    assert contributions.loc[("Production", "Gross Value Added"), 2022] == pytest.approx(
+        (81.015 - 87.0) / 111.0
+    )
+    industries = real.gdp_industries_growth_contributions
+    assert industries.loc[("Production", "X"), 2022] == pytest.approx((31.515 - 37.0) / 111.0)
+
+
+def test_real_gdp_contribution_equals_real_gdp_growth(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut).real.data
+    for block in ("Production", "Expenditure"):
+        assert real.gdp_growth_contributions.loc[(block, "GDP"), 2022] == pytest.approx(
+            real.gdp_growth.loc[(block, "GDP"), 2022]
+        )
+    assert real.gdp_industries_growth_contributions.loc[("Production", "GDP"), 2022] == pytest.approx(
+        real.gdp_industries_growth.loc[("Production", "GDP"), 2022]
+    )
+
+
+def test_real_industry_contributions_sum_to_gdp_growth(sut, previous_sut):
+    df = inspect_gdp(sut, previous=previous_sut).real.data.gdp_industries_growth_contributions
+    total = (
+        df.loc[("Production", "X"), 2022]
+        + df.loc[("Production", "Y"), 2022]
+        + df.loc[("Production", "Total product taxes, netto"), 2022]
+    )
+    assert total == pytest.approx(df.loc[("Production", "GDP"), 2022])
+
+
+def test_real_contributions_distribution_gdp_row_is_one(sut, previous_sut):
+    real = inspect_gdp(sut, previous=previous_sut).real.data
+    assert real.gdp_growth_contributions_distribution.loc[("Production", "GDP"), 2022] == pytest.approx(1.0)
+    assert real.gdp_industries_growth_contributions_distribution.loc[("Production", "GDP"), 2022] == pytest.approx(1.0)
+
+
+def test_previous_may_include_first_year(sut):
+    previous_sut = _make_previous_sut(sut, years=(2021, 2022))
+    result = inspect_gdp(sut, previous=previous_sut)
+    # 2021 in previous is ignored for the chain.
+    assert result.real.data.gdp.loc[("Production", "GDP"), 2021] == pytest.approx(111.0)
+    assert result.real.data.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(105.545)
+
+
+def test_previous_missing_a_year_raises(sut):
+    previous_sut = _make_previous_sut(sut, years=(2021,))
+    with pytest.raises(ValueError, match="Missing in previous"):
+        inspect_gdp(sut, previous=previous_sut)
+
+
+def test_previous_wrong_price_basis_raises(sut, previous_sut):
+    wrong = SUT(
+        price_basis="current_year",
+        supply=previous_sut.supply,
+        use=previous_sut.use,
+        metadata=previous_sut.metadata,
+    )
+    with pytest.raises(ValueError, match="previous"):
+        inspect_gdp(sut, previous=wrong)
+
+
+def test_previous_missing_row_gives_nan_series(sut, previous_sut):
+    # Drop all supply rows of industry Y from the previous SUT: its series cannot be chained.
+    supply = previous_sut.supply[previous_sut.supply["brch"] != "Y"]
+    reduced = SUT(
+        price_basis="previous_year",
+        supply=supply,
+        use=previous_sut.use,
+        metadata=previous_sut.metadata,
+    )
+    real = inspect_gdp(sut, previous=reduced).real.data
+    # 2021 is the reference year (current-price value); 2022 cannot be chained.
+    assert real.gdp_industries.loc[("Production", "Y"), 2021] == pytest.approx(50.0)
+    assert np.isnan(real.gdp_industries.loc[("Production", "Y"), 2022])
+    assert real.gdp_industries.loc[("Production", "X"), 2022] == pytest.approx(31.515)
+
+
+def test_display_setters_propagate_to_previous_and_real(sut, previous_sut):
+    result = inspect_gdp(sut, previous=previous_sut).set_display_decimals(3).set_display_unit(1000)
+    assert result.display_configuration.decimals == 3
+    assert result.previous.display_configuration.decimals == 3
+    assert result.real.display_configuration.decimals == 3
+    assert result.real.display_configuration.display_unit == 1000
+    reset = result.set_display_configuration_to_defaults()
+    assert reset.real.display_configuration.decimals == inspect_gdp(sut).display_configuration.decimals
+
+
+def test_styled_properties_none_for_absent_tables(sut, previous_sut):
+    result = inspect_gdp(sut, previous=previous_sut)
+    assert result.previous.gdp_growth is None
+    assert result.real.gdp_distribution is None
+    assert result.real.gdp.to_html()
+    assert result.previous.gdp.to_html()
+
+
+def test_tables_description_lists_only_present_tables(sut, previous_sut):
+    result = inspect_gdp(sut, previous=previous_sut)
+    assert len(result.previous.data.tables_description) == 4
+    assert len(result.real.data.tables_description) == 8
+    assert "gdp_distribution" not in result.real.data.tables_description.index
+
+
+def test_previous_and_real_write_to_excel(sut, previous_sut, tmp_path):
+    result = inspect_gdp(sut, previous=previous_sut)
+    previous_path = tmp_path / "previous.xlsx"
+    real_path = tmp_path / "real.xlsx"
+    result.previous.write_to_excel(previous_path)
+    result.real.write_to_excel(real_path)
+    assert len(pd.ExcelFile(previous_path).sheet_names) == 5  # description + 4 tables
+    assert len(pd.ExcelFile(real_path).sheet_names) == 9  # description + 8 tables
+
+
+def test_sut_method_passes_previous_and_reference_id(sut, previous_sut):
+    result = sut.inspect_gdp(previous=previous_sut, reference_id=2022)
+    assert result.real.data.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(122.1)
+
+
+def test_tables_comparison_includes_previous_and_real(sut, previous_sut):
+    first = inspect_gdp(sut, previous=previous_sut)
+    # Second version: previous-price use values scaled up by 10%.
+    use = previous_sut.use.copy()
+    use[["bas", "ava", "moms", "koeb"]] = use[["bas", "ava", "moms", "koeb"]] * 1.1
+    changed_previous = SUT(
+        price_basis="previous_year",
+        supply=previous_sut.supply,
+        use=use,
+        metadata=previous_sut.metadata,
+    )
+    second = inspect_gdp(sut, previous=changed_previous)
+
+    comparison = first.inspect_tables_comparison(second)
+    assert isinstance(comparison.diff.previous, GdpInspection)
+    assert isinstance(comparison.rel.real, GdpInspection)
+
+    # Current-price tables are identical, previous-price and real tables differ.
+    assert comparison.diff.data.gdp.abs().sum().sum() == 0
+    expected_gdp_diff = (
+        first.previous.data.gdp.loc[("Production", "GDP"), 2022]
+        - second.previous.data.gdp.loc[("Production", "GDP"), 2022]
+    )
+    assert comparison.diff.previous.data.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(expected_gdp_diff)
+    assert comparison.diff.real.data.gdp.loc[("Production", "GDP"), 2022] == pytest.approx(expected_gdp_diff)
+    # None tables stay None inside the nested comparisons.
+    assert comparison.diff.previous.data.gdp_growth is None
+    assert comparison.diff.real.data.gdp_distribution is None
+    # The rel version is flagged as relative and formatted as percentages.
+    assert comparison.rel.real._all_rel is True
+    assert comparison.rel.real.gdp.to_html()
+
+
+def test_tables_comparison_previous_none_when_either_side_lacks_it(sut, previous_sut):
+    with_previous = inspect_gdp(sut, previous=previous_sut)
+    without_previous = inspect_gdp(sut)
+    for comparison in (
+        with_previous.inspect_tables_comparison(without_previous),
+        without_previous.inspect_tables_comparison(with_previous),
+    ):
+        assert comparison.diff.previous is None
+        assert comparison.diff.real is None
+        assert comparison.rel.previous is None
+        assert comparison.rel.real is None
+
+
+def test_tables_comparison_display_setters_reach_nested_inspections(sut, previous_sut):
+    first = inspect_gdp(sut, previous=previous_sut)
+    comparison = first.inspect_tables_comparison(first).set_display_decimals(3)
+    assert comparison.diff.real.display_configuration.decimals == 3
+    assert comparison.rel.previous.display_configuration.decimals == 3

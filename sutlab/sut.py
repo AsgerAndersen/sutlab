@@ -644,10 +644,18 @@ class SUT:
     def inspect_gdp(
         self,
         gdp_decomp: pd.DataFrame | None = None,
+        *,
+        previous: "SUT | None" = None,
+        reference_id: int | str | None = None,
     ) -> GdpInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_gdp`."""
         from sutlab.inspect import inspect_gdp
-        return inspect_gdp(self, gdp_decomp=gdp_decomp)
+        return inspect_gdp(
+            self,
+            gdp_decomp=gdp_decomp,
+            previous=previous,
+            reference_id=reference_id,
+        )
 
     def aggregate_classification_products(
         self,

@@ -13,6 +13,7 @@ import pandas as pd
 from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
+from sutlab.derive import compute_chained_series_annual
 from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _get_index_values, _write_inspection_to_excel
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
@@ -64,50 +65,42 @@ class GdpData:
     :class:`GdpInspection` once styling is added.
     """
 
-    gdp: pd.DataFrame
-    gdp_growth: pd.DataFrame
-    gdp_distribution: pd.DataFrame
-    gdp_growth_contributions: pd.DataFrame
-    gdp_growth_contributions_distribution: pd.DataFrame
-    gdp_industries: pd.DataFrame
-    gdp_industries_growth: pd.DataFrame
-    gdp_industries_distribution: pd.DataFrame
-    gdp_industries_growth_contributions: pd.DataFrame
-    gdp_industries_growth_contributions_distribution: pd.DataFrame
+    gdp: pd.DataFrame | None
+    gdp_growth: pd.DataFrame | None
+    gdp_distribution: pd.DataFrame | None
+    gdp_growth_contributions: pd.DataFrame | None
+    gdp_growth_contributions_distribution: pd.DataFrame | None
+    gdp_industries: pd.DataFrame | None
+    gdp_industries_growth: pd.DataFrame | None
+    gdp_industries_distribution: pd.DataFrame | None
+    gdp_industries_growth_contributions: pd.DataFrame | None
+    gdp_industries_growth_contributions_distribution: pd.DataFrame | None
 
     @property
     def tables_description(self) -> pd.DataFrame:
-        """DataFrame with ``name`` as index and a ``description`` column."""
+        """DataFrame with ``name`` as index and a ``description`` column.
+
+        Only tables that are present (not ``None``) are listed.
+        """
+        descriptions = {
+            "gdp": "GDP decomposition with Production and Expenditure blocks; columns are id values.",
+            "gdp_growth": "Year-on-year growth rates of GDP components (Balance block excluded).",
+            "gdp_distribution": "Each component expressed as a share of its block's GDP (Balance block excluded).",
+            "gdp_growth_contributions": "Contribution of each GDP component to GDP growth: change in component divided by previous year's block GDP (Balance block excluded).",
+            "gdp_growth_contributions_distribution": "Each GDP component's contribution as a share of its block's GDP growth (shares add up to 100%; unstable when growth is near zero).",
+            "gdp_industries": "Gross value added by industry (P1 at basic prices minus P2 at purchasers' prices), with total GVA, net product taxes and GDP.",
+            "gdp_industries_growth": "Year-on-year growth rates of industry GVA and the GDP bridge rows.",
+            "gdp_industries_distribution": "Industry GVA and the GDP bridge rows as shares of GDP.",
+            "gdp_industries_growth_contributions": "Contribution of each industry's GVA to GDP growth: change divided by previous year's GDP.",
+            "gdp_industries_growth_contributions_distribution": "Each industry row's contribution as a share of GDP growth (shares add up to 100%; unstable when growth is near zero).",
+        }
+        present = [
+            name for name in descriptions
+            if getattr(self, name) is not None
+        ]
         return pd.DataFrame(
-            {
-                "description": [
-                    "Nominal GDP decomposition with Production and Expenditure blocks; columns are id values.",
-                    "Year-on-year growth rates of GDP components (Balance block excluded).",
-                    "Each component expressed as a share of its block's GDP (Balance block excluded).",
-                    "Contribution of each GDP component to GDP growth: change in component divided by previous year's block GDP (Balance block excluded).",
-                    "Each GDP component's contribution as a share of its block's GDP growth (shares add up to 100%; unstable when growth is near zero).",
-                    "Gross value added by industry (P1 at basic prices minus P2 at purchasers' prices), with total GVA, net product taxes and GDP.",
-                    "Year-on-year growth rates of industry GVA and the GDP bridge rows.",
-                    "Industry GVA and the GDP bridge rows as shares of GDP.",
-                    "Contribution of each industry's GVA to GDP growth: change divided by previous year's GDP.",
-                    "Each industry row's contribution as a share of GDP growth (shares add up to 100%; unstable when growth is near zero).",
-                ]
-            },
-            index=pd.Index(
-                [
-                    "gdp",
-                    "gdp_growth",
-                    "gdp_distribution",
-                    "gdp_growth_contributions",
-                    "gdp_growth_contributions_distribution",
-                    "gdp_industries",
-                    "gdp_industries_growth",
-                    "gdp_industries_distribution",
-                    "gdp_industries_growth_contributions",
-                    "gdp_industries_growth_contributions_distribution",
-                ],
-                name="name",
-            ),
+            {"description": [descriptions[name] for name in present]},
+            index=pd.Index(present, name="name"),
         ).sort_index()
 
 
@@ -116,12 +109,34 @@ class GdpInspection:
     """
     Result of :func:`inspect_gdp`.
 
-    Raw DataFrames are available under ``result.data``.
+    Raw DataFrames are available under ``result.data``. The tables on the
+    result itself are in current prices. When ``previous`` was given to
+    :func:`inspect_gdp`, two more inspections of this same class are
+    available: ``result.previous`` and ``result.real`` (both ``None``
+    otherwise).
+
+    ``result.previous`` holds the tables built from the previous-year-price
+    SUT: ``gdp``, ``gdp_distribution``, ``gdp_industries`` and
+    ``gdp_industries_distribution``. All other tables are ``None`` there
+    (growth and contributions between values in previous-year prices would
+    mix price bases).
+
+    ``result.real`` holds chain-linked volumes in reference-year prices:
+    ``gdp`` and ``gdp_industries`` (every row is chained independently, so
+    rows do not add up except in the reference year; the Balance row is the
+    difference between the two chained GDP rows and is not itself a chained
+    series), their ``_growth`` tables (real growth), and the real growth
+    contribution tables ``gdp_growth_contributions`` and
+    ``gdp_industries_growth_contributions`` with their ``_distribution``
+    variants. ``gdp_distribution`` and ``gdp_industries_distribution`` are
+    ``None`` there (shares of chained volumes are not meaningful). Real
+    contributions are ``(previous[t] - current[t-1]) / current GDP[t-1]``,
+    i.e. volume change valued at the prices of t-1 relative to GDP in t-1.
 
     Attributes
     ----------
     data.gdp : pd.DataFrame
-        Nominal GDP decomposition table. Columns are id values (years).
+        GDP decomposition table. Columns are id values (years).
         Rows have a 2-level MultiIndex: level 0 is the block name
         (``"Production"`` or ``"Expenditure"``), level 1 is the component
         label. Derived rows (GVA, GDP, etc.) appear inline after their
@@ -190,6 +205,8 @@ class GdpInspection:
         id_columns=True,
     ))
     _all_rel: bool = dataclasses.field(default=False, repr=False)
+    previous: "GdpInspection | None" = None
+    real: "GdpInspection | None" = None
 
     def _pct_fmt(self):
         cfg = self.display_configuration
@@ -201,65 +218,70 @@ class GdpInspection:
             return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
         return _make_number_formatter(cfg.display_unit, cfg.decimals)
 
+    def _styled(self, table_name: str, as_percentage: bool) -> Styler | None:
+        """Return the styled version of a table, or ``None`` if the table is absent."""
+        table = getattr(self.data, table_name)
+        if table is None:
+            return None
+        df = _apply_display_config(table, table_name, self.display_configuration)
+        formatter = self._pct_fmt() if as_percentage else self._number_fmt()
+        return _style_gdp_table(df, formatter)
+
     @property
-    def gdp(self) -> Styler:
+    def gdp(self) -> Styler | None:
         """Styled GDP decomposition table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp, "gdp", self.display_configuration)
-        return _style_gdp_table(df, self._number_fmt())
+        return self._styled("gdp", as_percentage=False)
 
     @property
-    def gdp_growth(self) -> Styler:
+    def gdp_growth(self) -> Styler | None:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_growth, "gdp_growth", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_growth", as_percentage=True)
 
     @property
-    def gdp_distribution(self) -> Styler:
+    def gdp_distribution(self) -> Styler | None:
         """Styled GDP share table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_distribution, "gdp_distribution", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_distribution", as_percentage=True)
 
     @property
-    def gdp_growth_contributions(self) -> Styler:
+    def gdp_growth_contributions(self) -> Styler | None:
         """Styled contributions-to-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_growth_contributions, "gdp_growth_contributions", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_growth_contributions", as_percentage=True)
 
     @property
-    def gdp_growth_contributions_distribution(self) -> Styler:
+    def gdp_growth_contributions_distribution(self) -> Styler | None:
         """Styled contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_growth_contributions_distribution, "gdp_growth_contributions_distribution", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_growth_contributions_distribution", as_percentage=True)
 
     @property
-    def gdp_industries(self) -> Styler:
+    def gdp_industries(self) -> Styler | None:
         """Styled industry GVA table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries, "gdp_industries", self.display_configuration)
-        return _style_gdp_table(df, self._number_fmt())
+        return self._styled("gdp_industries", as_percentage=False)
 
     @property
-    def gdp_industries_growth(self) -> Styler:
+    def gdp_industries_growth(self) -> Styler | None:
         """Styled industry GVA growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries_growth, "gdp_industries_growth", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_industries_growth", as_percentage=True)
 
     @property
-    def gdp_industries_distribution(self) -> Styler:
+    def gdp_industries_distribution(self) -> Styler | None:
         """Styled industry GVA share-of-GDP table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries_distribution, "gdp_industries_distribution", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_industries_distribution", as_percentage=True)
 
     @property
-    def gdp_industries_growth_contributions(self) -> Styler:
+    def gdp_industries_growth_contributions(self) -> Styler | None:
         """Styled industry contributions-to-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries_growth_contributions, "gdp_industries_growth_contributions", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_industries_growth_contributions", as_percentage=True)
 
     @property
-    def gdp_industries_growth_contributions_distribution(self) -> Styler:
+    def gdp_industries_growth_contributions_distribution(self) -> Styler | None:
         """Styled industry contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries_growth_contributions_distribution, "gdp_industries_growth_contributions_distribution", self.display_configuration)
-        return _style_gdp_table(df, self._pct_fmt())
+        return self._styled("gdp_industries_growth_contributions_distribution", as_percentage=True)
+
+    def _propagate(self, updated: "GdpInspection", method_name: str, *args) -> "GdpInspection":
+        """Apply the same display setter to ``previous`` and ``real`` and attach them to ``updated``."""
+        new_previous = getattr(self.previous, method_name)(*args) if self.previous is not None else None
+        new_real = getattr(self.real, method_name)(*args) if self.real is not None else None
+        return dataclasses.replace(updated, previous=new_previous, real=new_real)
 
     def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
         """Write tables to an Excel file, one sheet per table.
@@ -287,7 +309,7 @@ class GdpInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit)), "set_display_unit", display_unit)
 
     def set_display_rel_base(self, rel_base: int) -> "GdpInspection":
         """Return a copy with ``rel_base`` set to the given value.
@@ -297,7 +319,7 @@ class GdpInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base)), "set_display_rel_base", rel_base)
 
     def set_display_decimals(self, decimals: int) -> "GdpInspection":
         """Return a copy with ``decimals`` set to the given value.
@@ -308,7 +330,7 @@ class GdpInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals)), "set_display_decimals", decimals)
 
     def set_display_index(self, level: str, values) -> "GdpInspection":
         """Return a copy with ``values`` added (union) to the display filter for ``level``.
@@ -320,7 +342,7 @@ class GdpInspection:
         values : str, int, or list of str/int
             Values (or patterns) to keep.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values)), "set_display_index", level, values)
 
     def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "GdpInspection":
         """Return a copy with rows sorted by ``column`` within each index group.
@@ -332,7 +354,7 @@ class GdpInspection:
         ascending : bool
             Sort direction. Default ``False`` (descending).
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending)), "set_display_sort_column", column, ascending)
 
     def set_display_sort_ids_ascending(self, ascending: bool = True) -> "GdpInspection":
         """Return a copy with id columns sorted ascending or descending.
@@ -346,7 +368,7 @@ class GdpInspection:
         ascending : bool
             ``True`` for ascending (default), ``False`` for descending.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending)), "set_display_sort_ids_ascending", ascending)
 
     def set_display_values_n_largest(self, n: int, column: str) -> "GdpInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
@@ -358,11 +380,11 @@ class GdpInspection:
         column : str
             Column name to rank by.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column)), "set_display_values_n_largest", n, column)
 
     def set_display_configuration_to_defaults(self) -> "GdpInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
-        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration)), "set_display_configuration_to_defaults")
 
     def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations for a table after applying display config.
@@ -408,7 +430,11 @@ class GdpInspection:
         """Compare all tables in this inspection with another :class:`GdpInspection`.
 
         Computes element-wise differences and relative changes between
-        corresponding tables. Index alignment uses an outer join.
+        corresponding tables. Index alignment uses an outer join. When both
+        inspections have ``previous`` (or ``real``), those are compared the
+        same way and end up as ``.diff.previous`` / ``.rel.previous`` (or
+        ``.real``). If either side lacks one, that part of the comparison is
+        ``None``.
 
         Parameters
         ----------
@@ -431,14 +457,30 @@ class GdpInspection:
                 f"Expected GdpInspection, got {type(other).__name__}."
             )
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+
+        # previous and real are compared the same way when both sides have them.
+        diff_previous = rel_previous = None
+        if self.previous is not None and other.previous is not None:
+            previous_comparison = self.previous.inspect_tables_comparison(other.previous)
+            diff_previous, rel_previous = previous_comparison.diff, previous_comparison.rel
+
+        diff_real = rel_real = None
+        if self.real is not None and other.real is not None:
+            real_comparison = self.real.inspect_tables_comparison(other.real)
+            diff_real, rel_real = real_comparison.diff, real_comparison.rel
+
         diff = GdpInspection(
             data=GdpData(**diff_fields),
             display_configuration=self.display_configuration,
+            previous=diff_previous,
+            real=diff_real,
         )
         rel = GdpInspection(
             data=GdpData(**rel_fields),
             display_configuration=self.display_configuration,
             _all_rel=True,
+            previous=rel_previous,
+            real=rel_real,
         )
         return TablesComparison(
             diff=diff,
@@ -450,14 +492,16 @@ class GdpInspection:
 def inspect_gdp(
     sut: SUT,
     gdp_decomp: pd.DataFrame | None = None,
+    *,
+    previous: SUT | None = None,
+    reference_id: int | str | None = None,
 ) -> GdpInspection:
     """
-    Build a nominal GDP decomposition table from a supply-use table.
+    Build a GDP decomposition from a supply-use table.
 
-    Produces a single DataFrame decomposing GDP from two angles —
-    Production and Expenditure. Both approaches are shown simultaneously;
-    any discrepancy reflects an unbalanced SUT and is part of the
-    inspection value.
+    Produces tables decomposing GDP from two angles — Production and
+    Expenditure. Both approaches are shown simultaneously; any discrepancy
+    reflects an unbalanced SUT and is part of the inspection value.
 
     The Production block sums output (P1) minus intermediate consumption
     (P2) to get Gross Value Added, then adds product taxes and import
@@ -466,6 +510,11 @@ def inspect_gdp(
     The Expenditure block sums domestic final use (all use-side
     transactions except P2 and P6), then adds net exports (P6 minus P7)
     to reach GDP.
+
+    When ``previous`` is given, the same tables are also built from the
+    previous-year-price SUT (``result.previous``) and chain-linked into
+    volumes in reference-year prices (``result.real``). See
+    :class:`GdpInspection` for which tables each of them holds.
 
     Parameters
     ----------
@@ -481,7 +530,19 @@ def inspect_gdp(
         ``SUTColumns``) and ``"gdp_decomp"``. Overrides the ``gdp_decomp``
         column from the transactions classification. Transaction codes not
         present in the override are treated as having no ``gdp_decomp``
-        label and are excluded from the table.
+        label and are excluded from the table. Used for both ``sut`` and
+        ``previous``.
+    previous : SUT or None, optional
+        The same supply-use table in previous year's prices (``price_basis
+        = "previous_year"``). For year ``t`` it holds the values of year
+        ``t`` at the prices of year ``t-1``. It must contain every id of
+        ``sut`` except the first, and no other ids; the first id is
+        optional. Ids must be consecutive years. ``None`` (default) gives
+        the current-price tables only.
+    reference_id : int or str or None, optional
+        Reference year for the chained volumes: ``result.real`` is in this
+        year's prices. ``None`` (default) uses the first id. Only allowed
+        together with ``previous``.
 
     Returns
     -------
@@ -489,100 +550,37 @@ def inspect_gdp(
         Inspection result with a ``.data.gdp`` DataFrame. Columns are id
         values sorted ascending. Rows have a 2-level MultiIndex:
         ``"Production"`` or ``"Expenditure"`` as level 0, component label
-        as level 1.
+        as level 1. ``.previous`` and ``.real`` are ``None`` unless
+        ``previous`` was given.
 
     Raises
     ------
     ValueError
-        If ``sut.price_basis`` is not ``"current_year"``, if metadata or
-        the transactions classification is absent, or if the ``gdp_decomp``
+        If ``sut.price_basis`` is not ``"current_year"`` or
+        ``previous.price_basis`` is not ``"previous_year"``, if metadata or
+        the transactions classification is absent, if the ``gdp_decomp``
         column is absent from both the classification table and the
-        override argument.
+        override argument, if ``reference_id`` is given without
+        ``previous``, or if the ids of ``sut`` and ``previous`` do not fit
+        together (see ``previous``).
     """
-    if sut.price_basis != "current_year":
-        raise ValueError(
-            f"inspect_gdp requires price_basis='current_year', "
-            f"got '{sut.price_basis}'."
-        )
+    if previous is None and reference_id is not None:
+        raise ValueError("reference_id can only be used together with previous.")
 
-    if sut.metadata is None:
-        raise ValueError(
-            "inspect_gdp requires sut.metadata to be set."
-        )
+    current_tables = _build_base_tables(sut, gdp_decomp, "current_year", "sut")
+    current_inspection = _build_current_inspection(current_tables)
 
-    cols = sut.metadata.columns
+    if previous is None:
+        return current_inspection
 
-    classifications = sut.metadata.classifications
-    if classifications is None or classifications.transactions is None:
-        raise ValueError(
-            "inspect_gdp requires a transactions classification "
-            "table (SUTClassifications.transactions) with 'esa_code' and "
-            "'table' columns."
-        )
+    previous_tables = _build_base_tables(previous, gdp_decomp, "previous_year", "previous")
+    previous_inspection = _build_previous_inspection(previous_tables)
+    real_inspection = _build_real_inspection(current_tables, previous_tables, reference_id)
 
-    trans_class = classifications.transactions
-    trans_col = cols.transaction
-    id_col = cols.id
-
-    # --- Resolve gdp_decomp mapping ---
-    trans_info = _resolve_trans_info(trans_class, trans_col, gdp_decomp)
-
-    # --- Collect sorted id values (columns of the output DataFrame) ---
-    id_values = _get_sorted_id_values(sut.supply, sut.use, id_col)
-
-    # --- Build blocks ---
-    production_rows = _build_production_rows(sut, cols, trans_info, trans_col, id_col, id_values)
-    expenditure_rows = _build_expenditure_rows(sut, cols, trans_info, trans_col, id_col, id_values)
-
-    # --- Balance row: GDP (production) - GDP (expenditure) ---
-    prod_gdp = dict(next(vals for label, vals in production_rows if label == _LABEL_GDP))
-    exp_gdp = dict(next(vals for label, vals in expenditure_rows if label == _LABEL_GDP))
-    balance_values = {id_val: prod_gdp.get(id_val, float("nan")) - exp_gdp.get(id_val, float("nan"))
-                      for id_val in id_values}
-
-    # --- Assemble into final DataFrame ---
-    index_tuples = (
-        [(_PRODUCTION_BLOCK, label) for label, _ in production_rows] +
-        [(_EXPENDITURE_BLOCK, label) for label, _ in expenditure_rows] +
-        [(_BALANCE_BLOCK, _LABEL_GDP)]
-    )
-    data_rows = [values for _, values in production_rows + expenditure_rows] + [balance_values]
-
-    index = pd.MultiIndex.from_tuples(index_tuples)
-    gdp_df = pd.DataFrame(data_rows, index=index, columns=id_values)
-
-    # Growth and distribution tables: drop the Balance block.
-    gdp_without_balance = gdp_df[gdp_df.index.get_level_values(0) != _BALANCE_BLOCK]
-
-    gdp_growth_df = _build_growth_table(gdp_without_balance)
-    gdp_distribution_df = _build_gdp_distribution(gdp_without_balance)
-    gdp_growth_contributions_df = _build_contributions_table(gdp_without_balance)
-    gdp_growth_contributions_distribution_df = _build_contributions_distribution(gdp_growth_contributions_df)
-
-    # --- Industry GVA tables ---
-    gdp_industries_df = _build_gdp_industries(
-        sut, cols, trans_info, trans_col, id_col, id_values, gdp_df,
-    )
-    gdp_industries_growth_df = _build_growth_table(gdp_industries_df)
-    gdp_industries_distribution_df = _build_gdp_distribution(gdp_industries_df)
-    gdp_industries_growth_contributions_df = _build_contributions_table(gdp_industries_df)
-    gdp_industries_growth_contributions_distribution_df = _build_contributions_distribution(
-        gdp_industries_growth_contributions_df
-    )
-
-    return GdpInspection(
-        data=GdpData(
-            gdp=gdp_df,
-            gdp_growth=gdp_growth_df,
-            gdp_distribution=gdp_distribution_df,
-            gdp_growth_contributions=gdp_growth_contributions_df,
-            gdp_growth_contributions_distribution=gdp_growth_contributions_distribution_df,
-            gdp_industries=gdp_industries_df,
-            gdp_industries_growth=gdp_industries_growth_df,
-            gdp_industries_distribution=gdp_industries_distribution_df,
-            gdp_industries_growth_contributions=gdp_industries_growth_contributions_df,
-            gdp_industries_growth_contributions_distribution=gdp_industries_growth_contributions_distribution_df,
-        )
+    return dataclasses.replace(
+        current_inspection,
+        previous=previous_inspection,
+        real=real_inspection,
     )
 
 
@@ -1160,4 +1158,269 @@ def _build_gdp_industries(
         data_rows,
         index=pd.MultiIndex.from_tuples(index_tuples),
         columns=id_values,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Building the inspections (current, previous, real)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _BaseTables:
+    """The two value tables every other table is derived from, for one SUT."""
+
+    gdp: pd.DataFrame
+    gdp_industries: pd.DataFrame
+
+
+def _without_balance(gdp_df: pd.DataFrame) -> pd.DataFrame:
+    """Return ``gdp_df`` without the Balance block."""
+    return gdp_df[gdp_df.index.get_level_values(0) != _BALANCE_BLOCK]
+
+
+def _build_base_tables(
+    sut: SUT,
+    gdp_decomp: pd.DataFrame | None,
+    required_price_basis: str,
+    argument_name: str,
+) -> _BaseTables:
+    """Validate one SUT and build its ``gdp`` and ``gdp_industries`` tables.
+
+    Parameters
+    ----------
+    sut : SUT
+        The supply-use table collection to read.
+    gdp_decomp : DataFrame or None
+        Optional override for the ``gdp_decomp`` mapping.
+    required_price_basis : str
+        ``"current_year"`` or ``"previous_year"``.
+    argument_name : str
+        Name of the argument in :func:`inspect_gdp` (``"sut"`` or
+        ``"previous"``); used in error messages.
+    """
+    if sut.price_basis != required_price_basis:
+        raise ValueError(
+            f"inspect_gdp requires {argument_name} to have "
+            f"price_basis='{required_price_basis}', got '{sut.price_basis}'."
+        )
+
+    if sut.metadata is None:
+        raise ValueError(
+            f"inspect_gdp requires {argument_name}.metadata to be set."
+        )
+
+    cols = sut.metadata.columns
+
+    classifications = sut.metadata.classifications
+    if classifications is None or classifications.transactions is None:
+        raise ValueError(
+            "inspect_gdp requires a transactions classification "
+            f"table ({argument_name}.metadata.classifications.transactions) "
+            "with 'esa_code' and 'table' columns."
+        )
+
+    trans_class = classifications.transactions
+    trans_col = cols.transaction
+    id_col = cols.id
+
+    # --- Resolve gdp_decomp mapping ---
+    trans_info = _resolve_trans_info(trans_class, trans_col, gdp_decomp)
+
+    # --- Collect sorted id values (columns of the output DataFrame) ---
+    id_values = _get_sorted_id_values(sut.supply, sut.use, id_col)
+
+    # --- Build blocks ---
+    production_rows = _build_production_rows(sut, cols, trans_info, trans_col, id_col, id_values)
+    expenditure_rows = _build_expenditure_rows(sut, cols, trans_info, trans_col, id_col, id_values)
+
+    # --- Balance row: GDP (production) - GDP (expenditure) ---
+    prod_gdp = dict(next(vals for label, vals in production_rows if label == _LABEL_GDP))
+    exp_gdp = dict(next(vals for label, vals in expenditure_rows if label == _LABEL_GDP))
+    balance_values = {id_val: prod_gdp.get(id_val, float("nan")) - exp_gdp.get(id_val, float("nan"))
+                      for id_val in id_values}
+
+    # --- Assemble into final DataFrame ---
+    index_tuples = (
+        [(_PRODUCTION_BLOCK, label) for label, _ in production_rows] +
+        [(_EXPENDITURE_BLOCK, label) for label, _ in expenditure_rows] +
+        [(_BALANCE_BLOCK, _LABEL_GDP)]
+    )
+    data_rows = [values for _, values in production_rows + expenditure_rows] + [balance_values]
+
+    index = pd.MultiIndex.from_tuples(index_tuples)
+    gdp_df = pd.DataFrame(data_rows, index=index, columns=id_values)
+
+    gdp_industries_df = _build_gdp_industries(
+        sut, cols, trans_info, trans_col, id_col, id_values, gdp_df,
+    )
+
+    return _BaseTables(gdp=gdp_df, gdp_industries=gdp_industries_df)
+
+
+def _build_current_inspection(tables: _BaseTables) -> GdpInspection:
+    """Build the full set of current-price tables from the base tables."""
+    gdp_without_balance = _without_balance(tables.gdp)
+    gdp_industries_df = tables.gdp_industries
+
+    contributions = _build_contributions_table(gdp_without_balance)
+    industries_contributions = _build_contributions_table(gdp_industries_df)
+
+    return GdpInspection(
+        data=GdpData(
+            gdp=tables.gdp,
+            gdp_growth=_build_growth_table(gdp_without_balance),
+            gdp_distribution=_build_gdp_distribution(gdp_without_balance),
+            gdp_growth_contributions=contributions,
+            gdp_growth_contributions_distribution=_build_contributions_distribution(contributions),
+            gdp_industries=gdp_industries_df,
+            gdp_industries_growth=_build_growth_table(gdp_industries_df),
+            gdp_industries_distribution=_build_gdp_distribution(gdp_industries_df),
+            gdp_industries_growth_contributions=industries_contributions,
+            gdp_industries_growth_contributions_distribution=_build_contributions_distribution(
+                industries_contributions
+            ),
+        )
+    )
+
+
+def _build_previous_inspection(tables: _BaseTables) -> GdpInspection:
+    """Build the previous-year-price inspection.
+
+    Holds the value tables and the within-year shares. Growth and
+    contribution tables are ``None``: they would compare values in
+    different price bases.
+    """
+    return GdpInspection(
+        data=GdpData(
+            gdp=tables.gdp,
+            gdp_growth=None,
+            gdp_distribution=_build_gdp_distribution(_without_balance(tables.gdp)),
+            gdp_growth_contributions=None,
+            gdp_growth_contributions_distribution=None,
+            gdp_industries=tables.gdp_industries,
+            gdp_industries_growth=None,
+            gdp_industries_distribution=_build_gdp_distribution(tables.gdp_industries),
+            gdp_industries_growth_contributions=None,
+            gdp_industries_growth_contributions_distribution=None,
+        )
+    )
+
+
+def _align_rows(current: pd.DataFrame, previous: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Reindex both tables to the same rows (current's rows first, then extra rows of previous).
+
+    Rows present in only one table become NaN in the other, so the series
+    for such rows is NaN after chaining.
+    """
+    extra_rows = previous.index.difference(current.index, sort=False)
+    all_rows = current.index.append(extra_rows)
+    return current.reindex(all_rows), previous.reindex(all_rows)
+
+
+def _build_real_contributions_table(
+    current: pd.DataFrame,
+    previous: pd.DataFrame,
+) -> pd.DataFrame:
+    """Contributions to real GDP growth from current- and previous-price tables.
+
+    For every row in a block, the contribution in year ``t`` is
+    ``(previous[t] - current[t-1]) / current GDP[t-1]``, where GDP is the
+    GDP row of the same block. Both values in the numerator are at the
+    prices of year ``t-1``, so the difference is a pure volume change.
+
+    Parameters
+    ----------
+    current, previous : pd.DataFrame
+        Tables with a 2-level (block, label) index, aligned on the same
+        rows, with the Balance block already removed. Columns are ids in
+        ascending order; ``previous`` is reindexed to the columns of
+        ``current`` (its first year may be absent).
+
+    Returns
+    -------
+    pd.DataFrame
+        Same index and columns as ``current``. The first id is ``NaN``.
+    """
+    previous = previous.reindex(columns=current.columns)
+
+    blocks = []
+    for block in dict.fromkeys(current.index.get_level_values(0)):
+        current_block = current.loc[block].astype(float)
+        previous_block = previous.loc[block].astype(float)
+
+        current_last_year = current_block.shift(1, axis=1)
+        gdp_last_year = current_last_year.loc[_LABEL_GDP]
+
+        volume_change = previous_block - current_last_year
+        contributions = volume_change.div(gdp_last_year, axis=1)
+        blocks.append((block, contributions))
+
+    result = pd.concat(
+        [df for _, df in blocks],
+        keys=[block for block, _ in blocks],
+    )
+    return result.replace([float("inf"), float("-inf")], float("nan"))
+
+
+def _build_real_inspection(
+    current_tables: _BaseTables,
+    previous_tables: _BaseTables,
+    reference_id: int | str | None,
+) -> GdpInspection:
+    """Build the real inspection: chained volumes, real growth, real contributions.
+
+    Every row (including GVA, GDP, etc.) is chain-linked independently from
+    the current- and previous-price tables. The Balance row is the
+    difference between the chained Production GDP and Expenditure GDP rows.
+    Growth tables are the volume growth from the chain.
+    """
+    # --- gdp (Production and Expenditure blocks; Balance added afterwards) ---
+    current_gdp, previous_gdp = _align_rows(
+        _without_balance(current_tables.gdp),
+        _without_balance(previous_tables.gdp),
+    )
+    gdp_chain = compute_chained_series_annual(current_gdp, previous_gdp, reference_id=reference_id)
+
+    gdp_volumes = gdp_chain.volumes
+    balance_row = (
+        gdp_volumes.loc[(_PRODUCTION_BLOCK, _LABEL_GDP)]
+        - gdp_volumes.loc[(_EXPENDITURE_BLOCK, _LABEL_GDP)]
+    )
+    balance_df = pd.DataFrame(
+        [balance_row.tolist()],
+        index=pd.MultiIndex.from_tuples([(_BALANCE_BLOCK, _LABEL_GDP)]),
+        columns=gdp_volumes.columns,
+    )
+    gdp_real = pd.concat([gdp_volumes, balance_df])
+
+    gdp_contributions = _build_real_contributions_table(current_gdp, previous_gdp)
+
+    # --- gdp_industries ---
+    current_industries, previous_industries = _align_rows(
+        current_tables.gdp_industries,
+        previous_tables.gdp_industries,
+    )
+    industries_chain = compute_chained_series_annual(
+        current_industries, previous_industries, reference_id=reference_id,
+    )
+    industries_contributions = _build_real_contributions_table(
+        current_industries, previous_industries,
+    )
+
+    return GdpInspection(
+        data=GdpData(
+            gdp=gdp_real,
+            gdp_growth=gdp_chain.volume_growth,
+            gdp_distribution=None,
+            gdp_growth_contributions=gdp_contributions,
+            gdp_growth_contributions_distribution=_build_contributions_distribution(gdp_contributions),
+            gdp_industries=industries_chain.volumes,
+            gdp_industries_growth=industries_chain.volume_growth,
+            gdp_industries_distribution=None,
+            gdp_industries_growth_contributions=industries_contributions,
+            gdp_industries_growth_contributions_distribution=_build_contributions_distribution(
+                industries_contributions
+            ),
+        )
     )
