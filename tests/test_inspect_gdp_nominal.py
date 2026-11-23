@@ -760,3 +760,121 @@ def test_set_decimals_invalid_negative_raises(sut):
 def test_set_decimals_invalid_float_raises(sut):
     with pytest.raises(ValueError, match="non-negative integer"):
         inspect_gdp_nominal(sut).set_display_decimals(1.5)
+
+
+# ---------------------------------------------------------------------------
+# Industry GVA and contribution tables
+# ---------------------------------------------------------------------------
+#
+# Hand-computed from the fixtures above:
+#   2021: GVA X = 100+30-93 = 37, GVA Y = 50, total GVA 87, taxes 14+10 = 24, GDP 111
+#   2022: GVA X = 110+33-102.3 = 40.7, GVA Y = 55, total GVA 95.7, taxes 15.4+11 = 26.4, GDP 122.1
+
+
+@pytest.fixture
+def sut_with_industries(sut):
+    industries = pd.DataFrame({
+        "brch": ["X", "Y"],
+        "brch_txt": ["Industry X", "Industry Y"],
+    })
+    classifications = SUTClassifications(
+        transactions=sut.metadata.classifications.transactions,
+        industries=industries,
+    )
+    metadata = SUTMetadata(columns=sut.metadata.columns, classifications=classifications)
+    return SUT(price_basis="current_year", supply=sut.supply, use=sut.use, metadata=metadata)
+
+
+def test_gdp_industries_values(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries
+    assert df.loc[("Production", "X"), 2021] == pytest.approx(37.0)
+    assert df.loc[("Production", "Y"), 2021] == pytest.approx(50.0)
+    assert df.loc[("Production", "Gross Value Added"), 2022] == pytest.approx(95.7)
+    assert df.loc[("Production", "Total product taxes, netto"), 2021] == pytest.approx(24.0)
+    assert df.loc[("Production", "GDP"), 2022] == pytest.approx(122.1)
+
+
+def test_gdp_industries_ties_to_gdp_table(sut):
+    result = inspect_gdp_nominal(sut).data
+    industries_gva = result.gdp_industries.loc[("Production", "Gross Value Added")]
+    production_gva = result.gdp.loc[("Production", "Gross Value Added")]
+    pd.testing.assert_series_equal(industries_gva, production_gva, check_names=False)
+    industries_gdp = result.gdp_industries.loc[("Production", "GDP")]
+    production_gdp = result.gdp.loc[("Production", "GDP")]
+    pd.testing.assert_series_equal(industries_gdp, production_gdp, check_names=False)
+
+
+def test_gdp_industries_labels_use_classification(sut_with_industries):
+    df = inspect_gdp_nominal(sut_with_industries).data.gdp_industries
+    assert ("Production", "X Industry X") in df.index
+    assert ("Production", "Y Industry Y") in df.index
+
+
+def test_gdp_industries_distribution_is_share_of_gdp(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_distribution
+    assert df.loc[("Production", "X"), 2021] == pytest.approx(37.0 / 111.0)
+    assert df.loc[("Production", "Gross Value Added"), 2021] == pytest.approx(87.0 / 111.0)
+    assert df.loc[("Production", "GDP"), 2021] == pytest.approx(1.0)
+
+
+def test_gdp_industries_growth(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_growth
+    assert np.isnan(df.loc[("Production", "X"), 2021])
+    assert df.loc[("Production", "X"), 2022] == pytest.approx(40.7 / 37.0 - 1)
+
+
+def test_gdp_industries_contributions(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_contributions
+    assert df[2021].isna().all()
+    assert df.loc[("Production", "X"), 2022] == pytest.approx(3.7 / 111.0)
+    assert df.loc[("Production", "Y"), 2022] == pytest.approx(5.0 / 111.0)
+    assert df.loc[("Production", "GDP"), 2022] == pytest.approx(11.1 / 111.0)
+
+
+def test_gdp_industries_contributions_sum_to_gdp_growth(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_contributions
+    industry_rows = [label for _, label in df.index if label in {"X", "Y"}]
+    total = sum(df.loc[("Production", label), 2022] for label in industry_rows)
+    total += df.loc[("Production", "Total product taxes, netto"), 2022]
+    assert total == pytest.approx(df.loc[("Production", "GDP"), 2022])
+
+
+def test_gdp_contributions_structure_and_gdp_rows(sut):
+    result = inspect_gdp_nominal(sut).data
+    contributions = result.gdp_contributions
+    growth = result.gdp_growth
+    assert contributions.index.equals(growth.index)
+    assert "Balance" not in contributions.index.get_level_values(0)
+    for block in ("Production", "Expenditure"):
+        assert contributions.loc[(block, "GDP"), 2022] == pytest.approx(
+            growth.loc[(block, "GDP"), 2022]
+        )
+    assert contributions[2021].isna().all()
+
+
+def test_gdp_contributions_value(sut):
+    contributions = inspect_gdp_nominal(sut).data.gdp_contributions
+    # Gross Value Added: (95.7 - 87) / 111
+    assert contributions.loc[("Production", "Gross Value Added"), 2022] == pytest.approx(8.7 / 111.0)
+
+
+def test_industry_tables_in_description_and_styled(sut):
+    result = inspect_gdp_nominal(sut)
+    names = set(result.data.tables_description.index)
+    for name in (
+        "gdp_contributions",
+        "gdp_industries",
+        "gdp_industries_growth",
+        "gdp_industries_distribution",
+        "gdp_industries_contributions",
+    ):
+        assert name in names
+        assert getattr(result, name) is not None
+        assert getattr(result, name).to_html()
+
+
+def test_industry_tables_write_to_excel(sut, tmp_path):
+    path = tmp_path / "gdp.xlsx"
+    inspect_gdp_nominal(sut).write_to_excel(path)
+    sheets = pd.ExcelFile(path).sheet_names
+    assert len(sheets) == 9

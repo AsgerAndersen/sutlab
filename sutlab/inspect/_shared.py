@@ -100,7 +100,7 @@ def _make_sheet_name(field_name: str) -> str:
 
 # Field name suffixes that indicate all data columns hold fraction values that
 # should be displayed as percentages in Excel (0.05 → 5.0 %).
-_PERCENTAGE_FIELD_SUFFIXES = ("_distribution", "_rates", "_growth")
+_PERCENTAGE_FIELD_SUFFIXES = ("_distribution", "_rates", "_growth", "_contributions")
 
 # Default Excel number format strings (1 decimal place).
 _EXCEL_NUMBER_FORMAT = "#,##0.0"

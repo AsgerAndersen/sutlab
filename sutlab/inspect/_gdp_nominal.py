@@ -67,6 +67,11 @@ class GdpNominalData:
     gdp: pd.DataFrame
     gdp_growth: pd.DataFrame
     gdp_distribution: pd.DataFrame
+    gdp_contributions: pd.DataFrame
+    gdp_industries: pd.DataFrame
+    gdp_industries_growth: pd.DataFrame
+    gdp_industries_distribution: pd.DataFrame
+    gdp_industries_contributions: pd.DataFrame
 
     @property
     def tables_description(self) -> pd.DataFrame:
@@ -77,9 +82,26 @@ class GdpNominalData:
                     "Nominal GDP decomposition with Production and Expenditure blocks; columns are id values.",
                     "Year-on-year growth rates of GDP components (Balance block excluded).",
                     "Each component expressed as a share of its block's GDP (Balance block excluded).",
+                    "Contribution of each GDP component to GDP growth: change in component divided by previous year's block GDP (Balance block excluded).",
+                    "Gross value added by industry (P1 at basic prices minus P2 at purchasers' prices), with total GVA, net product taxes and GDP.",
+                    "Year-on-year growth rates of industry GVA and the GDP bridge rows.",
+                    "Industry GVA and the GDP bridge rows as shares of GDP.",
+                    "Contribution of each industry's GVA to GDP growth: change divided by previous year's GDP.",
                 ]
             },
-            index=pd.Index(["gdp", "gdp_growth", "gdp_distribution"], name="name"),
+            index=pd.Index(
+                [
+                    "gdp",
+                    "gdp_growth",
+                    "gdp_distribution",
+                    "gdp_contributions",
+                    "gdp_industries",
+                    "gdp_industries_growth",
+                    "gdp_industries_distribution",
+                    "gdp_industries_contributions",
+                ],
+                name="name",
+            ),
         ).sort_index()
 
 
@@ -110,11 +132,43 @@ class GdpNominalInspection:
         shares of Production GDP; Expenditure block rows as shares of
         Expenditure GDP. Values are fractions (e.g. ``0.10`` for 10%).
         The GDP rows themselves are included and always equal 1.0.
+    data.gdp_contributions : pd.DataFrame
+        Contribution of each component to GDP growth, as a fraction
+        (e.g. ``0.01`` for one percentage point). Each value is the change
+        in the component since the previous id divided by the previous id's
+        GDP in the same block. Same structure as ``data.gdp_growth``. The
+        GDP rows equal GDP growth in the respective block. The first id
+        column is ``NaN`` throughout.
+    data.gdp_industries : pd.DataFrame
+        Gross value added by industry. Same 2-level index structure as
+        ``data.gdp`` with ``"Production"`` at level 0. Rows: one per
+        industry (P1 at basic prices minus P2 at purchasers' prices; label
+        is the industry code followed by its label when an industries
+        classification is available), ``"Gross Value Added"`` (sum of the
+        industries), ``"Total product taxes, netto"`` and ``"GDP"``.
+    data.gdp_industries_growth : pd.DataFrame
+        Year-on-year growth rates for each row in ``data.gdp_industries``.
+    data.gdp_industries_distribution : pd.DataFrame
+        Each row of ``data.gdp_industries`` as a share of GDP. Industry
+        shares add up to GVA's share of GDP; the remainder is net product
+        taxes.
+    data.gdp_industries_contributions : pd.DataFrame
+        Contribution of each row of ``data.gdp_industries`` to GDP growth
+        (change divided by previous id's GDP).
     """
 
     data: GdpNominalData
     display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
-        protected_tables=frozenset({"gdp", "gdp_growth", "gdp_distribution"}),
+        protected_tables=frozenset({
+            "gdp",
+            "gdp_growth",
+            "gdp_distribution",
+            "gdp_contributions",
+            "gdp_industries",
+            "gdp_industries_growth",
+            "gdp_industries_distribution",
+            "gdp_industries_contributions",
+        }),
         protected_index_values={},
         index_grouping={},
         id_columns=True,
@@ -147,6 +201,36 @@ class GdpNominalInspection:
     def gdp_distribution(self) -> Styler:
         """Styled GDP share table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_distribution, "gdp_distribution", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._pct_fmt())
+
+    @property
+    def gdp_contributions(self) -> Styler:
+        """Styled contributions-to-GDP-growth table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_contributions, "gdp_contributions", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._pct_fmt())
+
+    @property
+    def gdp_industries(self) -> Styler:
+        """Styled industry GVA table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_industries, "gdp_industries", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._number_fmt())
+
+    @property
+    def gdp_industries_growth(self) -> Styler:
+        """Styled industry GVA growth table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_industries_growth, "gdp_industries_growth", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._pct_fmt())
+
+    @property
+    def gdp_industries_distribution(self) -> Styler:
+        """Styled industry GVA share-of-GDP table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_industries_distribution, "gdp_industries_distribution", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._pct_fmt())
+
+    @property
+    def gdp_industries_contributions(self) -> Styler:
+        """Styled industry contributions-to-GDP-growth table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_industries_contributions, "gdp_industries_contributions", self.display_configuration)
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
@@ -444,12 +528,26 @@ def inspect_gdp_nominal(
 
     gdp_growth_df = _build_growth_table(gdp_without_balance)
     gdp_distribution_df = _build_gdp_distribution(gdp_without_balance)
+    gdp_contributions_df = _build_contributions_table(gdp_without_balance)
+
+    # --- Industry GVA tables ---
+    gdp_industries_df = _build_gdp_industries(
+        sut, cols, trans_info, trans_col, id_col, id_values, gdp_df,
+    )
+    gdp_industries_growth_df = _build_growth_table(gdp_industries_df)
+    gdp_industries_distribution_df = _build_gdp_distribution(gdp_industries_df)
+    gdp_industries_contributions_df = _build_contributions_table(gdp_industries_df)
 
     return GdpNominalInspection(
         data=GdpNominalData(
             gdp=gdp_df,
             gdp_growth=gdp_growth_df,
             gdp_distribution=gdp_distribution_df,
+            gdp_contributions=gdp_contributions_df,
+            gdp_industries=gdp_industries_df,
+            gdp_industries_growth=gdp_industries_growth_df,
+            gdp_industries_distribution=gdp_industries_distribution_df,
+            gdp_industries_contributions=gdp_industries_contributions_df,
         )
     )
 
@@ -860,16 +958,147 @@ def _build_gdp_distribution(gdp_without_balance: pd.DataFrame) -> pd.DataFrame:
         share values.
     """
     blocks = []
-    for block, label_gdp in [
-        (_PRODUCTION_BLOCK, _LABEL_GDP),
-        (_EXPENDITURE_BLOCK, _LABEL_GDP),
-    ]:
+    for block in dict.fromkeys(gdp_without_balance.index.get_level_values(0)):
         block_df = gdp_without_balance.loc[block]
-        denominator = block_df.loc[label_gdp].astype(float)
+        denominator = block_df.loc[_LABEL_GDP].astype(float)
         block_dist = block_df.astype(float).div(denominator)
         blocks.append((block, block_dist))
 
     return pd.concat(
         [df for _, df in blocks],
         keys=[block for block, _ in blocks],
+    )
+
+
+def _build_contributions_table(gdp_table: pd.DataFrame) -> pd.DataFrame:
+    """Build contributions to GDP growth from a table with (block, label) index.
+
+    For each block, every row's change since the previous id is divided by
+    the previous id's GDP in that block. A value of ``0.01`` means the row
+    contributed one percentage point to GDP growth. The first id column is
+    ``NaN`` throughout. Infinite values (previous GDP of zero) become ``NaN``.
+
+    Parameters
+    ----------
+    gdp_table : pd.DataFrame
+        Table with a 2-level MultiIndex (block, label), one ``"GDP"`` row per
+        block, and id values as columns (in the order to chain over). Balance
+        block rows must already be removed.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same shape and index as ``gdp_table``. Empty if ``gdp_table`` is empty.
+    """
+    if gdp_table.empty:
+        return pd.DataFrame()
+
+    blocks = []
+    for block in dict.fromkeys(gdp_table.index.get_level_values(0)):
+        block_df = gdp_table.loc[block].astype(float)
+        previous_gdp = block_df.loc[_LABEL_GDP].shift()
+        change = block_df.diff(axis=1)
+        contributions = change.div(previous_gdp, axis=1)
+        blocks.append((block, contributions))
+
+    result = pd.concat(
+        [df for _, df in blocks],
+        keys=[block for block, _ in blocks],
+    )
+    return result.replace([float("inf"), float("-inf")], float("nan"))
+
+
+def _build_gdp_industries(
+    sut: SUT,
+    cols,
+    trans_info: pd.DataFrame,
+    trans_col: str,
+    id_col: str,
+    id_values: list,
+    gdp_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build the industry GVA table.
+
+    GVA per industry is P1 (supply, basic prices) minus P2 (use, purchasers'
+    prices), summed over the P1 and P2 transactions that carry a
+    ``gdp_decomp`` label (the same transactions as in ``gdp_df``). Industries
+    are identified by the category column. Missing P1 or P2 values count as
+    zero as long as the other is present.
+
+    Rows: one per industry (sorted by code), ``Gross Value Added`` (sum of the
+    industries), ``Total product taxes, netto`` (copied from ``gdp_df``) and
+    ``GDP`` (GVA plus taxes). All under the ``Production`` block.
+    """
+    category_col = cols.category
+
+    labelled = trans_info.dropna(subset=["gdp_decomp"])
+    p1_codes = labelled.loc[labelled["esa_code"] == _ESA_OUTPUT, trans_col]
+    p2_codes = labelled.loc[labelled["esa_code"] == _ESA_INTERMEDIATE, trans_col]
+
+    p1_by_industry = (
+        sut.supply[sut.supply[trans_col].isin(p1_codes)]
+        .groupby([category_col, id_col], dropna=False)[cols.price_basic]
+        .sum(min_count=1)
+        .unstack(id_col)
+        .reindex(columns=id_values)
+    )
+    p2_by_industry = (
+        sut.use[sut.use[trans_col].isin(p2_codes)]
+        .groupby([category_col, id_col], dropna=False)[cols.price_purchasers]
+        .sum(min_count=1)
+        .unstack(id_col)
+        .reindex(columns=id_values)
+    )
+
+    gva_by_industry = (
+        pd.concat([p1_by_industry, -p2_by_industry])
+        .groupby(level=0, dropna=False)
+        .sum(min_count=1)
+        .sort_index()
+    )
+
+    # --- Industry labels: "code label" when the classification has a label ---
+    label_lookup: dict = {}
+    classifications = sut.metadata.classifications
+    industries_cls = classifications.industries if classifications is not None else None
+    txt_col = f"{category_col}_txt"
+    if industries_cls is not None and txt_col in industries_cls.columns:
+        label_lookup = dict(zip(industries_cls[category_col], industries_cls[txt_col]))
+
+    def _industry_label(code) -> str:
+        if pd.isna(code):
+            return ""
+        text = label_lookup.get(code)
+        if text is None or pd.isna(text) or text == "":
+            return str(code)
+        return f"{code} {text}"
+
+    industry_labels = [_industry_label(code) for code in gva_by_industry.index]
+
+    # --- Derived rows ---
+    industry_rows = [gva_by_industry.loc[code].tolist() for code in gva_by_industry.index]
+    gva_values = _sum_row_dicts(
+        [dict(zip(id_values, row)) for row in industry_rows],
+        id_values,
+    )
+    taxes_values = gdp_df.loc[(_PRODUCTION_BLOCK, _LABEL_TOTAL_PRODUCT_TAXES)].to_dict()
+    gdp_values = _sum_row_dicts([gva_values, taxes_values], id_values)
+
+    index_tuples = (
+        [(_PRODUCTION_BLOCK, label) for label in industry_labels]
+        + [
+            (_PRODUCTION_BLOCK, _LABEL_GVA),
+            (_PRODUCTION_BLOCK, _LABEL_TOTAL_PRODUCT_TAXES),
+            (_PRODUCTION_BLOCK, _LABEL_GDP),
+        ]
+    )
+    data_rows = industry_rows + [
+        [gva_values[i] for i in id_values],
+        [taxes_values[i] for i in id_values],
+        [gdp_values[i] for i in id_values],
+    ]
+    return pd.DataFrame(
+        data_rows,
+        index=pd.MultiIndex.from_tuples(index_tuples),
+        columns=id_values,
     )
