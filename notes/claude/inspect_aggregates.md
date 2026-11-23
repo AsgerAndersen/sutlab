@@ -1,12 +1,12 @@
-# inspect_aggregates_nominal — Design Reference
+# inspect_gdp_nominal — Design Reference
 
 ## Function signature
 
 ```python
-inspect_aggregates_nominal(
+inspect_gdp_nominal(
     sut: SUT,
     gdp_decomp: pd.DataFrame | None = None,
-) -> AggregatesNominalInspection
+) -> GdpNominalInspection
 ```
 
 - `sut` must have `price_basis = "current_year"`
@@ -15,7 +15,7 @@ inspect_aggregates_nominal(
 
 ## Module location
 
-`sutlab/inspect/_aggregates_nominal.py`, re-exported from `sutlab/inspect/__init__.py`.
+`sutlab/inspect/_gdp_nominal.py`, re-exported from `sutlab/inspect/__init__.py`.
 
 ## gdp_decomp column in metadata
 
@@ -85,7 +85,7 @@ The SUT is not necessarily balanced, so the GDP figures from Production and Expe
 
 ## Output object
 
-`AggregatesNominalInspection` with a `.data` attribute holding the GDP DataFrame. Styling deferred to a later session.
+`GdpNominalInspection` with a `.data` attribute holding the GDP DataFrame. Styling deferred to a later session.
 
 ## Example: transaction → ESA code → gdp_decomp mapping
 

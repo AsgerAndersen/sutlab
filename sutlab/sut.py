@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Literal
 
 if TYPE_CHECKING:
-    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, UnbalancedTargetsInspection, SUTComparisonInspection, AggregatesNominalInspection
+    from sutlab.inspect import ProductInspection, IndustryInspection, FinalUseInspection, UnbalancedProductsInspection, UnbalancedTargetsInspection, SUTComparisonInspection, GdpNominalInspection
 
 import pandas as pd
 
@@ -641,13 +641,13 @@ class SUT:
             percentiles=percentiles,
         )
 
-    def inspect_aggregates_nominal(
+    def inspect_gdp_nominal(
         self,
         gdp_decomp: pd.DataFrame | None = None,
-    ) -> AggregatesNominalInspection:
-        """Delegates to :func:`~sutlab.inspect.inspect_aggregates_nominal`."""
-        from sutlab.inspect import inspect_aggregates_nominal
-        return inspect_aggregates_nominal(self, gdp_decomp=gdp_decomp)
+    ) -> GdpNominalInspection:
+        """Delegates to :func:`~sutlab.inspect.inspect_gdp_nominal`."""
+        from sutlab.inspect import inspect_gdp_nominal
+        return inspect_gdp_nominal(self, gdp_decomp=gdp_decomp)
 
     def aggregate_classification_products(
         self,

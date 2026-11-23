@@ -854,9 +854,9 @@ Append-only. Each entry: date, decision, brief rationale.
   base comparison tables → products summaries → columns summaries → balancing targets (optional).
   Block separators in `_style_summary_table` updated to handle four blocks.
 
-- **2026-04-16**: `inspect_aggregates_nominal` designed (not yet implemented). See
+- **2026-04-16**: `inspect_gdp_nominal` designed (not yet implemented). See
   `notes/claude/inspect_aggregates.md` for full design reference. Key decisions:
-  - Function renamed `inspect_aggregates_nominal` (not `inspect_gdp_nominal`) to leave room
+  - Function renamed `inspect_gdp_nominal` (not `inspect_gdp_nominal`) to leave room
     for additional aggregate tables in the same inspection object later.
   - `gdp_decomp` column added to `SUTClassifications.transactions` as an optional extra
     column. Optional override `gdp_decomp: pd.DataFrame | None` argument (columns:
@@ -870,7 +870,7 @@ Append-only. Each entry: date, decision, brief rationale.
   - Sign convention: P2 and P7 rows multiplied by −1 explicitly; all others taken as-is.
   - GDP from production and expenditure will not necessarily agree (SUT may be unbalanced).
   - Multiple transactions sharing the same `gdp_decomp` value are summed into one row.
-  - Output: `AggregatesNominalInspection` with `.data` holding the GDP DataFrame.
+  - Output: `GdpNominalInspection` with `.data` holding the GDP DataFrame.
     Styling deferred. Columns = id values; rows = 2-level MultiIndex (approach, component).
   - Future `inspect_aggregates_real` will chain-link rows independently (chain-linking is
     not additive). A shared private helper will define row structure separately from value
@@ -897,7 +897,7 @@ Append-only. Each entry: date, decision, brief rationale.
   Excel output uses the standard `%` format for `rel_base=100`; for 1000/10000 it
   multiplies cell values and applies a custom format string with the symbol.
 
-- **2026-04-20**: Added `gdp_growth` and `gdp_distribution` to `AggregatesNominalInspection`.
+- **2026-04-20**: Added `gdp_growth` and `gdp_distribution` to `GdpNominalInspection`.
   `gdp_growth`: year-on-year growth rates; Balance block excluded (growth of a discrepancy
   is not meaningful). `gdp_distribution`: shares of GDP per block — Production rows divided
   by Production GDP, Expenditure rows divided by Expenditure GDP; Balance block excluded.
@@ -911,7 +911,7 @@ Append-only. Each entry: date, decision, brief rationale.
   baked into the `_products.py` copy is now done inline at the call site. New callers
   (aggregates nominal) filter rows before calling the shared function.
 
-- **2026-04-20**: Refactored `_style_aggregates_nominal_table` to accept a `formatter`
+- **2026-04-20**: Refactored `_style_gdp_nominal_table` to accept a `formatter`
   callable instead of `display_unit`, consistent with the pattern of other style functions
   (`_style_balance_table`, `_style_detail_table`, etc.). The `.gdp` property now passes
   `_make_number_formatter(display_unit)`; `.gdp_growth` and `.gdp_distribution` pass
@@ -969,7 +969,7 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-04-21** (session 3): Added `tables_description` to all 7 inspection result classes. Final design: `result.data.tables_description` is a raw DataFrame (`name` as index, single `description` column) as a `@property` on each `*Data` class; `result.tables_description` is a `Styler` using alternating neutral grey (balance palette, `_DATA_COLORS["balance"]`) with saturated index colours (`_INDEX_COLORS["balance"]`), via new `_style_tables_description` in `_style.py`. Descriptions are hardcoded strings. `.columns` (per-table column descriptions) was considered and rejected: too much maintenance burden for marginal gain.
 
-- **2026-04-21**: Attached missing free-function docstrings to delegate methods so that `?obj.method` in Jupyter shows the full documentation. The pattern (`Class.method.__doc__ = free_fn.__doc__`) was already established in `sutlab/__init__.py` and `sutlab/sut.py`; this session identified and filled the gaps: `SUT.set_metadata` (added to `sut.py` block), and `SUT.compute_totals`, `SUT.inspect_unbalanced_products`, `SUT.inspect_unbalanced_targets`, `SUT.inspect_sut_comparison`, `SUT.inspect_aggregates_nominal`, `SUT.filter_free_cells`, `SUT.resolve_target_tolerances`, plus all six `BalancingTargets.write_to_*` methods (added to `__init__.py` block). No other classes had the problem.
+- **2026-04-21**: Attached missing free-function docstrings to delegate methods so that `?obj.method` in Jupyter shows the full documentation. The pattern (`Class.method.__doc__ = free_fn.__doc__`) was already established in `sutlab/__init__.py` and `sutlab/sut.py`; this session identified and filled the gaps: `SUT.set_metadata` (added to `sut.py` block), and `SUT.compute_totals`, `SUT.inspect_unbalanced_products`, `SUT.inspect_unbalanced_targets`, `SUT.inspect_sut_comparison`, `SUT.inspect_gdp_nominal`, `SUT.filter_free_cells`, `SUT.resolve_target_tolerances`, plus all six `BalancingTargets.write_to_*` methods (added to `__init__.py` block). No other classes had the problem.
 
 - **2026-04-21** (sessions 4–5): Major refactor — unified `DisplayConfiguration` across all 7 inspection classes and `TablesComparison`.
   - New `DisplayConfiguration` dataclass in `sutlab/inspect/_display_config.py`. Two categories of fields:
@@ -1006,7 +1006,7 @@ Append-only. Each entry: date, decision, brief rationale.
 
 - **2026-04-22 (session 9)**: `_apply_n_largest_filter` and `_apply_column_sort` in `_shared.py` both changed to operate on absolute values. Rationale: for diff/change columns, large negative values are as noteworthy as large positives — magnitude is the relevant ranking criterion.
 
-- **2026-04-23 (session 10)**: Added `set_display_sort_ids_ascending(ascending=True)` to all 7 inspection classes and `TablesComparison`. Two cases handled: (1) wide-format tables where id values are columns — `id_columns=True` in `DisplayConfiguration` triggers column reordering in `_apply_display_config`; (2) tall-format tables where id is the outermost index level — `id_index_level=id_col` set at inspect-function construction time triggers `sort_index` in `_apply_display_config`. `_apply_display_config` restructured so id sorting runs before the `protected_tables` early-return, and protected-table styled properties in `_products.py`, `_industries.py`, and `_aggregates_nominal.py` now route through `_apply_display_config`. `sort_ids_ascending` and the two class-specific fields (`id_columns`, `id_index_level`) added to `DisplayConfiguration`; reset preserves `id_columns`/`id_index_level`, restores `sort_ids_ascending` to `True`. `SUTComparisonInspection` gets the method for API consistency but it has no visible effect (column names embed id values as suffixes, not raw id values).
+- **2026-04-23 (session 10)**: Added `set_display_sort_ids_ascending(ascending=True)` to all 7 inspection classes and `TablesComparison`. Two cases handled: (1) wide-format tables where id values are columns — `id_columns=True` in `DisplayConfiguration` triggers column reordering in `_apply_display_config`; (2) tall-format tables where id is the outermost index level — `id_index_level=id_col` set at inspect-function construction time triggers `sort_index` in `_apply_display_config`. `_apply_display_config` restructured so id sorting runs before the `protected_tables` early-return, and protected-table styled properties in `_products.py`, `_industries.py`, and `_gdp_nominal.py` now route through `_apply_display_config`. `sort_ids_ascending` and the two class-specific fields (`id_columns`, `id_index_level`) added to `DisplayConfiguration`; reset preserves `id_columns`/`id_index_level`, restores `sort_ids_ascending` to `True`. `SUTComparisonInspection` gets the method for API consistency but it has no visible effect (column names embed id values as suffixes, not raw id values).
 
 - **2026-04-27 (session 11)**: Replaced "row-level" with "cell-level" throughout `inspect_sut_comparison` documentation — module docstring, `SUTComparisonData` field docstrings, and `table_description` df descriptions. No code or behaviour change.
 
