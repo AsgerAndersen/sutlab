@@ -21,7 +21,18 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
-from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _build_summary_table, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import (
+    _apply_display_config,
+    _build_growth_table,
+    _build_summary_table,
+    _chain_value_table,
+    _compare_previous_and_real,
+    _get_index_values,
+    _present_tables_description,
+    _propagate_display_setter,
+    _returns_none_if_table_absent,
+    _write_inspection_to_excel,
+)
 import dataclasses
 
 from sutlab.derive import compute_price_layer_rates
@@ -49,66 +60,46 @@ class IndustryInspectionData:
     which return styled versions.
     """
 
-    balance: pd.DataFrame
-    balance_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_products: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_products_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_coefficients: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    balance: pd.DataFrame | None
+    balance_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_products: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_products_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_products_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_products_summary: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_coefficients: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_summary: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_rates: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
 
     @property
     def tables_description(self) -> pd.DataFrame:
-        """DataFrame with ``name`` as index and a ``description`` column."""
-        return pd.DataFrame(
-            {
-                "description": [
-                    "Output, input, gross value added, and input coefficient per industry.",
-                    "Year-on-year growth rates of the balance table.",
-                    "Supply values broken down by product for each industry.",
-                    "Supply products expressed as shares of total output.",
-                    "Year-on-year growth rates of supply product values.",
-                    "Per-transaction statistics summarising the supply product breakdown (totals, counts, percentiles).",
-                    "Use values broken down by product for each industry, at purchasers' prices.",
-                    "Use products expressed as shares of total input.",
-                    "Use product values expressed as coefficients relative to total output.",
-                    "Year-on-year growth rates of use product values.",
-                    "Per-transaction statistics summarising the use product breakdown (totals, counts, percentiles).",
-                    "Price layer values (gap between basic and purchasers' prices) by layer.",
-                    "Each price layer expressed as a rate relative to basic-price use.",
-                    "Each price layer expressed as a share of total price layers.",
-                    "Year-on-year growth rates of price layer values.",
-                ]
-            },
-            index=pd.Index(
-                [
-                    "balance",
-                    "balance_growth",
-                    "supply_products",
-                    "supply_products_distribution",
-                    "supply_products_growth",
-                    "supply_products_summary",
-                    "use_products",
-                    "use_products_distribution",
-                    "use_products_coefficients",
-                    "use_products_growth",
-                    "use_products_summary",
-                    "price_layers",
-                    "price_layers_rates",
-                    "price_layers_distribution",
-                    "price_layers_growth",
-                ],
-                name="name",
-            ),
-        ).sort_index()
+        """DataFrame with ``name`` as index and a ``description`` column.
+
+        Only tables that are present (not ``None``) are listed.
+        """
+        descriptions = {
+            "balance": "Output, input, gross value added, and input coefficient per industry.",
+            "balance_growth": "Year-on-year growth rates of the balance table.",
+            "supply_products": "Supply values broken down by product for each industry.",
+            "supply_products_distribution": "Supply products expressed as shares of total output.",
+            "supply_products_growth": "Year-on-year growth rates of supply product values.",
+            "supply_products_summary": "Per-transaction statistics summarising the supply product breakdown (totals, counts, percentiles).",
+            "use_products": "Use values broken down by product for each industry, at purchasers' prices.",
+            "use_products_distribution": "Use products expressed as shares of total input.",
+            "use_products_coefficients": "Use product values expressed as coefficients relative to total output.",
+            "use_products_growth": "Year-on-year growth rates of use product values.",
+            "use_products_summary": "Per-transaction statistics summarising the use product breakdown (totals, counts, percentiles).",
+            "price_layers": "Price layer values (gap between basic and purchasers' prices) by layer.",
+            "price_layers_rates": "Each price layer expressed as a rate relative to basic-price use.",
+            "price_layers_distribution": "Each price layer expressed as a share of total price layers.",
+            "price_layers_growth": "Year-on-year growth rates of price layer values.",
+        }
+        return _present_tables_description(self, descriptions)
 
 
 _INDUSTRY_PROTECTED_TABLES = frozenset({
@@ -152,6 +143,25 @@ class IndustryInspection:
     Raw DataFrames are available under ``result.data``. Properties on this
     class will return styled :class:`~pandas.io.formats.style.Styler` objects
     for Jupyter display (to be added).
+
+    The tables on the result itself are in current prices. When ``previous``
+    was given to :func:`inspect_industries`, two more inspections of this
+    same class are available (both ``None`` otherwise):
+
+    - ``result.previous`` holds the tables built from the previous-year-price
+      SUT: the value tables, distributions, coefficients, rates and summaries.
+      The ``_growth`` tables are ``None`` there (growth between values in
+      previous-year prices would mix price bases).
+    - ``result.real`` holds chain-linked volumes in reference-year prices:
+      ``balance``, ``supply_products``, ``use_products`` and
+      ``price_layers``, plus their ``_growth`` tables (real growth). Every
+      row, including totals and Gross value added, is chained
+      independently, so rows do not add up except in the reference year.
+      The ``Input coefficient`` rows are not in ``result.real.balance``. All
+      other tables are ``None`` there (ratios and shares of chained volumes
+      are not meaningful).
+
+    Tables that are ``None`` give ``None`` for their styled property.
 
     Attributes
     ----------
@@ -308,6 +318,8 @@ class IndustryInspection:
     display_configuration: DisplayConfiguration = field(default_factory=_industry_default_config)
     _all_rel: bool = field(default=False, repr=False)
     _price_layer_columns: list[str] = field(default_factory=list, repr=False)
+    previous: "IndustryInspection | None" = None
+    real: "IndustryInspection | None" = None
 
     def _number_fmt(self):
         cfg = self.display_configuration
@@ -320,6 +332,7 @@ class IndustryInspection:
         return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def balance(self) -> Styler:
         """Styled industry balance table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.balance, "balance", self.display_configuration)
@@ -331,24 +344,28 @@ class IndustryInspection:
         return _style_industry_balance_table(df, self._p1_trans, format_func=fmt, display_unit=cfg.display_unit, rel_base=cfg.rel_base, decimals=cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def supply_products(self) -> Styler:
         """Styled product breakdown of industry output for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.supply_products, "supply_products", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "supply", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def supply_products_distribution(self) -> Styler:
         """Styled product-share distribution of industry output for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.supply_products_distribution, "supply_products_distribution", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "supply", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def supply_products_growth(self) -> Styler:
         """Styled year-on-year growth of industry output detail for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.supply_products_growth, "supply_products_growth", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "supply", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def supply_products_summary(self) -> Styler:
         """Styled per-transaction supply summary statistics for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.supply_products_summary, "supply_products_summary", self.display_configuration)
@@ -356,30 +373,35 @@ class IndustryInspection:
         return _style_products_summary_table(df, "supply", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def use_products(self) -> Styler:
         """Styled product breakdown of industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products, "use_products", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def use_products_distribution(self) -> Styler:
         """Styled product-share distribution of industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_distribution, "use_products_distribution", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def use_products_coefficients(self) -> Styler:
         """Styled input coefficients by product for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_coefficients, "use_products_coefficients", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def use_products_growth(self) -> Styler:
         """Styled year-on-year growth of industry input detail for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use", outer_level="industry", outer_txt_level="industry_txt", inner_level="product", inner_txt_level="product_txt")
 
     @property
+    @_returns_none_if_table_absent
     def use_products_summary(self) -> Styler:
         """Styled per-transaction use summary statistics for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_summary, "use_products_summary", self.display_configuration)
@@ -387,30 +409,35 @@ class IndustryInspection:
         return _style_products_summary_table(df, "use", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers(self) -> Styler:
         """Styled price layer breakdown of industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
         return _style_price_layers_table(df, self._number_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_rates(self) -> Styler:
         """Styled price layer rates for industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
         return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_distribution(self) -> Styler:
         """Styled price layer distribution of industry input for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
         return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_growth(self) -> Styler:
         """Styled year-on-year growth of price layers for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
         return _style_price_layers_table(df, self._pct_fmt(), outer_level="industry", outer_txt_level="industry_txt", price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def balance_growth(self) -> Styler:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.balance_growth, "balance_growth", self.display_configuration)
@@ -442,7 +469,7 @@ class IndustryInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit)), "set_display_unit", display_unit)
 
     def set_display_rel_base(self, rel_base: int) -> "IndustryInspection":
         """Return a copy with ``rel_base`` set to the given value.
@@ -452,7 +479,7 @@ class IndustryInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base)), "set_display_rel_base", rel_base)
 
     def set_display_decimals(self, decimals: int) -> "IndustryInspection":
         """Return a copy with ``decimals`` set to the given value.
@@ -462,7 +489,7 @@ class IndustryInspection:
         decimals : int
             Number of decimal places. Must be a non-negative integer.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals)), "set_display_decimals", decimals)
 
     def set_display_index(self, level: str, values: str | int | list) -> "IndustryInspection":
         """Return a copy with ``values`` added to the display filter for ``level``.
@@ -477,7 +504,7 @@ class IndustryInspection:
         values : str, int, or list
             Values (or patterns) to keep.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values)), "set_display_index", level, values)
 
     def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "IndustryInspection":
         """Return a copy with rows sorted by ``column`` in styled output.
@@ -489,7 +516,7 @@ class IndustryInspection:
         ascending : bool
             Sort direction. Default ``False`` (descending).
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending)), "set_display_sort_column", column, ascending)
 
     def set_display_sort_ids_ascending(self, ascending: bool = True) -> "IndustryInspection":
         """Return a copy with id columns sorted ascending or descending.
@@ -503,7 +530,7 @@ class IndustryInspection:
         ascending : bool
             ``True`` for ascending (default), ``False`` for descending.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending)), "set_display_sort_ids_ascending", ascending)
 
     def set_display_values_n_largest(self, n: int, column: str) -> "IndustryInspection":
         """Return a copy showing only the n rows with the largest values for ``column``.
@@ -515,11 +542,11 @@ class IndustryInspection:
         column : str
             Column name to rank by.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column)), "set_display_values_n_largest", n, column)
 
     def set_display_configuration_to_defaults(self) -> "IndustryInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
-        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration)), "set_display_configuration_to_defaults")
 
     def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations for a table after applying display config.
@@ -564,6 +591,10 @@ class IndustryInspection:
     def inspect_tables_comparison(self, other: "IndustryInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`IndustryInspection`.
 
+        When both inspections have ``previous`` (or ``real``), those are compared
+        the same way and end up as ``.diff.previous`` / ``.rel.previous`` (or
+        ``.real``). If either side lacks one, that part is ``None``.
+
         Parameters
         ----------
         other : IndustryInspection
@@ -583,11 +614,14 @@ class IndustryInspection:
                 f"Expected IndustryInspection, got {type(other).__name__}."
             )
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff_previous, rel_previous, diff_real, rel_real = _compare_previous_and_real(self, other)
         diff = IndustryInspection(
             data=IndustryInspectionData(**diff_fields),
             _p1_trans=self._p1_trans,
             display_configuration=self.display_configuration,
             _price_layer_columns=self._price_layer_columns,
+            previous=diff_previous,
+            real=diff_real,
         )
         rel = IndustryInspection(
             data=IndustryInspectionData(**rel_fields),
@@ -595,6 +629,8 @@ class IndustryInspection:
             display_configuration=self.display_configuration,
             _all_rel=True,
             _price_layer_columns=self._price_layer_columns,
+            previous=rel_previous,
+            real=rel_real,
         )
         return TablesComparison(diff=diff, rel=rel, display_configuration=self.display_configuration)
 
@@ -606,6 +642,8 @@ def inspect_industries(
     *,
     percentiles: list[float] = None,
     coverage_thresholds: list[float] = None,
+    previous: SUT | None = None,
+    reference_id: int | str | None = None,
 ) -> IndustryInspection:
     """
     Return inspection tables for one or more industries.
@@ -637,11 +675,27 @@ def inspect_industries(
         number of products (sorted by value descending, per year) needed to
         account for 80% of the transaction total. Default: ``[0.8, 0.95]``.
 
+    previous : SUT or None, optional
+        The same supply-use table collection in previous year's prices
+        (``price_basis = "previous_year"``). For year ``t`` it holds the
+        values of year ``t`` at the prices of year ``t-1``. It must contain
+        every selected id except the first, and no other ids; the first id
+        is optional. Ids must be consecutive years. The metadata of ``sut``
+        (column names, classifications) is used for both SUTs. ``None``
+        (default) gives the current-price tables only. See
+        :class:`IndustryInspection` for what ``result.previous`` and
+        ``result.real`` hold.
+    reference_id : int or str or None, optional
+        Reference year for the chained volumes in ``result.real``: they are
+        in this year's prices. ``None`` (default) uses the first id. Only
+        allowed together with ``previous``.
+
     Returns
     -------
     IndustryInspection
         A dataclass with inspection tables. Raw DataFrames are available
-        under ``result.data``.
+        under ``result.data``. ``result.previous`` and ``result.real`` are
+        ``None`` unless ``previous`` was given.
 
     Raises
     ------
@@ -655,7 +709,15 @@ def inspect_industries(
         transaction text column.
     ValueError
         If any value in ``ids`` is not found in the collection.
+    ValueError
+        If ``reference_id`` is given without ``previous``, if
+        ``previous.price_basis`` is not ``"previous_year"``, if ``previous``
+        lacks required columns, or if the ids of ``sut`` and ``previous`` do
+        not fit together (see ``previous``).
     """
+    if previous is None and reference_id is not None:
+        raise ValueError("reference_id can only be used together with previous.")
+
     if percentiles is None:
         percentiles = [0.5, 1.0]
     if coverage_thresholds is None:
@@ -769,81 +831,160 @@ def inspect_industries(
     else:
         product_names = {}
 
-    balance = _build_industry_balance_table(
-        sut=sut,
+    context = _IndustryContext(
         matched_industries=matched_industries,
         p1_trans=p1_trans,
         p2_trans=p2_trans,
         trans_names=trans_names,
         industry_names=industry_names,
-        all_ids=all_ids,
+        product_names=product_names,
         show_total_output=show_total_output,
         show_total_input=show_total_input,
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
+    )
+
+    data = _build_industry_tables(sut, context, all_ids)
+    current_inspection = IndustryInspection(
+        data=data,
+        _p1_trans=frozenset(p1_trans),
+        _price_layer_columns=_get_price_layer_columns(cols, sut.use),
+    )
+
+    if previous is None:
+        return current_inspection
+
+    # --- previous-year-price tables and chained volumes ---
+    previous_sut = _prepare_previous_sut(sut, previous)
+    previous_ids = _resolve_previous_ids(previous_sut, ids)
+    previous_data = _build_industry_tables(previous_sut, context, previous_ids)
+
+    previous_inspection = IndustryInspection(
+        data=dataclasses.replace(
+            previous_data,
+            balance_growth=None,
+            supply_products_growth=None,
+            use_products_growth=None,
+            price_layers_growth=None,
+        ),
+        _p1_trans=frozenset(p1_trans),
+        _price_layer_columns=_get_price_layer_columns(cols, previous_sut.use),
+    )
+    real_inspection = IndustryInspection(
+        data=_build_real_industry_data(data, previous_data, reference_id),
+        _p1_trans=frozenset(p1_trans),
+        _price_layer_columns=current_inspection._price_layer_columns,
+    )
+
+    return dataclasses.replace(
+        current_inspection,
+        previous=previous_inspection,
+        real=real_inspection,
+    )
+
+
+@dataclass
+class _IndustryContext:
+    """Everything the table builders need besides the SUT data and the ids.
+
+    Resolved once from the current-price SUT and its metadata, and reused
+    for the previous-year-price SUT so that both are inspected with the same
+    industries, transactions and labels.
+    """
+
+    matched_industries: list[str]
+    p1_trans: list[str]
+    p2_trans: list[str]
+    trans_names: dict[str, str]
+    industry_names: dict[str, str]
+    product_names: dict[str, str]
+    show_total_output: bool
+    show_total_input: bool
+    percentiles: list[float]
+    coverage_thresholds: list[float]
+
+
+def _build_industry_tables(
+    sut: SUT,
+    context: _IndustryContext,
+    all_ids: list,
+) -> IndustryInspectionData:
+    """Build all tables of an :class:`IndustryInspectionData` for one SUT."""
+    balance = _build_industry_balance_table(
+        sut=sut,
+        matched_industries=context.matched_industries,
+        p1_trans=context.p1_trans,
+        p2_trans=context.p2_trans,
+        trans_names=context.trans_names,
+        industry_names=context.industry_names,
+        all_ids=all_ids,
+        show_total_output=context.show_total_output,
+        show_total_input=context.show_total_input,
     )
 
     balance_growth = _build_growth_table(balance)
 
     supply_products = _build_industry_supply_products(
         sut=sut,
-        matched_industries=matched_industries,
-        p1_trans=p1_trans,
-        trans_names=trans_names,
-        industry_names=industry_names,
-        product_names=product_names,
+        matched_industries=context.matched_industries,
+        p1_trans=context.p1_trans,
+        trans_names=context.trans_names,
+        industry_names=context.industry_names,
+        product_names=context.product_names,
         all_ids=all_ids,
     )
     supply_products_distribution = _build_supply_products_distribution(supply_products)
     supply_products_growth = _build_growth_table(supply_products)
     supply_products_summary = _build_products_summary(
-        supply_products, percentiles, coverage_thresholds, total_label="total_supply"
+        supply_products, context.percentiles, context.coverage_thresholds, total_label="total_supply"
     )
 
     use_products = _build_industry_use_products(
         sut=sut,
-        matched_industries=matched_industries,
-        p2_trans=p2_trans,
-        trans_names=trans_names,
-        industry_names=industry_names,
-        product_names=product_names,
+        matched_industries=context.matched_industries,
+        p2_trans=context.p2_trans,
+        trans_names=context.trans_names,
+        industry_names=context.industry_names,
+        product_names=context.product_names,
         all_ids=all_ids,
     )
     use_products_distribution = _build_use_products_distribution(use_products)
     use_products_summary = _build_products_summary(
-        use_products, percentiles, coverage_thresholds, total_label="total_use"
+        use_products, context.percentiles, context.coverage_thresholds, total_label="total_use"
     )
     use_products_coefficients = _build_use_products_coefficients(
         sut=sut,
         use_products=use_products,
-        matched_industries=matched_industries,
-        p1_trans=p1_trans,
+        matched_industries=context.matched_industries,
+        p1_trans=context.p1_trans,
         all_ids=all_ids,
     )
     use_products_growth = _build_growth_table(use_products)
 
     price_layers = _build_industry_price_layers_table(
         sut=sut,
-        matched_industries=matched_industries,
-        p2_trans=p2_trans,
-        trans_names=trans_names,
-        industry_names=industry_names,
+        matched_industries=context.matched_industries,
+        p2_trans=context.p2_trans,
+        trans_names=context.trans_names,
+        industry_names=context.industry_names,
         all_ids=all_ids,
-        show_total=show_total_input,
+        show_total=context.show_total_input,
     )
     price_layers_rates = _build_industry_price_layers_rates(
         price_layers=price_layers,
         sut=sut,
-        matched_industries=matched_industries,
-        p2_trans=p2_trans,
+        matched_industries=context.matched_industries,
+        p2_trans=context.p2_trans,
         all_ids=all_ids,
     )
     price_layers_distribution = (
         _build_price_layers_distribution(price_layers)
-        if show_total_input
+        if context.show_total_input
         else pd.DataFrame()
     )
     price_layers_growth = _build_growth_table(price_layers)
 
-    data = IndustryInspectionData(
+    return IndustryInspectionData(
         balance=balance,
         balance_growth=balance_growth,
         supply_products=supply_products,
@@ -860,7 +1001,104 @@ def inspect_industries(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return IndustryInspection(data=data, _p1_trans=frozenset(p1_trans), _price_layer_columns=_get_price_layer_columns(cols, sut.use))
+
+
+def _prepare_previous_sut(sut: SUT, previous: SUT) -> SUT:
+    """Validate the previous-year-price SUT and give it the metadata of ``sut``.
+
+    Using the same metadata for both SUTs keeps column names, classifications
+    and labels identical, so the rows of the two sets of tables line up.
+    """
+    if previous.price_basis != "previous_year":
+        raise ValueError(
+            f"inspect_industries requires previous to have "
+            f"price_basis='previous_year', got '{previous.price_basis}'."
+        )
+
+    cols = sut.metadata.columns
+    supply_required = [cols.id, cols.product, cols.transaction, cols.category, cols.price_basic]
+    use_required = supply_required + [cols.price_purchasers]
+    for table_name, table, required in [
+        ("supply", previous.supply, supply_required),
+        ("use", previous.use, use_required),
+    ]:
+        missing = [column for column in required if column not in table.columns]
+        if missing:
+            raise ValueError(
+                f"previous.{table_name} is missing column(s) {missing}. "
+                f"The column names in sut.metadata are used for both SUTs."
+            )
+
+    return dataclasses.replace(previous, metadata=sut.metadata)
+
+
+def _resolve_previous_ids(previous_sut: SUT, ids) -> list:
+    """Return the ids to use as columns for the previous-year-price tables.
+
+    Without an ``ids`` selection: all ids in ``previous_sut``. With one: the
+    requested ids that exist in ``previous_sut`` (the first id may be
+    absent there; other mismatches are reported when chaining).
+    """
+    id_col = previous_sut.metadata.columns.id
+    available = sorted(set(previous_sut.supply[id_col]) | set(previous_sut.use[id_col]))
+    if ids is None:
+        return available
+    requested = list(ids) if isinstance(ids, (list, range)) else [ids]
+    return [i for i in available if i in requested]
+
+
+def _drop_input_coefficient_rows(balance: pd.DataFrame) -> pd.DataFrame:
+    """Return the balance table without its ``Input coefficient`` rows."""
+    if balance.empty:
+        return balance
+    is_coefficient = balance.index.get_level_values("transaction_txt") == "Input coefficient"
+    return balance[~is_coefficient]
+
+
+def _build_real_industry_data(
+    current: IndustryInspectionData,
+    previous: IndustryInspectionData,
+    reference_id,
+) -> IndustryInspectionData:
+    """Chain the value tables and return the tables of the real inspection.
+
+    Chained: ``balance`` (without the Input coefficient rows),
+    ``supply_products``, ``use_products`` and ``price_layers``, each row
+    independently. The ``_growth`` tables are the volume growth from the
+    chain. All other tables are ``None``. A table that is empty in current
+    prices stays an empty DataFrame, as in the current-price result.
+    """
+    chained = {}
+    for name in ["balance", "supply_products", "use_products", "price_layers"]:
+        current_table = getattr(current, name)
+        previous_table = getattr(previous, name)
+        if name == "balance":
+            current_table = _drop_input_coefficient_rows(current_table)
+            previous_table = _drop_input_coefficient_rows(previous_table)
+
+        series = _chain_value_table(current_table, previous_table, reference_id)
+        if series is None:
+            chained[name] = (pd.DataFrame(), pd.DataFrame())
+        else:
+            chained[name] = (series.volumes, series.volume_growth)
+
+    return IndustryInspectionData(
+        balance=chained["balance"][0],
+        balance_growth=chained["balance"][1],
+        supply_products=chained["supply_products"][0],
+        supply_products_distribution=None,
+        supply_products_growth=chained["supply_products"][1],
+        supply_products_summary=None,
+        use_products=chained["use_products"][0],
+        use_products_distribution=None,
+        use_products_coefficients=None,
+        use_products_growth=chained["use_products"][1],
+        use_products_summary=None,
+        price_layers=chained["price_layers"][0],
+        price_layers_rates=None,
+        price_layers_distribution=None,
+        price_layers_growth=chained["price_layers"][1],
+    )
 
 
 def _build_industry_balance_table(

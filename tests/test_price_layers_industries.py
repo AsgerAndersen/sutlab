@@ -5,6 +5,7 @@ import pytest
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from sut_helpers import make_previous_sut
 from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
 from sutlab.inspect import inspect_industries
 
@@ -399,3 +400,36 @@ def test_price_layers_growth_property_returns_styler(sut_layers):
 def test_price_layers_property_handles_empty(sut_no_layers):
     """Styled property must not raise even when underlying data is empty."""
     assert isinstance(inspect_industries(sut_no_layers, "X").price_layers, Styler)
+
+
+# ---------------------------------------------------------------------------
+# previous= : price layers in .previous and .real
+# ---------------------------------------------------------------------------
+
+
+def test_price_layers_real_and_previous(sut_layers):
+    # Previous-price use values are the 2021 rows times 0.95: wholesale margin
+    # of industry X is 6.0 * 0.95 = 5.7, of industry Y 10.0 * 0.95 = 9.5.
+    previous = make_previous_sut(sut_layers)
+    result = inspect_industries(sut_layers, ["X", "Y"], previous=previous)
+
+    previous_layers = result.previous.data.price_layers
+    assert previous_layers.loc[("X", "", "ava", "2000", "Intermediate consumption"), 2021] == pytest.approx(5.7)
+    assert result.previous.data.price_layers_growth is None
+    assert result.previous.data.price_layers_rates is not None
+
+    real_layers = result.real.data.price_layers
+    assert real_layers.loc[("X", "", "ava", "2000", "Intermediate consumption"), 2020] == pytest.approx(5.0)
+    assert real_layers.loc[("X", "", "ava", "2000", "Intermediate consumption"), 2021] == pytest.approx(5.7)
+    assert real_layers.index.names == result.data.price_layers.index.names
+    assert result.real.data.price_layers_growth.loc[("X", "", "ava", "2000", "Intermediate consumption"), 2021] == pytest.approx(5.7 / 5.0 - 1)
+    assert result.real.data.price_layers_rates is None
+    assert result.real.price_layers.to_html()
+
+
+def test_price_layers_real_when_no_layers_stays_empty(sut_no_layers):
+    previous = make_previous_sut(sut_no_layers)
+    result = inspect_industries(sut_no_layers, ["X", "Y"], previous=previous)
+    assert result.data.price_layers.empty
+    assert result.real.data.price_layers.empty
+    assert result.real.data.price_layers_growth.empty

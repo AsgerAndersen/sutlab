@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 
 from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
+from sut_helpers import make_previous_sut
 from sutlab.inspect import (
     inspect_gdp,
     GdpInspection,
@@ -940,24 +941,9 @@ _ALL_TABLES = [
 ]
 
 
-def _make_previous_sut(sut, years=(2022,)):
-    supply = sut.supply[sut.supply["year"].isin(years)].copy()
-    use = sut.use[sut.use["year"].isin(years)].copy()
-    supply_value_columns = ["bas", "koeb"]
-    use_value_columns = ["bas", "ava", "moms", "koeb"]
-    supply[supply_value_columns] = supply[supply_value_columns] * 0.9
-    use[use_value_columns] = use[use_value_columns] * 0.95
-    return SUT(
-        price_basis="previous_year",
-        supply=supply,
-        use=use,
-        metadata=sut.metadata,
-    )
-
-
 @pytest.fixture
 def previous_sut(sut):
-    return _make_previous_sut(sut)
+    return make_previous_sut(sut)
 
 
 def test_without_previous_no_previous_or_real(sut):
@@ -1079,7 +1065,7 @@ def test_real_contributions_distribution_gdp_row_is_one(sut, previous_sut):
 
 
 def test_previous_may_include_first_year(sut):
-    previous_sut = _make_previous_sut(sut, years=(2021, 2022))
+    previous_sut = make_previous_sut(sut, years=(2021, 2022))
     result = inspect_gdp(sut, previous=previous_sut)
     # 2021 in previous is ignored for the chain.
     assert result.real.data.gdp.loc[("Production", "GDP"), 2021] == pytest.approx(111.0)
@@ -1087,7 +1073,7 @@ def test_previous_may_include_first_year(sut):
 
 
 def test_previous_missing_a_year_raises(sut):
-    previous_sut = _make_previous_sut(sut, years=(2021,))
+    previous_sut = make_previous_sut(sut, years=(2021,))
     with pytest.raises(ValueError, match="Missing in previous"):
         inspect_gdp(sut, previous=previous_sut)
 

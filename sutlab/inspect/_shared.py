@@ -5,6 +5,7 @@ Shared helpers used by multiple inspect modules.
 from __future__ import annotations
 
 import dataclasses
+import functools
 from copy import copy
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ import openpyxl.utils
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from sutlab.derive import ChainedSeries, compute_chained_series_annual
 from sutlab.inspect._style import _REL_BASE_SYMBOLS
 from sutlab.sut import _match_codes
 
@@ -1024,3 +1026,153 @@ def _get_index_values(
     if as_list:
         return result[level_list[0]].tolist()
     return result
+
+
+# ---------------------------------------------------------------------------
+# Helpers for inspections with ``previous`` and ``real`` (chained volumes)
+# ---------------------------------------------------------------------------
+#
+# An inspection function that takes ``previous=`` returns its usual result
+# class with two extra optional attributes, ``previous`` and ``real``, which
+# are instances of the same class. Tables that do not apply to them are
+# ``None``. The helpers below are the parts that are the same for every such
+# class.
+
+
+def _returns_none_if_table_absent(method):
+    """Decorator for styled table properties: return ``None`` if the table is ``None``.
+
+    The table name is taken from the name of the decorated method, so a
+    property ``balance`` is only styled when ``self.data.balance`` is not
+    ``None``. Use below ``@property``::
+
+        @property
+        @_returns_none_if_table_absent
+        def balance(self): ...
+    """
+    table_name = method.__name__
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if getattr(self.data, table_name) is None:
+            return None
+        return method(self, *args, **kwargs)
+
+    return wrapper
+
+
+def _present_tables_description(data, descriptions: dict[str, str]) -> pd.DataFrame:
+    """Build a ``tables_description`` DataFrame listing only tables that are not ``None``.
+
+    Parameters
+    ----------
+    data : dataclass instance
+        The inspection data object (one DataFrame field per table).
+    descriptions : dict
+        Maps table name to description text.
+
+    Returns
+    -------
+    pd.DataFrame
+        ``name`` as index, one ``description`` column, sorted by name.
+    """
+    present = [name for name in descriptions if getattr(data, name) is not None]
+    return pd.DataFrame(
+        {"description": [descriptions[name] for name in present]},
+        index=pd.Index(present, name="name"),
+    ).sort_index()
+
+
+def _propagate_display_setter(original, updated, method_name: str, *args):
+    """Apply the same display setter to ``previous`` and ``real`` of ``original``.
+
+    ``updated`` is ``original`` with the display setting already changed
+    (``dataclasses.replace(original, display_configuration=...)``). The
+    returned copy of ``updated`` has ``previous`` and ``real`` replaced by
+    copies on which the setter named ``method_name`` was called with
+    ``args``; either is left as ``None`` if it is ``None`` on ``original``.
+    """
+    new_previous = None
+    if original.previous is not None:
+        new_previous = getattr(original.previous, method_name)(*args)
+    new_real = None
+    if original.real is not None:
+        new_real = getattr(original.real, method_name)(*args)
+    return dataclasses.replace(updated, previous=new_previous, real=new_real)
+
+
+def _compare_previous_and_real(first, second) -> tuple:
+    """Compare ``previous`` and ``real`` of two inspections of the same class.
+
+    Parameters
+    ----------
+    first, second : inspection result objects
+        Both must have ``previous`` and ``real`` attributes and an
+        ``inspect_tables_comparison`` method.
+
+    Returns
+    -------
+    tuple
+        ``(diff_previous, rel_previous, diff_real, rel_real)``. A pair is
+        ``(None, None)`` when either inspection lacks that part.
+    """
+    diff_previous = rel_previous = None
+    if first.previous is not None and second.previous is not None:
+        comparison = first.previous.inspect_tables_comparison(second.previous)
+        diff_previous, rel_previous = comparison.diff, comparison.rel
+
+    diff_real = rel_real = None
+    if first.real is not None and second.real is not None:
+        comparison = first.real.inspect_tables_comparison(second.real)
+        diff_real, rel_real = comparison.diff, comparison.rel
+
+    return diff_previous, rel_previous, diff_real, rel_real
+
+
+def _align_rows(current: pd.DataFrame, previous: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Reindex both tables to the same rows (current's rows first, then extra rows of previous).
+
+    Rows present in only one table become NaN in the other, so the series
+    for such rows is NaN after chaining.
+    """
+    extra_rows = previous.index.difference(current.index, sort=False)
+    all_rows = current.index.append(extra_rows).set_names(current.index.names)
+    return current.reindex(all_rows), previous.reindex(all_rows)
+
+
+def _chain_value_table(
+    current: pd.DataFrame,
+    previous: pd.DataFrame,
+    reference_id,
+) -> ChainedSeries | None:
+    """Chain-link every row of a wide value table (ids as columns).
+
+    Rows are aligned first (see :func:`_align_rows`). Each row is chained
+    independently, so derived rows such as totals must exist as rows in both
+    tables.
+
+    Parameters
+    ----------
+    current : pd.DataFrame
+        Table in current prices. If it is empty (no rows or no columns),
+        ``None`` is returned: there is nothing to chain.
+    previous : pd.DataFrame
+        The same table in previous year's prices. If it is empty, all its
+        values count as missing and the chained series are ``NaN`` after the
+        reference year.
+    reference_id : int or str or None
+        Reference year; ``None`` uses the first id.
+
+    Returns
+    -------
+    ChainedSeries or None
+        See :func:`sutlab.derive.compute_chained_series_annual`.
+    """
+    if current.empty:
+        return None
+    if previous.empty:
+        previous = pd.DataFrame(index=previous.index, columns=current.columns, dtype=float)
+    current_aligned, previous_aligned = _align_rows(current, previous)
+    return compute_chained_series_annual(
+        current_aligned, previous_aligned, reference_id=reference_id,
+    )

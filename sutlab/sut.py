@@ -552,10 +552,23 @@ class SUT:
         self,
         industries: str | list[str],
         ids=None,
+        *,
+        percentiles: list[float] | None = None,
+        coverage_thresholds: list[float] | None = None,
+        previous: "SUT | None" = None,
+        reference_id: int | str | None = None,
     ) -> IndustryInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_industries`."""
         from sutlab.inspect import inspect_industries
-        return inspect_industries(self, industries, ids=ids)
+        return inspect_industries(
+            self,
+            industries,
+            ids=ids,
+            percentiles=percentiles,
+            coverage_thresholds=coverage_thresholds,
+            previous=previous,
+            reference_id=reference_id,
+        )
 
     def inspect_final_uses(
         self,

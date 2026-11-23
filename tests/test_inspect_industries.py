@@ -6,6 +6,7 @@ import pytest
 import pandas as pd
 from pandas.io.formats.style import Styler
 
+from sut_helpers import make_previous_sut
 from sutlab.sut import SUT, SUTClassifications, SUTColumns, SUTMetadata
 from sutlab.inspect import IndustryInspection, IndustryInspectionData, inspect_industries
 
@@ -1279,3 +1280,294 @@ def test_use_products_summary_coverage_single_product(sut):
 
 def test_use_products_summary_property_returns_styler(sut):
     assert isinstance(inspect_industries(sut, "X").use_products_summary, Styler)
+
+
+# ---------------------------------------------------------------------------
+# previous= : .previous and .real inspections
+# ---------------------------------------------------------------------------
+#
+# The previous-price SUT is the 2021 rows with supply x 0.9 and use x 0.95.
+# Hand-computed values (no price layers in these fixtures):
+#   Current 2020:   X: P1 100, P2 (koeb) 60, GVA 40     Y: P1 200, P2 100, GVA 100
+#   Current 2021:   X: P1 110, P2 66, GVA 44            Y: P1 220, P2 110, GVA 110
+#   Previous 2021:  X: P1 99, P2 62.7, GVA 36.3         Y: P1 198, P2 104.5, GVA 93.5
+# Reference year 2020 (default): real volumes in 2020 are the current values,
+# and in 2021 the previous-price values.
+
+_ALL_INDUSTRY_TABLES = [
+    "balance", "balance_growth",
+    "supply_products", "supply_products_distribution", "supply_products_growth",
+    "supply_products_summary",
+    "use_products", "use_products_distribution", "use_products_coefficients",
+    "use_products_growth", "use_products_summary",
+    "price_layers", "price_layers_rates", "price_layers_distribution",
+    "price_layers_growth",
+]
+_GROWTH_TABLES = {
+    "balance_growth", "supply_products_growth", "use_products_growth", "price_layers_growth",
+}
+_REAL_TABLES = {
+    "balance", "balance_growth", "supply_products", "supply_products_growth",
+    "use_products", "use_products_growth", "price_layers", "price_layers_growth",
+}
+
+
+def _value(df, year, **levels):
+    """The single value in column ``year`` of the row matching the given index level values."""
+    mask = pd.Series(True, index=df.index)
+    for level, value in levels.items():
+        mask &= df.index.get_level_values(level) == value
+    selected = df.loc[mask.to_numpy(), year]
+    assert len(selected) == 1, f"expected one row for {levels}, got {len(selected)}"
+    return selected.iloc[0]
+
+
+@pytest.fixture
+def previous_sut(sut):
+    return make_previous_sut(sut)
+
+
+def test_industries_without_previous_no_previous_or_real(sut):
+    result = inspect_industries(sut, ["X", "Y"])
+    assert result.previous is None
+    assert result.real is None
+
+
+def test_industries_reference_id_without_previous_raises(sut):
+    with pytest.raises(ValueError, match="reference_id"):
+        inspect_industries(sut, ["X", "Y"], reference_id=2020)
+
+
+def test_industries_current_tables_unchanged_by_previous(sut, previous_sut):
+    plain = inspect_industries(sut, ["X", "Y"])
+    with_previous = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    for name in _ALL_INDUSTRY_TABLES:
+        pd.testing.assert_frame_equal(getattr(with_previous.data, name), getattr(plain.data, name))
+
+
+def test_industries_previous_and_real_are_same_class(sut, previous_sut):
+    result = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    assert isinstance(result.previous, IndustryInspection)
+    assert isinstance(result.real, IndustryInspection)
+
+
+def test_industries_previous_has_no_growth_tables(sut, previous_sut):
+    data = inspect_industries(sut, ["X", "Y"], previous=previous_sut).previous.data
+    for name in _ALL_INDUSTRY_TABLES:
+        if name in _GROWTH_TABLES:
+            assert getattr(data, name) is None, name
+        else:
+            assert getattr(data, name) is not None, name
+
+
+def test_industries_real_holds_only_volumes_and_growth(sut, previous_sut):
+    data = inspect_industries(sut, ["X", "Y"], previous=previous_sut).real.data
+    for name in _ALL_INDUSTRY_TABLES:
+        if name in _REAL_TABLES:
+            assert getattr(data, name) is not None, name
+        else:
+            assert getattr(data, name) is None, name
+
+
+def test_industries_previous_values(sut, previous_sut):
+    previous = inspect_industries(sut, ["X", "Y"], previous=previous_sut).previous.data
+    assert list(previous.balance.columns) == [2021]
+    assert _value(previous.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(36.3)
+    assert _value(previous.balance, 2021, industry="Y", transaction_txt="Gross value added") == pytest.approx(93.5)
+    assert _value(previous.balance, 2021, industry="X", transaction_txt="Input coefficient") == pytest.approx(62.7 / 99.0)
+
+
+def test_industries_real_balance_volumes(sut, previous_sut):
+    real = inspect_industries(sut, ["X", "Y"], previous=previous_sut).real.data
+    assert list(real.balance.columns) == [2020, 2021]
+    # Reference year 2020: current-price values.
+    assert _value(real.balance, 2020, industry="X", transaction_txt="Gross value added") == pytest.approx(40.0)
+    # 2021: values in 2020 prices.
+    assert _value(real.balance, 2021, industry="X", transaction="0100") == pytest.approx(99.0)
+    assert _value(real.balance, 2021, industry="X", transaction="2000") == pytest.approx(62.7)
+    assert _value(real.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(36.3)
+    assert _value(real.balance, 2021, industry="Y", transaction_txt="Gross value added") == pytest.approx(93.5)
+
+
+def test_industries_real_balance_has_no_input_coefficient(sut, previous_sut):
+    result = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    current_labels = result.data.balance.index.get_level_values("transaction_txt")
+    real_labels = result.real.data.balance.index.get_level_values("transaction_txt")
+    assert "Input coefficient" in current_labels
+    assert "Input coefficient" not in real_labels
+    # Everything else is kept, in the same order.
+    expected = result.data.balance[current_labels != "Input coefficient"].index
+    assert result.real.data.balance.index.equals(expected)
+
+
+def test_industries_real_other_reference_year(sut, previous_sut):
+    real = inspect_industries(sut, ["X", "Y"], previous=previous_sut, reference_id=2021).real.data
+    assert _value(real.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(44.0)
+    assert _value(real.balance, 2020, industry="X", transaction_txt="Gross value added") == pytest.approx(44.0 * 40.0 / 36.3)
+
+
+def test_industries_real_growth_is_volume_growth(sut, previous_sut):
+    real = inspect_industries(sut, ["X", "Y"], previous=previous_sut).real.data
+    assert real.balance_growth[2020].isna().all()
+    assert _value(real.balance_growth, 2021, industry="X", transaction="0100") == pytest.approx(99.0 / 100.0 - 1)
+    assert _value(real.balance_growth, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(36.3 / 40.0 - 1)
+
+
+def test_industries_real_product_tables(sut, previous_sut):
+    real = inspect_industries(sut, ["X", "Y"], previous=previous_sut).real.data
+    # Industry X, product A supply: 66 * 0.9 = 59.4 in 2021 (2020 price base).
+    assert _value(real.supply_products, 2021, industry="X", product="A") == pytest.approx(59.4)
+    assert _value(real.supply_products, 2020, industry="X", product="A") == pytest.approx(60.0)
+    # Industry X, product A use at purchasers' prices: 66 * 0.95 = 62.7.
+    assert _value(real.use_products, 2021, industry="X", product="A") == pytest.approx(62.7)
+    assert _value(real.supply_products_growth, 2021, industry="X", product="A") == pytest.approx(59.4 / 60.0 - 1)
+
+
+def test_industries_real_chains_totals_independently(sut_multi):
+    previous = make_previous_sut(sut_multi)
+    real = inspect_industries(sut_multi, ["X"], previous=previous).real.data
+    # Previous 2021, industry X: total output (110 + 11) * 0.9 = 108.9,
+    # total input (66 + 6) * 0.95 = 68.4, GVA = 40.5.
+    assert _value(real.balance, 2021, industry="X", transaction_txt="Total output") == pytest.approx(108.9)
+    assert _value(real.balance, 2021, industry="X", transaction_txt="Total input") == pytest.approx(68.4)
+    assert _value(real.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(40.5)
+
+
+def test_industries_labels_come_from_sut_for_both(sut_with_industry_labels):
+    previous = make_previous_sut(sut_with_industry_labels)
+    result = inspect_industries(sut_with_industry_labels, ["X", "Y"], previous=previous)
+    previous_labels = result.previous.data.balance.index.get_level_values("industry_txt")
+    real_labels = result.real.data.balance.index.get_level_values("industry_txt")
+    assert set(previous_labels) == {"Agriculture", "Trade"}
+    assert set(real_labels) == {"Agriculture", "Trade"}
+
+
+def test_industries_previous_may_include_first_year(sut):
+    previous = make_previous_sut(sut, years=[2020, 2021])
+    real = inspect_industries(sut, ["X", "Y"], previous=previous).real.data
+    assert _value(real.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(36.3)
+
+
+def test_industries_previous_missing_a_year_raises(sut):
+    previous = make_previous_sut(sut, years=[2020])
+    with pytest.raises(ValueError, match="Missing in previous"):
+        inspect_industries(sut, ["X", "Y"], previous=previous)
+
+
+def test_industries_previous_wrong_price_basis_raises(sut, previous_sut):
+    wrong = SUT(
+        price_basis="current_year",
+        supply=previous_sut.supply,
+        use=previous_sut.use,
+        metadata=previous_sut.metadata,
+    )
+    with pytest.raises(ValueError, match="previous_year"):
+        inspect_industries(sut, ["X", "Y"], previous=wrong)
+
+
+def test_industries_previous_missing_column_raises(sut, previous_sut):
+    broken = SUT(
+        price_basis="previous_year",
+        supply=previous_sut.supply.drop(columns=["brch"]),
+        use=previous_sut.use,
+        metadata=previous_sut.metadata,
+    )
+    with pytest.raises(ValueError, match="missing column"):
+        inspect_industries(sut, ["X", "Y"], previous=broken)
+
+
+def test_industries_ids_selection_applies_to_both(sut, previous_sut):
+    result = inspect_industries(sut, ["X", "Y"], ids=[2020, 2021], previous=previous_sut)
+    assert list(result.real.data.balance.columns) == [2020, 2021]
+    assert list(result.previous.data.balance.columns) == [2021]
+
+
+def test_industries_row_only_in_current_gives_nan_series(sut, previous_sut):
+    # Remove product C (industry Y) from previous supply: that row cannot be chained.
+    supply = previous_sut.supply[previous_sut.supply["nrnr"] != "C"]
+    reduced = SUT(
+        price_basis="previous_year",
+        supply=supply,
+        use=previous_sut.use,
+        metadata=previous_sut.metadata,
+    )
+    real = inspect_industries(sut, ["Y"], previous=reduced).real.data
+    assert _value(real.supply_products, 2020, industry="Y", product="C") == pytest.approx(200.0)
+    assert pd.isna(_value(real.supply_products, 2021, industry="Y", product="C"))
+
+
+def test_industries_display_setters_propagate(sut, previous_sut):
+    result = inspect_industries(sut, ["X", "Y"], previous=previous_sut).set_display_decimals(3)
+    assert result.display_configuration.decimals == 3
+    assert result.previous.display_configuration.decimals == 3
+    assert result.real.display_configuration.decimals == 3
+
+
+def test_industries_styled_none_for_absent_tables(sut, previous_sut):
+    result = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    assert result.previous.balance_growth is None
+    assert result.real.use_products_summary is None
+    assert isinstance(result.real.balance, Styler)
+    assert isinstance(result.previous.supply_products_summary, Styler)
+    assert result.real.balance.to_html()
+
+
+def test_industries_tables_description_only_present_tables(sut, previous_sut):
+    result = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    assert len(result.data.tables_description) == 15
+    assert len(result.previous.data.tables_description) == 11
+    assert len(result.real.data.tables_description) == 8
+
+
+def test_industries_previous_and_real_write_to_excel(sut, previous_sut, tmp_path):
+    result = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    previous_path = tmp_path / "previous.xlsx"
+    real_path = tmp_path / "real.xlsx"
+    result.previous.write_to_excel(previous_path)
+    result.real.write_to_excel(real_path)
+    assert len(pd.ExcelFile(previous_path).sheet_names) == 12  # description + 11 tables
+    assert len(pd.ExcelFile(real_path).sheet_names) == 9  # description + 8 tables
+
+
+def test_industries_tables_comparison_includes_previous_and_real(sut, previous_sut):
+    first = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    changed_previous = make_previous_sut(sut, use_factor=1.0)
+    second = inspect_industries(sut, ["X", "Y"], previous=changed_previous)
+    comparison = first.inspect_tables_comparison(second)
+    assert isinstance(comparison.diff.previous, IndustryInspection)
+    assert isinstance(comparison.rel.real, IndustryInspection)
+    # Current-price tables identical; previous-price GVA of X differs:
+    # first 99 - 62.7 = 36.3, second 99 - 66 = 33.
+    assert comparison.diff.data.balance.abs().sum().sum() == 0
+    assert _value(comparison.diff.previous.data.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(3.3)
+    assert _value(comparison.diff.real.data.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(3.3)
+    assert comparison.diff.previous.data.balance_growth is None
+
+
+def test_industries_tables_comparison_none_when_either_side_lacks_previous(sut, previous_sut):
+    with_previous = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    without_previous = inspect_industries(sut, ["X", "Y"])
+    comparison = with_previous.inspect_tables_comparison(without_previous)
+    assert comparison.diff.previous is None
+    assert comparison.rel.real is None
+
+
+def test_industries_comparison_setters_reach_nested(sut, previous_sut):
+    first = inspect_industries(sut, ["X", "Y"], previous=previous_sut)
+    comparison = first.inspect_tables_comparison(first).set_display_decimals(3)
+    assert comparison.diff.real.display_configuration.decimals == 3
+    assert comparison.rel.previous.display_configuration.decimals == 3
+
+
+def test_industries_sut_method_passes_previous_and_reference_id(sut, previous_sut):
+    result = sut.inspect_industries(["X", "Y"], previous=previous_sut, reference_id=2021)
+    assert _value(result.real.data.balance, 2021, industry="X", transaction_txt="Gross value added") == pytest.approx(44.0)
+
+
+def test_industries_sut_method_passes_percentiles_and_coverage_thresholds(sut):
+    result = sut.inspect_industries(["X"], percentiles=[0.0], coverage_thresholds=[0.9])
+    rows = set(result.data.supply_products_summary.index.get_level_values("summary"))
+    assert "value_min" in rows
+    assert "n_products_p90" in rows
+    assert "value_median" not in rows
+    assert "n_products_p80" not in rows

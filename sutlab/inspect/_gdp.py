@@ -14,7 +14,16 @@ from pandas.io.formats.style import Styler
 
 from sutlab.sut import SUT
 from sutlab.derive import compute_chained_series_annual
-from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import (
+    _align_rows,
+    _apply_display_config,
+    _build_growth_table,
+    _compare_previous_and_real,
+    _get_index_values,
+    _present_tables_description,
+    _propagate_display_setter,
+    _write_inspection_to_excel,
+)
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
     _cfg_set_display_unit,
@@ -94,14 +103,7 @@ class GdpData:
             "gdp_industries_growth_contributions": "Contribution of each industry's GVA to GDP growth: change divided by previous year's GDP.",
             "gdp_industries_growth_contributions_distribution": "Each industry row's contribution as a share of GDP growth (shares add up to 100%; unstable when growth is near zero).",
         }
-        present = [
-            name for name in descriptions
-            if getattr(self, name) is not None
-        ]
-        return pd.DataFrame(
-            {"description": [descriptions[name] for name in present]},
-            index=pd.Index(present, name="name"),
-        ).sort_index()
+        return _present_tables_description(self, descriptions)
 
 
 @dataclass
@@ -277,12 +279,6 @@ class GdpInspection:
         """Styled industry contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
         return self._styled("gdp_industries_growth_contributions_distribution", as_percentage=True)
 
-    def _propagate(self, updated: "GdpInspection", method_name: str, *args) -> "GdpInspection":
-        """Apply the same display setter to ``previous`` and ``real`` and attach them to ``updated``."""
-        new_previous = getattr(self.previous, method_name)(*args) if self.previous is not None else None
-        new_real = getattr(self.real, method_name)(*args) if self.real is not None else None
-        return dataclasses.replace(updated, previous=new_previous, real=new_real)
-
     def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
         """Write tables to an Excel file, one sheet per table.
 
@@ -309,7 +305,7 @@ class GdpInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit)), "set_display_unit", display_unit)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit)), "set_display_unit", display_unit)
 
     def set_display_rel_base(self, rel_base: int) -> "GdpInspection":
         """Return a copy with ``rel_base`` set to the given value.
@@ -319,7 +315,7 @@ class GdpInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base)), "set_display_rel_base", rel_base)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base)), "set_display_rel_base", rel_base)
 
     def set_display_decimals(self, decimals: int) -> "GdpInspection":
         """Return a copy with ``decimals`` set to the given value.
@@ -330,7 +326,7 @@ class GdpInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals)), "set_display_decimals", decimals)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals)), "set_display_decimals", decimals)
 
     def set_display_index(self, level: str, values) -> "GdpInspection":
         """Return a copy with ``values`` added (union) to the display filter for ``level``.
@@ -342,7 +338,7 @@ class GdpInspection:
         values : str, int, or list of str/int
             Values (or patterns) to keep.
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values)), "set_display_index", level, values)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values)), "set_display_index", level, values)
 
     def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "GdpInspection":
         """Return a copy with rows sorted by ``column`` within each index group.
@@ -354,7 +350,7 @@ class GdpInspection:
         ascending : bool
             Sort direction. Default ``False`` (descending).
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending)), "set_display_sort_column", column, ascending)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending)), "set_display_sort_column", column, ascending)
 
     def set_display_sort_ids_ascending(self, ascending: bool = True) -> "GdpInspection":
         """Return a copy with id columns sorted ascending or descending.
@@ -368,7 +364,7 @@ class GdpInspection:
         ascending : bool
             ``True`` for ascending (default), ``False`` for descending.
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending)), "set_display_sort_ids_ascending", ascending)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending)), "set_display_sort_ids_ascending", ascending)
 
     def set_display_values_n_largest(self, n: int, column: str) -> "GdpInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
@@ -380,11 +376,11 @@ class GdpInspection:
         column : str
             Column name to rank by.
         """
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column)), "set_display_values_n_largest", n, column)
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column)), "set_display_values_n_largest", n, column)
 
     def set_display_configuration_to_defaults(self) -> "GdpInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
-        return self._propagate(dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration)), "set_display_configuration_to_defaults")
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration)), "set_display_configuration_to_defaults")
 
     def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations for a table after applying display config.
@@ -458,16 +454,7 @@ class GdpInspection:
             )
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
 
-        # previous and real are compared the same way when both sides have them.
-        diff_previous = rel_previous = None
-        if self.previous is not None and other.previous is not None:
-            previous_comparison = self.previous.inspect_tables_comparison(other.previous)
-            diff_previous, rel_previous = previous_comparison.diff, previous_comparison.rel
-
-        diff_real = rel_real = None
-        if self.real is not None and other.real is not None:
-            real_comparison = self.real.inspect_tables_comparison(other.real)
-            diff_real, rel_real = real_comparison.diff, real_comparison.rel
+        diff_previous, rel_previous, diff_real, rel_real = _compare_previous_and_real(self, other)
 
         diff = GdpInspection(
             data=GdpData(**diff_fields),
@@ -1305,17 +1292,6 @@ def _build_previous_inspection(tables: _BaseTables) -> GdpInspection:
             gdp_industries_growth_contributions_distribution=None,
         )
     )
-
-
-def _align_rows(current: pd.DataFrame, previous: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Reindex both tables to the same rows (current's rows first, then extra rows of previous).
-
-    Rows present in only one table become NaN in the other, so the series
-    for such rows is NaN after chaining.
-    """
-    extra_rows = previous.index.difference(current.index, sort=False)
-    all_rows = current.index.append(extra_rows)
-    return current.reindex(all_rows), previous.reindex(all_rows)
 
 
 def _build_real_contributions_table(
