@@ -130,6 +130,6 @@ Values are illustrative. Note GDP differs between approaches — reflecting an u
 | | **Export, netto** | **-170** | **-175** | **-175** |
 | | **GDP** | **1,770** | **1,883** | **1,997** |
 
-## Relation to inspect_aggregates_real (future)
+## Relation to inspect_gdp_real (future)
 
-`inspect_aggregates_real(sut_current, sut_previous, ...)` will produce the same table structure but with chain-linked volume indices. Chain-linking is not additive, so derived rows (`Gross Value Added`, `GDP`, etc.) must be chain-linked independently, not computed as sums of chain-linked component rows. The two functions will share a private helper that defines the row structure (ESA code mappings, sign conventions, derived row positions) separately from value computation.
+`inspect_gdp_real(sut_current, sut_previous, ...)` will produce the same table structure but with chain-linked volume indices. Chain-linking is not additive, so derived rows (`Gross Value Added`, `GDP`, etc.) must be chain-linked independently, not computed as sums of chain-linked component rows. The two functions will share a private helper that defines the row structure (ESA code mappings, sign conventions, derived row positions) separately from value computation.
