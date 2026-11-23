@@ -23,7 +23,20 @@ from sutlab.inspect._display_config import (
     _cfg_set_display_values_n_largest,
     _cfg_reset_to_defaults,
 )
-from sutlab.inspect._shared import _apply_display_config, _build_growth_table, _build_summary_table, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import (
+    _apply_display_config,
+    _build_growth_table,
+    _build_summary_table,
+    _chain_value_table,
+    _compare_previous_and_real,
+    _get_index_values,
+    _prepare_previous_sut,
+    _present_tables_description,
+    _propagate_display_setter,
+    _resolve_previous_ids,
+    _returns_none_if_table_absent,
+    _write_inspection_to_excel,
+)
 from sutlab.inspect._style import (
     _format_number,
     _format_percentage,
@@ -58,66 +71,46 @@ class ProductInspectionData:
     which return styled versions.
     """
 
-    balance: pd.DataFrame
-    supply: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
-    balance_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    balance_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    supply_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
+    balance: pd.DataFrame | None
+    supply: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_summary: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_summary: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    balance_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    balance_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    supply_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_rates: pd.DataFrame | None = field(default_factory=pd.DataFrame)
 
     @property
     def tables_description(self) -> pd.DataFrame:
-        """DataFrame with ``name`` as index and a ``description`` column."""
-        return pd.DataFrame(
-            {
-                "description": [
-                    "Supply and use totals side-by-side with a balance row, at purchasers' prices.",
-                    "Supply values broken down by transaction and category.",
-                    "Use values broken down by transaction and category, at purchasers' prices.",
-                    "Per-product statistics summarising the supply category breakdown (totals, counts, percentiles).",
-                    "Per-product statistics summarising the use category breakdown (totals, counts, percentiles).",
-                    "Balance table values expressed as shares of the product total.",
-                    "Supply values expressed as shares of the supply total.",
-                    "Use values expressed as shares of the use total.",
-                    "Year-on-year growth rates of the balance table.",
-                    "Year-on-year growth rates of supply values.",
-                    "Year-on-year growth rates of use values.",
-                    "Price layer values (gap between basic and purchasers' prices) by layer.",
-                    "Each price layer expressed as a share of total price layers.",
-                    "Year-on-year growth rates of price layer values.",
-                    "Each price layer expressed as a rate relative to basic-price supply.",
-                ]
-            },
-            index=pd.Index(
-                [
-                    "balance",
-                    "supply",
-                    "use",
-                    "supply_summary",
-                    "use_summary",
-                    "balance_distribution",
-                    "supply_distribution",
-                    "use_distribution",
-                    "balance_growth",
-                    "supply_growth",
-                    "use_growth",
-                    "price_layers",
-                    "price_layers_distribution",
-                    "price_layers_growth",
-                    "price_layers_rates",
-                ],
-                name="name",
-            ),
-        ).sort_index()
+        """DataFrame with ``name`` as index and a ``description`` column.
+
+        Only tables that are present (not ``None``) are listed.
+        """
+        descriptions = {
+            "balance": "Supply and use totals side-by-side with a balance row, at purchasers' prices.",
+            "supply": "Supply values broken down by transaction and category.",
+            "use": "Use values broken down by transaction and category, at purchasers' prices.",
+            "supply_summary": "Per-product statistics summarising the supply category breakdown (totals, counts, percentiles).",
+            "use_summary": "Per-product statistics summarising the use category breakdown (totals, counts, percentiles).",
+            "balance_distribution": "Balance table values expressed as shares of the product total.",
+            "supply_distribution": "Supply values expressed as shares of the supply total.",
+            "use_distribution": "Use values expressed as shares of the use total.",
+            "balance_growth": "Year-on-year growth rates of the balance table.",
+            "supply_growth": "Year-on-year growth rates of supply values.",
+            "use_growth": "Year-on-year growth rates of use values.",
+            "price_layers": "Price layer values (gap between basic and purchasers' prices) by layer.",
+            "price_layers_distribution": "Each price layer expressed as a share of total price layers.",
+            "price_layers_growth": "Year-on-year growth rates of price layer values.",
+            "price_layers_rates": "Each price layer expressed as a rate relative to basic-price supply.",
+        }
+        return _present_tables_description(self, descriptions)
 
 
 _PRODUCT_PROTECTED_TABLES = frozenset({
@@ -161,6 +154,25 @@ class ProductInspection:
     Raw DataFrames are available under ``result.data``. The properties on
     this class return :class:`~pandas.io.formats.style.Styler` objects that
     render with European number formatting in Jupyter notebooks.
+
+    The tables on the result itself are in current prices. When ``previous``
+    was given to :func:`inspect_products`, two more inspections of this same
+    class are available (both ``None`` otherwise):
+
+    - ``result.previous`` holds the tables built from the previous-year-price
+      SUT: the value tables, distributions, rates and summaries. The
+      ``_growth`` tables are ``None`` there (growth between values in
+      previous-year prices would mix price bases).
+    - ``result.real`` holds chain-linked volumes in reference-year prices:
+      ``balance``, ``supply``, ``use`` and ``price_layers``, plus their
+      ``_growth`` tables (real growth). Every row, including totals, is
+      chained independently, so rows do not add up except in the reference
+      year; the exception is the ``Balance`` row of ``balance``, which is
+      the difference between the chained ``Total supply`` and ``Total use``
+      rows. All other tables are ``None`` there (shares and rates of chained
+      volumes are not meaningful).
+
+    Tables that are ``None`` give ``None`` for their styled property.
 
     Attributes
     ----------
@@ -291,6 +303,8 @@ class ProductInspection:
     display_configuration: DisplayConfiguration = field(default_factory=_product_default_config)
     _all_rel: bool = field(default=False, repr=False)
     _price_layer_columns: list[str] = field(default_factory=list, repr=False)
+    previous: "ProductInspection | None" = None
+    real: "ProductInspection | None" = None
 
     def _number_fmt(self):
         cfg = self.display_configuration
@@ -303,21 +317,25 @@ class ProductInspection:
         return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def balance(self) -> Styler:
         df = _apply_display_config(self.data.balance, "balance", self.display_configuration)
         return _style_balance_table(df, self._number_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def supply(self) -> Styler:
         df = _apply_display_config(self.data.supply, "supply", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "supply")
 
     @property
+    @_returns_none_if_table_absent
     def use(self) -> Styler:
         df = _apply_display_config(self.data.use, "use", self.display_configuration)
         return _style_detail_table(df, self._number_fmt(), "use")
 
     @property
+    @_returns_none_if_table_absent
     def supply_summary(self) -> Styler:
         df = _apply_display_config(self.data.supply_summary, "supply_summary", self.display_configuration)
         cfg = self.display_configuration
@@ -327,6 +345,7 @@ class ProductInspection:
         )
 
     @property
+    @_returns_none_if_table_absent
     def use_summary(self) -> Styler:
         df = _apply_display_config(self.data.use_summary, "use_summary", self.display_configuration)
         cfg = self.display_configuration
@@ -336,51 +355,61 @@ class ProductInspection:
         )
 
     @property
+    @_returns_none_if_table_absent
     def balance_distribution(self) -> Styler:
         df = _apply_display_config(self.data.balance_distribution, "balance_distribution", self.display_configuration)
         return _style_balance_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def supply_distribution(self) -> Styler:
         df = _apply_display_config(self.data.supply_distribution, "supply_distribution", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "supply")
 
     @property
+    @_returns_none_if_table_absent
     def use_distribution(self) -> Styler:
         df = _apply_display_config(self.data.use_distribution, "use_distribution", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use")
 
     @property
+    @_returns_none_if_table_absent
     def balance_growth(self) -> Styler:
         df = _apply_display_config(self.data.balance_growth, "balance_growth", self.display_configuration)
         return _style_balance_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def supply_growth(self) -> Styler:
         df = _apply_display_config(self.data.supply_growth, "supply_growth", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "supply")
 
     @property
+    @_returns_none_if_table_absent
     def use_growth(self) -> Styler:
         df = _apply_display_config(self.data.use_growth, "use_growth", self.display_configuration)
         return _style_detail_table(df, self._pct_fmt(), "use")
 
     @property
+    @_returns_none_if_table_absent
     def price_layers(self) -> Styler:
         df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
         return _style_price_layers_table(df, self._number_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_distribution(self) -> Styler:
         df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
         return _style_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_growth(self) -> Styler:
         df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
         return _style_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_rates(self) -> Styler:
         df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
         return _style_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
@@ -414,7 +443,7 @@ class ProductInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit)), "set_display_unit", display_unit)
 
     def set_display_rel_base(self, rel_base: int) -> "ProductInspection":
         """Return a copy with ``rel_base`` set to the given value.
@@ -424,7 +453,7 @@ class ProductInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base)), "set_display_rel_base", rel_base)
 
     def set_display_decimals(self, decimals: int) -> "ProductInspection":
         """Return a copy with ``decimals`` set to the given value.
@@ -435,7 +464,7 @@ class ProductInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals)), "set_display_decimals", decimals)
 
     def set_display_index(
         self,
@@ -456,7 +485,7 @@ class ProductInspection:
         values : str, int, or list of str/int
             Values (or patterns) to keep.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values)), "set_display_index", level, values)
 
     def set_display_sort_column(
         self,
@@ -476,7 +505,7 @@ class ProductInspection:
         ascending : bool
             Sort direction. Default ``False`` (descending).
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending)), "set_display_sort_column", column, ascending)
 
     def set_display_sort_ids_ascending(self, ascending: bool = True) -> "ProductInspection":
         """Return a copy with id columns sorted ascending or descending.
@@ -490,7 +519,7 @@ class ProductInspection:
         ascending : bool
             ``True`` for ascending (default), ``False`` for descending.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending)), "set_display_sort_ids_ascending", ascending)
 
     def set_display_values_n_largest(self, n: int, column: str) -> "ProductInspection":
         """Return a copy showing only the n rows with the largest values for ``column``.
@@ -506,7 +535,7 @@ class ProductInspection:
         column : str
             Column name to rank by, typically an id value (e.g. ``2023``).
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column)), "set_display_values_n_largest", n, column)
 
     def set_display_configuration_to_defaults(self) -> "ProductInspection":
         """Return a copy with all user-settable display settings reset to defaults.
@@ -514,7 +543,7 @@ class ProductInspection:
         Hard-coded settings (protected tables, protected index values,
         index grouping) are preserved.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration)), "set_display_configuration_to_defaults")
 
     def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations for a table after applying display config.
@@ -559,6 +588,11 @@ class ProductInspection:
     def inspect_tables_comparison(self, other: "ProductInspection") -> TablesComparison:
         """Compare all tables in this inspection with another :class:`ProductInspection`.
 
+        When both inspections have ``previous`` (or ``real``), those are
+        compared the same way and end up as ``.diff.previous`` /
+        ``.rel.previous`` (or ``.real``). If either side lacks one, that part
+        is ``None``.
+
         Computes element-wise differences and relative changes between
         corresponding tables. Index alignment uses an outer join: rows
         present in only one object contribute ``NaN`` on the missing side.
@@ -585,16 +619,21 @@ class ProductInspection:
                 f"Expected ProductInspection, got {type(other).__name__}."
             )
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff_previous, rel_previous, diff_real, rel_real = _compare_previous_and_real(self, other)
         diff = ProductInspection(
             data=ProductInspectionData(**diff_fields),
             display_configuration=self.display_configuration,
             _price_layer_columns=self._price_layer_columns,
+            previous=diff_previous,
+            real=diff_real,
         )
         rel = ProductInspection(
             data=ProductInspectionData(**rel_fields),
             display_configuration=self.display_configuration,
             _all_rel=True,
             _price_layer_columns=self._price_layer_columns,
+            previous=rel_previous,
+            real=rel_real,
         )
         return TablesComparison(diff=diff, rel=rel, display_configuration=self.display_configuration)
 
@@ -606,6 +645,8 @@ def inspect_products(
     *,
     percentiles: list[float] | None = None,
     coverage_thresholds: list[float] | None = None,
+    previous: SUT | None = None,
+    reference_id: int | str | None = None,
 ) -> ProductInspection:
     """
     Return inspection tables for one or more products.
@@ -633,6 +674,18 @@ def inspect_products(
         ``n_categories_p{int(t*100)}`` row with the minimum number of
         (transaction, category) combinations needed to cover ``t * total``.
         Default ``[0.5, 0.8, 0.95]``.
+    previous : SUT or None, optional
+        The same supply-use table collection in previous year's prices
+        (``price_basis = "previous_year"``). For year ``t`` it holds the
+        values of year ``t`` at the prices of year ``t-1``. The column names
+        in ``sut.metadata`` are used for both SUTs. When given, the result
+        also has ``result.previous`` (tables built from ``previous``) and
+        ``result.real`` (chain-linked volumes). See
+        :class:`ProductInspection`.
+    reference_id : value, optional
+        Reference year for the chained volumes in ``result.real``: they are
+        expressed in the prices of that year. Defaults to the first id. Only
+        allowed together with ``previous``.
 
     Returns
     -------
@@ -641,6 +694,8 @@ def inspect_products(
         under ``result.data``; the same-named properties on the returned
         object give styled versions for Jupyter display. See
         :class:`ProductInspection` for field descriptions.
+        ``result.previous`` and ``result.real`` are ``None`` unless
+        ``previous`` was given.
 
     Raises
     ------
@@ -655,7 +710,15 @@ def inspect_products(
         ``name`` column.
     ValueError
         If any value in ``ids`` is not found in the collection.
+    ValueError
+        If ``reference_id`` is given without ``previous``, if
+        ``previous.price_basis`` is not ``"previous_year"``, if ``previous``
+        lacks required columns, or if the ids of ``sut`` and ``previous`` do
+        not fit together (see ``previous``).
     """
+    if previous is None and reference_id is not None:
+        raise ValueError("reference_id can only be used together with previous.")
+
     if percentiles is None:
         percentiles = [0.5, 1.0]
     if coverage_thresholds is None:
@@ -736,13 +799,86 @@ def inspect_products(
         trans_df, sut.metadata.classifications, cols
     )
 
+    context = _ProductContext(
+        matched_products=matched_products,
+        trans_names=trans_names,
+        product_names=product_names,
+        category_names_by_trans=category_names_by_trans,
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
+    )
+
+    data = _build_product_tables(sut, context, all_ids)
+    current_inspection = ProductInspection(
+        data=data,
+        _price_layer_columns=_get_price_layer_columns(cols, sut.use),
+    )
+
+    if previous is None:
+        return current_inspection
+
+    # --- previous-year-price tables and chained volumes ---
+    previous_sut = _prepare_previous_sut(sut, previous, "inspect_products")
+    previous_ids = _resolve_previous_ids(previous_sut, ids)
+    previous_data = _build_product_tables(previous_sut, context, previous_ids)
+
+    previous_inspection = ProductInspection(
+        data=dataclasses.replace(
+            previous_data,
+            balance_growth=None,
+            supply_growth=None,
+            use_growth=None,
+            price_layers_growth=None,
+        ),
+        _price_layer_columns=_get_price_layer_columns(cols, previous_sut.use),
+    )
+    real_inspection = ProductInspection(
+        data=_build_real_product_data(data, previous_data, reference_id),
+        _price_layer_columns=current_inspection._price_layer_columns,
+    )
+
+    return dataclasses.replace(
+        current_inspection,
+        previous=previous_inspection,
+        real=real_inspection,
+    )
+
+
+@dataclass
+class _ProductContext:
+    """Everything the table builders need besides the SUT data and the ids.
+
+    Resolved once from the current-price SUT and its metadata, and reused
+    for the previous-year-price SUT so that both are inspected with the same
+    products, transactions and labels.
+    """
+
+    matched_products: list[str]
+    trans_names: dict[str, str]
+    product_names: dict[str, str]
+    category_names_by_trans: dict[str, dict[str, str]]
+    percentiles: list[float]
+    coverage_thresholds: list[float]
+
+
+def _build_product_tables(
+    sut: SUT,
+    context: _ProductContext,
+    all_ids: list,
+) -> ProductInspectionData:
+    """Build all tables of a :class:`ProductInspectionData` for one SUT."""
+    cols = sut.metadata.columns
+    matched_products = context.matched_products
+    trans_names = context.trans_names
+    product_names = context.product_names
+
     balance = _build_balance_table(
         sut, matched_products, trans_names, product_names, all_ids
     )
     supply = _append_detail_total(
         _build_detail_df(
             sut.supply, matched_products, product_names,
-            trans_names, category_names_by_trans, cols, all_ids,
+            trans_names, context.category_names_by_trans, cols, all_ids,
             price_col=cols.price_basic,
         ).sort_index(),
         all_ids,
@@ -751,7 +887,7 @@ def inspect_products(
     use = _append_detail_total(
         _build_detail_df(
             sut.use, matched_products, product_names,
-            trans_names, category_names_by_trans, cols, all_ids,
+            trans_names, context.category_names_by_trans, cols, all_ids,
             price_col=cols.price_purchasers,
         ).sort_index(),
         all_ids,
@@ -789,8 +925,8 @@ def inspect_products(
         item_levels=["transaction", "category"],
         item_count_label="n_categories",
         total_label="total_supply",
-        percentiles=percentiles,
-        coverage_thresholds=coverage_thresholds,
+        percentiles=context.percentiles,
+        coverage_thresholds=context.coverage_thresholds,
     )
     use_summary = _build_summary_table(
         detail_table=use,
@@ -798,11 +934,11 @@ def inspect_products(
         item_levels=["transaction", "category"],
         item_count_label="n_categories",
         total_label="total_use",
-        percentiles=percentiles,
-        coverage_thresholds=coverage_thresholds,
+        percentiles=context.percentiles,
+        coverage_thresholds=context.coverage_thresholds,
     )
 
-    data = ProductInspectionData(
+    return ProductInspectionData(
         balance=balance,
         supply=supply,
         use=use,
@@ -819,7 +955,70 @@ def inspect_products(
         price_layers_growth=price_layers_growth,
         price_layers_rates=price_layers_rates,
     )
-    return ProductInspection(data=data, _price_layer_columns=_get_price_layer_columns(cols, sut.use))
+
+
+def _build_real_product_data(
+    current: ProductInspectionData,
+    previous: ProductInspectionData,
+    reference_id,
+) -> ProductInspectionData:
+    """Chain the value tables and return the tables of the real inspection.
+
+    Chained: ``balance``, ``supply``, ``use`` and ``price_layers``, each row
+    independently. The ``Balance`` rows of ``balance`` are then replaced by
+    chained ``Total supply`` minus chained ``Total use`` (chaining a
+    difference that is close to zero independently is not meaningful). The
+    ``_growth`` tables are the volume growth from the chain; ``balance_growth``
+    has no ``Balance`` rows, as in current prices. All other tables are
+    ``None``. A table that is empty in current prices stays an empty
+    DataFrame, as in the current-price result.
+    """
+    chained = {}
+    for name in ["balance", "supply", "use", "price_layers"]:
+        series = _chain_value_table(getattr(current, name), getattr(previous, name), reference_id)
+        if series is None:
+            chained[name] = (pd.DataFrame(), pd.DataFrame())
+        else:
+            chained[name] = (series.volumes, series.volume_growth)
+
+    balance_volumes, balance_growth = chained["balance"]
+    if not balance_volumes.empty:
+        balance_volumes = _set_balance_rows_to_difference(balance_volumes)
+        is_balance_row = balance_growth.index.get_level_values("transaction_txt") == "Balance"
+        balance_growth = balance_growth[~is_balance_row]
+
+    return ProductInspectionData(
+        balance=balance_volumes,
+        supply=chained["supply"][0],
+        use=chained["use"][0],
+        supply_summary=None,
+        use_summary=None,
+        balance_distribution=None,
+        supply_distribution=None,
+        use_distribution=None,
+        balance_growth=balance_growth,
+        supply_growth=chained["supply"][1],
+        use_growth=chained["use"][1],
+        price_layers=chained["price_layers"][0],
+        price_layers_distribution=None,
+        price_layers_growth=chained["price_layers"][1],
+        price_layers_rates=None,
+    )
+
+
+def _set_balance_rows_to_difference(balance: pd.DataFrame) -> pd.DataFrame:
+    """Return ``balance`` with each ``Balance`` row set to ``Total supply`` minus ``Total use``."""
+    labels = balance.index.get_level_values("transaction_txt")
+    products = balance.index.get_level_values("product")
+
+    total_supply = balance[labels == "Total supply"].set_axis(products[labels == "Total supply"])
+    total_use = balance[labels == "Total use"].set_axis(products[labels == "Total use"])
+    difference = total_supply - total_use
+
+    is_balance_row = labels == "Balance"
+    result = balance.copy()
+    result.loc[is_balance_row, :] = difference.reindex(products[is_balance_row]).to_numpy()
+    return result
 
 
 def _build_category_names_by_trans(

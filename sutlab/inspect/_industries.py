@@ -28,8 +28,10 @@ from sutlab.inspect._shared import (
     _chain_value_table,
     _compare_previous_and_real,
     _get_index_values,
+    _prepare_previous_sut,
     _present_tables_description,
     _propagate_display_setter,
+    _resolve_previous_ids,
     _returns_none_if_table_absent,
     _write_inspection_to_excel,
 )
@@ -855,7 +857,7 @@ def inspect_industries(
         return current_inspection
 
     # --- previous-year-price tables and chained volumes ---
-    previous_sut = _prepare_previous_sut(sut, previous)
+    previous_sut = _prepare_previous_sut(sut, previous, "inspect_industries")
     previous_ids = _resolve_previous_ids(previous_sut, ids)
     previous_data = _build_industry_tables(previous_sut, context, previous_ids)
 
@@ -1001,50 +1003,6 @@ def _build_industry_tables(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-
-
-def _prepare_previous_sut(sut: SUT, previous: SUT) -> SUT:
-    """Validate the previous-year-price SUT and give it the metadata of ``sut``.
-
-    Using the same metadata for both SUTs keeps column names, classifications
-    and labels identical, so the rows of the two sets of tables line up.
-    """
-    if previous.price_basis != "previous_year":
-        raise ValueError(
-            f"inspect_industries requires previous to have "
-            f"price_basis='previous_year', got '{previous.price_basis}'."
-        )
-
-    cols = sut.metadata.columns
-    supply_required = [cols.id, cols.product, cols.transaction, cols.category, cols.price_basic]
-    use_required = supply_required + [cols.price_purchasers]
-    for table_name, table, required in [
-        ("supply", previous.supply, supply_required),
-        ("use", previous.use, use_required),
-    ]:
-        missing = [column for column in required if column not in table.columns]
-        if missing:
-            raise ValueError(
-                f"previous.{table_name} is missing column(s) {missing}. "
-                f"The column names in sut.metadata are used for both SUTs."
-            )
-
-    return dataclasses.replace(previous, metadata=sut.metadata)
-
-
-def _resolve_previous_ids(previous_sut: SUT, ids) -> list:
-    """Return the ids to use as columns for the previous-year-price tables.
-
-    Without an ``ids`` selection: all ids in ``previous_sut``. With one: the
-    requested ids that exist in ``previous_sut`` (the first id may be
-    absent there; other mismatches are reported when chaining).
-    """
-    id_col = previous_sut.metadata.columns.id
-    available = sorted(set(previous_sut.supply[id_col]) | set(previous_sut.use[id_col]))
-    if ids is None:
-        return available
-    requested = list(ids) if isinstance(ids, (list, range)) else [ids]
-    return [i for i in available if i in requested]
 
 
 def _drop_input_coefficient_rows(balance: pd.DataFrame) -> pd.DataFrame:

@@ -1127,6 +1127,51 @@ def _compare_previous_and_real(first, second) -> tuple:
     return diff_previous, rel_previous, diff_real, rel_real
 
 
+def _prepare_previous_sut(sut, previous, function_name: str):
+    """Validate the previous-year-price SUT and give it the metadata of ``sut``.
+
+    Using the same metadata for both SUTs keeps column names, classifications
+    and labels identical, so the rows of the two sets of tables line up.
+    ``function_name`` is only used in error messages.
+    """
+    if previous.price_basis != "previous_year":
+        raise ValueError(
+            f"{function_name} requires previous to have "
+            f"price_basis='previous_year', got '{previous.price_basis}'."
+        )
+
+    cols = sut.metadata.columns
+    supply_required = [cols.id, cols.product, cols.transaction, cols.category, cols.price_basic]
+    use_required = supply_required + [cols.price_purchasers]
+    for table_name, table, required in [
+        ("supply", previous.supply, supply_required),
+        ("use", previous.use, use_required),
+    ]:
+        missing = [column for column in required if column not in table.columns]
+        if missing:
+            raise ValueError(
+                f"previous.{table_name} is missing column(s) {missing}. "
+                f"The column names in sut.metadata are used for both SUTs."
+            )
+
+    return dataclasses.replace(previous, metadata=sut.metadata)
+
+
+def _resolve_previous_ids(previous_sut, ids) -> list:
+    """Return the ids to use as columns for the previous-year-price tables.
+
+    Without an ``ids`` selection: all ids in ``previous_sut``. With one: the
+    requested ids that exist in ``previous_sut`` (the first id may be
+    absent there; other mismatches are reported when chaining).
+    """
+    id_col = previous_sut.metadata.columns.id
+    available = sorted(set(previous_sut.supply[id_col]) | set(previous_sut.use[id_col]))
+    if ids is None:
+        return available
+    requested = list(ids) if isinstance(ids, (list, range)) else [ids]
+    return [i for i in available if i in requested]
+
+
 def _align_rows(current: pd.DataFrame, previous: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Reindex both tables to the same rows (current's rows first, then extra rows of previous).
 
