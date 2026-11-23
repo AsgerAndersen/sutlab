@@ -51,7 +51,7 @@ from sutlab.inspect import (
     inspect_unbalanced_products,
     inspect_unbalanced_targets,
     inspect_sut_comparison,
-    inspect_gdp_nominal,
+    inspect_gdp,
 )
 from sutlab.derive import compute_price_layer_rates, compute_totals
 from sutlab.balancing import balance_columns, balance_products_use, resolve_target_tolerances, filter_free_cells
@@ -79,7 +79,7 @@ SUT.compute_totals.__doc__ = compute_totals.__doc__
 SUT.inspect_unbalanced_products.__doc__ = inspect_unbalanced_products.__doc__
 SUT.inspect_unbalanced_targets.__doc__ = inspect_unbalanced_targets.__doc__
 SUT.inspect_sut_comparison.__doc__ = inspect_sut_comparison.__doc__
-SUT.inspect_gdp_nominal.__doc__ = inspect_gdp_nominal.__doc__
+SUT.inspect_gdp.__doc__ = inspect_gdp.__doc__
 SUT.filter_free_cells.__doc__ = filter_free_cells.__doc__
 SUT.resolve_target_tolerances.__doc__ = resolve_target_tolerances.__doc__
 BalancingTargets.write_to_separated_parquet.__doc__ = write_balancing_targets_to_separated_parquet.__doc__

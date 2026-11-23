@@ -32,10 +32,10 @@ from sutlab.inspect._sut_comparison import (
     SUTComparisonInspection,
     SUTComparisonData,
 )
-from sutlab.inspect._gdp_nominal import (
-    inspect_gdp_nominal,
-    GdpNominalInspection,
-    GdpNominalData,
+from sutlab.inspect._gdp import (
+    inspect_gdp,
+    GdpInspection,
+    GdpData,
 )
 from sutlab.inspect._tables_comparison import TablesComparison
 from sutlab.inspect._display_config import DisplayConfiguration
@@ -74,9 +74,9 @@ __all__ = [
     "inspect_sut_comparison",
     "SUTComparisonInspection",
     "SUTComparisonData",
-    "inspect_gdp_nominal",
-    "GdpNominalInspection",
-    "GdpNominalData",
+    "inspect_gdp",
+    "GdpInspection",
+    "GdpData",
     "TablesComparison",
     "DisplayConfiguration",
 ]

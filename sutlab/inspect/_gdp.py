@@ -1,5 +1,5 @@
 """
-inspect_gdp_nominal: nominal GDP decomposition from a supply-use table.
+inspect_gdp: nominal GDP decomposition from a supply-use table.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from sutlab.inspect._display_config import (
 from sutlab.inspect._style import (
     _make_number_formatter,
     _make_percentage_formatter,
-    _style_gdp_nominal_table,
+    _style_gdp_table,
     _style_tables_description,
 )
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
@@ -56,12 +56,12 @@ _ESA_IMPORT_DUTIES = "D2121"
 
 
 @dataclass
-class GdpNominalData:
-    """Raw DataFrames underlying an :class:`GdpNominalInspection`.
+class GdpData:
+    """Raw DataFrames underlying an :class:`GdpInspection`.
 
     Use this directly for programmatic access. For display in a Jupyter
     notebook, use the corresponding properties on
-    :class:`GdpNominalInspection` once styling is added.
+    :class:`GdpInspection` once styling is added.
     """
 
     gdp: pd.DataFrame
@@ -112,9 +112,9 @@ class GdpNominalData:
 
 
 @dataclass
-class GdpNominalInspection:
+class GdpInspection:
     """
-    Result of :func:`inspect_gdp_nominal`.
+    Result of :func:`inspect_gdp`.
 
     Raw DataFrames are available under ``result.data``.
 
@@ -171,7 +171,7 @@ class GdpNominalInspection:
         caveats as ``data.gdp_growth_contributions_distribution``.
     """
 
-    data: GdpNominalData
+    data: GdpData
     display_configuration: DisplayConfiguration = dataclasses.field(default_factory=lambda: DisplayConfiguration(
         protected_tables=frozenset({
             "gdp",
@@ -205,61 +205,61 @@ class GdpNominalInspection:
     def gdp(self) -> Styler:
         """Styled GDP decomposition table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp, "gdp", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._number_fmt())
+        return _style_gdp_table(df, self._number_fmt())
 
     @property
     def gdp_growth(self) -> Styler:
         """Styled year-on-year growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_growth, "gdp_growth", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_distribution(self) -> Styler:
         """Styled GDP share table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_distribution, "gdp_distribution", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_growth_contributions(self) -> Styler:
         """Styled contributions-to-GDP-growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_growth_contributions, "gdp_growth_contributions", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_growth_contributions_distribution(self) -> Styler:
         """Styled contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_growth_contributions_distribution, "gdp_growth_contributions_distribution", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_industries(self) -> Styler:
         """Styled industry GVA table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_industries, "gdp_industries", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._number_fmt())
+        return _style_gdp_table(df, self._number_fmt())
 
     @property
     def gdp_industries_growth(self) -> Styler:
         """Styled industry GVA growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_industries_growth, "gdp_industries_growth", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_industries_distribution(self) -> Styler:
         """Styled industry GVA share-of-GDP table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_industries_distribution, "gdp_industries_distribution", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_industries_growth_contributions(self) -> Styler:
         """Styled industry contributions-to-GDP-growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_industries_growth_contributions, "gdp_industries_growth_contributions", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     @property
     def gdp_industries_growth_contributions_distribution(self) -> Styler:
         """Styled industry contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_industries_growth_contributions_distribution, "gdp_industries_growth_contributions_distribution", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._pct_fmt())
+        return _style_gdp_table(df, self._pct_fmt())
 
     def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
         """Write tables to an Excel file, one sheet per table.
@@ -278,7 +278,7 @@ class GdpNominalInspection:
         cfg = self.display_configuration
         _write_inspection_to_excel(self, path, cfg.display_unit, cfg.rel_base, cfg.decimals, tables=tables)
 
-    def set_display_unit(self, display_unit: float | None) -> "GdpNominalInspection":
+    def set_display_unit(self, display_unit: float | None) -> "GdpInspection":
         """Return a copy with ``display_unit`` set to the given value.
 
         Parameters
@@ -289,7 +289,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
 
-    def set_display_rel_base(self, rel_base: int) -> "GdpNominalInspection":
+    def set_display_rel_base(self, rel_base: int) -> "GdpInspection":
         """Return a copy with ``rel_base`` set to the given value.
 
         Parameters
@@ -299,7 +299,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
 
-    def set_display_decimals(self, decimals: int) -> "GdpNominalInspection":
+    def set_display_decimals(self, decimals: int) -> "GdpInspection":
         """Return a copy with ``decimals`` set to the given value.
 
         Parameters
@@ -310,7 +310,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
 
-    def set_display_index(self, level: str, values) -> "GdpNominalInspection":
+    def set_display_index(self, level: str, values) -> "GdpInspection":
         """Return a copy with ``values`` added (union) to the display filter for ``level``.
 
         Parameters
@@ -322,7 +322,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
 
-    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "GdpNominalInspection":
+    def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "GdpInspection":
         """Return a copy with rows sorted by ``column`` within each index group.
 
         Parameters
@@ -334,7 +334,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
 
-    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "GdpNominalInspection":
+    def set_display_sort_ids_ascending(self, ascending: bool = True) -> "GdpInspection":
         """Return a copy with id columns sorted ascending or descending.
 
         Controls left-to-right column order for all tables (id values are the
@@ -348,7 +348,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
 
-    def set_display_values_n_largest(self, n: int, column: str) -> "GdpNominalInspection":
+    def set_display_values_n_largest(self, n: int, column: str) -> "GdpInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
 
         Parameters
@@ -360,7 +360,7 @@ class GdpNominalInspection:
         """
         return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
 
-    def set_display_configuration_to_defaults(self) -> "GdpNominalInspection":
+    def set_display_configuration_to_defaults(self) -> "GdpInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
         return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
 
@@ -404,39 +404,39 @@ class GdpNominalInspection:
         """Styled table with ``name`` as index and a ``description`` column."""
         return _style_tables_description(self.data.tables_description)
 
-    def inspect_tables_comparison(self, other: "GdpNominalInspection") -> TablesComparison:
-        """Compare all tables in this inspection with another :class:`GdpNominalInspection`.
+    def inspect_tables_comparison(self, other: "GdpInspection") -> TablesComparison:
+        """Compare all tables in this inspection with another :class:`GdpInspection`.
 
         Computes element-wise differences and relative changes between
         corresponding tables. Index alignment uses an outer join.
 
         Parameters
         ----------
-        other : GdpNominalInspection
+        other : GdpInspection
             The inspection result to compare against.
 
         Returns
         -------
         TablesComparison
             Contains ``.diff`` and ``.rel`` as
-            :class:`GdpNominalInspection` instances.
+            :class:`GdpInspection` instances.
 
         Raises
         ------
         TypeError
-            If ``other`` is not a :class:`GdpNominalInspection`.
+            If ``other`` is not a :class:`GdpInspection`.
         """
-        if not isinstance(other, GdpNominalInspection):
+        if not isinstance(other, GdpInspection):
             raise TypeError(
-                f"Expected GdpNominalInspection, got {type(other).__name__}."
+                f"Expected GdpInspection, got {type(other).__name__}."
             )
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
-        diff = GdpNominalInspection(
-            data=GdpNominalData(**diff_fields),
+        diff = GdpInspection(
+            data=GdpData(**diff_fields),
             display_configuration=self.display_configuration,
         )
-        rel = GdpNominalInspection(
-            data=GdpNominalData(**rel_fields),
+        rel = GdpInspection(
+            data=GdpData(**rel_fields),
             display_configuration=self.display_configuration,
             _all_rel=True,
         )
@@ -447,10 +447,10 @@ class GdpNominalInspection:
         )
 
 
-def inspect_gdp_nominal(
+def inspect_gdp(
     sut: SUT,
     gdp_decomp: pd.DataFrame | None = None,
-) -> GdpNominalInspection:
+) -> GdpInspection:
     """
     Build a nominal GDP decomposition table from a supply-use table.
 
@@ -485,7 +485,7 @@ def inspect_gdp_nominal(
 
     Returns
     -------
-    GdpNominalInspection
+    GdpInspection
         Inspection result with a ``.data.gdp`` DataFrame. Columns are id
         values sorted ascending. Rows have a 2-level MultiIndex:
         ``"Production"`` or ``"Expenditure"`` as level 0, component label
@@ -501,13 +501,13 @@ def inspect_gdp_nominal(
     """
     if sut.price_basis != "current_year":
         raise ValueError(
-            f"inspect_gdp_nominal requires price_basis='current_year', "
+            f"inspect_gdp requires price_basis='current_year', "
             f"got '{sut.price_basis}'."
         )
 
     if sut.metadata is None:
         raise ValueError(
-            "inspect_gdp_nominal requires sut.metadata to be set."
+            "inspect_gdp requires sut.metadata to be set."
         )
 
     cols = sut.metadata.columns
@@ -515,7 +515,7 @@ def inspect_gdp_nominal(
     classifications = sut.metadata.classifications
     if classifications is None or classifications.transactions is None:
         raise ValueError(
-            "inspect_gdp_nominal requires a transactions classification "
+            "inspect_gdp requires a transactions classification "
             "table (SUTClassifications.transactions) with 'esa_code' and "
             "'table' columns."
         )
@@ -570,8 +570,8 @@ def inspect_gdp_nominal(
         gdp_industries_growth_contributions_df
     )
 
-    return GdpNominalInspection(
-        data=GdpNominalData(
+    return GdpInspection(
+        data=GdpData(
             gdp=gdp_df,
             gdp_growth=gdp_growth_df,
             gdp_distribution=gdp_distribution_df,
@@ -638,7 +638,7 @@ def _resolve_trans_info(
     else:
         if "gdp_decomp" not in trans_class.columns:
             raise ValueError(
-                "inspect_gdp_nominal requires a 'gdp_decomp' column on "
+                "inspect_gdp requires a 'gdp_decomp' column on "
                 "the transactions classification. Either add it to the "
                 "classification table or supply it via the gdp_decomp argument."
             )

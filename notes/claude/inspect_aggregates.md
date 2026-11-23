@@ -1,12 +1,12 @@
-# inspect_gdp_nominal — Design Reference
+# inspect_gdp — Design Reference
 
 ## Function signature
 
 ```python
-inspect_gdp_nominal(
+inspect_gdp(
     sut: SUT,
     gdp_decomp: pd.DataFrame | None = None,
-) -> GdpNominalInspection
+) -> GdpInspection
 ```
 
 - `sut` must have `price_basis = "current_year"`
@@ -15,7 +15,7 @@ inspect_gdp_nominal(
 
 ## Module location
 
-`sutlab/inspect/_gdp_nominal.py`, re-exported from `sutlab/inspect/__init__.py`.
+`sutlab/inspect/_gdp.py`, re-exported from `sutlab/inspect/__init__.py`.
 
 ## gdp_decomp column in metadata
 
@@ -85,7 +85,7 @@ The SUT is not necessarily balanced, so the GDP figures from Production and Expe
 
 ## Output object
 
-`GdpNominalInspection` with a `.data` attribute holding the GDP DataFrame. Styling deferred to a later session.
+`GdpInspection` with a `.data` attribute holding the GDP DataFrame. Styling deferred to a later session.
 
 ## Example: transaction → ESA code → gdp_decomp mapping
 
@@ -130,6 +130,6 @@ Values are illustrative. Note GDP differs between approaches — reflecting an u
 | | **Export, netto** | **-170** | **-175** | **-175** |
 | | **GDP** | **1,770** | **1,883** | **1,997** |
 
-## Relation to inspect_gdp_real (future)
+## Chained volume series (future)
 
-`inspect_gdp_real(sut_current, sut_previous, ...)` will produce the same table structure but with chain-linked volume indices. Chain-linking is not additive, so derived rows (`Gross Value Added`, `GDP`, etc.) must be chain-linked independently, not computed as sums of chain-linked component rows. The two functions will share a private helper that defines the row structure (ESA code mappings, sign conventions, derived row positions) separately from value computation.
+There will be no separate `inspect_gdp_real`. `inspect_gdp` (formerly `inspect_gdp_nominal`) will take an optional `previous` SUT (`price_basis="previous_year"`) and a keyword-only `reference_id`. When given, the result gets `.previous` (tables from the previous-year-price SUT, no growth or contribution tables) and `.real` (chained volumes in reference-year prices, growth of those volumes, and real growth contributions from the DST method), each an instance of the same inspection class. Chain-linking is not additive, so derived rows (`Gross Value Added`, `GDP`, etc.) are built in each price basis and chained independently, never summed from chained components. The Balance block in `.real` is the difference of the two chained GDP rows. Full design: `decisions.md`, 2026-11-23 (session 19, chained inspect series).

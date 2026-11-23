@@ -2247,7 +2247,7 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit
     return styler
 
 
-def _style_gdp_nominal_table(
+def _style_gdp_table(
     df: pd.DataFrame,
     formatter,
 ) -> Styler:
@@ -2287,7 +2287,7 @@ def _style_gdp_nominal_table(
     Parameters
     ----------
     df : pd.DataFrame
-        GDP aggregates table from :func:`inspect_gdp_nominal`.
+        GDP aggregates table from :func:`inspect_gdp`.
     formatter : callable
         Value formatter passed to ``df.style.format``. Use
         ``_make_number_formatter`` for the nominal table and
