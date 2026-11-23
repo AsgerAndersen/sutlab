@@ -68,10 +68,12 @@ class GdpNominalData:
     gdp_growth: pd.DataFrame
     gdp_distribution: pd.DataFrame
     gdp_contributions: pd.DataFrame
+    gdp_contributions_distribution: pd.DataFrame
     gdp_industries: pd.DataFrame
     gdp_industries_growth: pd.DataFrame
     gdp_industries_distribution: pd.DataFrame
     gdp_industries_contributions: pd.DataFrame
+    gdp_industries_contributions_distribution: pd.DataFrame
 
     @property
     def tables_description(self) -> pd.DataFrame:
@@ -83,10 +85,12 @@ class GdpNominalData:
                     "Year-on-year growth rates of GDP components (Balance block excluded).",
                     "Each component expressed as a share of its block's GDP (Balance block excluded).",
                     "Contribution of each GDP component to GDP growth: change in component divided by previous year's block GDP (Balance block excluded).",
+                    "Each GDP component's contribution as a share of its block's GDP growth (shares add up to 100%; unstable when growth is near zero).",
                     "Gross value added by industry (P1 at basic prices minus P2 at purchasers' prices), with total GVA, net product taxes and GDP.",
                     "Year-on-year growth rates of industry GVA and the GDP bridge rows.",
                     "Industry GVA and the GDP bridge rows as shares of GDP.",
                     "Contribution of each industry's GVA to GDP growth: change divided by previous year's GDP.",
+                    "Each industry row's contribution as a share of GDP growth (shares add up to 100%; unstable when growth is near zero).",
                 ]
             },
             index=pd.Index(
@@ -95,10 +99,12 @@ class GdpNominalData:
                     "gdp_growth",
                     "gdp_distribution",
                     "gdp_contributions",
+                    "gdp_contributions_distribution",
                     "gdp_industries",
                     "gdp_industries_growth",
                     "gdp_industries_distribution",
                     "gdp_industries_contributions",
+                    "gdp_industries_contributions_distribution",
                 ],
                 name="name",
             ),
@@ -139,6 +145,11 @@ class GdpNominalInspection:
         GDP in the same block. Same structure as ``data.gdp_growth``. The
         GDP rows equal GDP growth in the respective block. The first id
         column is ``NaN`` throughout.
+    data.gdp_contributions_distribution : pd.DataFrame
+        ``data.gdp_contributions`` divided by the GDP growth contribution of
+        the same block, so shares add up to 100% within a block (GDP rows are
+        1.0). Unstable when GDP growth is close to zero and sign-flipped when
+        it is negative.
     data.gdp_industries : pd.DataFrame
         Gross value added by industry. Same 2-level index structure as
         ``data.gdp`` with ``"Production"`` at level 0. Rows: one per
@@ -155,6 +166,9 @@ class GdpNominalInspection:
     data.gdp_industries_contributions : pd.DataFrame
         Contribution of each row of ``data.gdp_industries`` to GDP growth
         (change divided by previous id's GDP).
+    data.gdp_industries_contributions_distribution : pd.DataFrame
+        ``data.gdp_industries_contributions`` divided by GDP growth. Same
+        caveats as ``data.gdp_contributions_distribution``.
     """
 
     data: GdpNominalData
@@ -164,10 +178,12 @@ class GdpNominalInspection:
             "gdp_growth",
             "gdp_distribution",
             "gdp_contributions",
+            "gdp_contributions_distribution",
             "gdp_industries",
             "gdp_industries_growth",
             "gdp_industries_distribution",
             "gdp_industries_contributions",
+            "gdp_industries_contributions_distribution",
         }),
         protected_index_values={},
         index_grouping={},
@@ -178,6 +194,11 @@ class GdpNominalInspection:
     def _pct_fmt(self):
         cfg = self.display_configuration
         return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
+
+    def _contributions_fmt(self):
+        # Contributions to growth are small, so they get one more decimal.
+        cfg = self.display_configuration
+        return _make_percentage_formatter(cfg.rel_base, cfg.decimals + 1)
 
     def _number_fmt(self):
         cfg = self.display_configuration
@@ -207,6 +228,12 @@ class GdpNominalInspection:
     def gdp_contributions(self) -> Styler:
         """Styled contributions-to-GDP-growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_contributions, "gdp_contributions", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._contributions_fmt())
+
+    @property
+    def gdp_contributions_distribution(self) -> Styler:
+        """Styled contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_contributions_distribution, "gdp_contributions_distribution", self.display_configuration)
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     @property
@@ -231,6 +258,12 @@ class GdpNominalInspection:
     def gdp_industries_contributions(self) -> Styler:
         """Styled industry contributions-to-GDP-growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.gdp_industries_contributions, "gdp_industries_contributions", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._contributions_fmt())
+
+    @property
+    def gdp_industries_contributions_distribution(self) -> Styler:
+        """Styled industry contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
+        df = _apply_display_config(self.data.gdp_industries_contributions_distribution, "gdp_industries_contributions_distribution", self.display_configuration)
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
@@ -529,6 +562,7 @@ def inspect_gdp_nominal(
     gdp_growth_df = _build_growth_table(gdp_without_balance)
     gdp_distribution_df = _build_gdp_distribution(gdp_without_balance)
     gdp_contributions_df = _build_contributions_table(gdp_without_balance)
+    gdp_contributions_distribution_df = _build_contributions_distribution(gdp_contributions_df)
 
     # --- Industry GVA tables ---
     gdp_industries_df = _build_gdp_industries(
@@ -537,6 +571,9 @@ def inspect_gdp_nominal(
     gdp_industries_growth_df = _build_growth_table(gdp_industries_df)
     gdp_industries_distribution_df = _build_gdp_distribution(gdp_industries_df)
     gdp_industries_contributions_df = _build_contributions_table(gdp_industries_df)
+    gdp_industries_contributions_distribution_df = _build_contributions_distribution(
+        gdp_industries_contributions_df
+    )
 
     return GdpNominalInspection(
         data=GdpNominalData(
@@ -544,10 +581,12 @@ def inspect_gdp_nominal(
             gdp_growth=gdp_growth_df,
             gdp_distribution=gdp_distribution_df,
             gdp_contributions=gdp_contributions_df,
+            gdp_contributions_distribution=gdp_contributions_distribution_df,
             gdp_industries=gdp_industries_df,
             gdp_industries_growth=gdp_industries_growth_df,
             gdp_industries_distribution=gdp_industries_distribution_df,
             gdp_industries_contributions=gdp_industries_contributions_df,
+            gdp_industries_contributions_distribution=gdp_industries_contributions_distribution_df,
         )
     )
 
@@ -1006,6 +1045,31 @@ def _build_contributions_table(gdp_table: pd.DataFrame) -> pd.DataFrame:
         keys=[block for block, _ in blocks],
     )
     return result.replace([float("inf"), float("-inf")], float("nan"))
+
+
+def _build_contributions_distribution(contributions: pd.DataFrame) -> pd.DataFrame:
+    """Express each contribution as a share of its block's GDP growth.
+
+    Every row is divided by the ``GDP`` row of the same block in the
+    contributions table, so the shares add up to 100% within a block. The
+    result is unstable when GDP growth is close to zero (shares blow up) and
+    flips sign when growth is negative; values are not masked. Division by
+    exactly zero gives ``NaN``.
+
+    Parameters
+    ----------
+    contributions : pd.DataFrame
+        Output of :func:`_build_contributions_table`.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same shape and index as ``contributions``. Empty if it is empty.
+    """
+    if contributions.empty:
+        return pd.DataFrame()
+    shares = _build_gdp_distribution(contributions)
+    return shares.replace([float("inf"), float("-inf")], float("nan"))
 
 
 def _build_gdp_industries(
