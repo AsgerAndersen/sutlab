@@ -585,10 +585,18 @@ class SUT:
         *,
         categories: str | list[str] | None = None,
         ids=None,
+        percentiles: list[float] | None = None,
+        coverage_thresholds: list[float] | None = None,
+        previous: "SUT | None" = None,
+        reference_id: int | str | None = None,
     ) -> FinalUseInspection:
         """Delegates to :func:`~sutlab.inspect.inspect_final_uses`."""
         from sutlab.inspect import inspect_final_uses
-        return inspect_final_uses(self, transactions, categories=categories, ids=ids)
+        return inspect_final_uses(
+            self, transactions, categories=categories, ids=ids,
+            percentiles=percentiles, coverage_thresholds=coverage_thresholds,
+            previous=previous, reference_id=reference_id,
+        )
 
     def inspect_unbalanced_products(
         self,

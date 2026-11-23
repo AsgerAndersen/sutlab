@@ -13,7 +13,20 @@ from pandas.io.formats.style import Styler
 from sutlab.sut import SUT, _match_codes, _natural_sort_key
 from sutlab.derive import compute_price_layer_rates
 from sutlab.inspect._products import _get_price_layer_columns
-from sutlab.inspect._shared import _build_growth_table, _build_summary_table, _apply_display_config, _get_index_values, _write_inspection_to_excel
+from sutlab.inspect._shared import (
+    _apply_display_config,
+    _build_growth_table,
+    _build_summary_table,
+    _chain_value_table,
+    _compare_previous_and_real,
+    _get_index_values,
+    _prepare_previous_sut,
+    _present_tables_description,
+    _propagate_display_setter,
+    _resolve_previous_ids,
+    _returns_none_if_table_absent,
+    _write_inspection_to_excel,
+)
 from sutlab.inspect._tables_comparison import TablesComparison, _compute_comparison_table_fields
 from sutlab.inspect._display_config import (
     DisplayConfiguration,
@@ -62,63 +75,44 @@ class FinalUseInspectionData:
     once styling is added.
     """
 
-    use: pd.DataFrame
-    use_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_categories: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_categories_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_categories_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
-    use_products_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_rates: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_distribution: pd.DataFrame = field(default_factory=pd.DataFrame)
-    price_layers_growth: pd.DataFrame = field(default_factory=pd.DataFrame)
+    use: pd.DataFrame | None
+    use_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_categories: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_categories_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_categories_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    use_products_summary: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_rates: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_distribution: pd.DataFrame | None = field(default_factory=pd.DataFrame)
+    price_layers_growth: pd.DataFrame | None = field(default_factory=pd.DataFrame)
 
     @property
     def tables_description(self) -> pd.DataFrame:
-        """DataFrame with ``name`` as index and a ``description`` column."""
-        return pd.DataFrame(
-            {
-                "description": [
-                    "Final use totals by transaction (and category where applicable), at purchasers' prices.",
-                    "Each transaction expressed as a share of total final use.",
-                    "Year-on-year growth rates of final use totals.",
-                    "Final use broken down by transaction and category.",
-                    "Category values expressed as shares within each transaction.",
-                    "Year-on-year growth rates of category values.",
-                    "Final use broken down by transaction, category, and product.",
-                    "Product values expressed as shares within each transaction-category group.",
-                    "Year-on-year growth rates of product-level use values.",
-                    "Per-(transaction, category) summary statistics aggregated over products.",
-                    "Price layer values (gap between basic and purchasers' prices) by layer.",
-                    "Each price layer expressed as a rate relative to basic-price use.",
-                    "Each price layer expressed as a share of total price layers.",
-                    "Year-on-year growth rates of price layer values.",
-                ]
-            },
-            index=pd.Index(
-                [
-                    "use",
-                    "use_distribution",
-                    "use_growth",
-                    "use_categories",
-                    "use_categories_distribution",
-                    "use_categories_growth",
-                    "use_products",
-                    "use_products_distribution",
-                    "use_products_growth",
-                    "use_products_summary",
-                    "price_layers",
-                    "price_layers_rates",
-                    "price_layers_distribution",
-                    "price_layers_growth",
-                ],
-                name="name",
-            ),
-        ).sort_index()
+        """DataFrame with ``name`` as index and a ``description`` column.
+
+        Only tables that are present (not ``None``) are listed.
+        """
+        descriptions = {
+            "use": "Final use totals by transaction (and category where applicable), at purchasers' prices.",
+            "use_distribution": "Each transaction expressed as a share of total final use.",
+            "use_growth": "Year-on-year growth rates of final use totals.",
+            "use_categories": "Final use broken down by transaction and category.",
+            "use_categories_distribution": "Category values expressed as shares within each transaction.",
+            "use_categories_growth": "Year-on-year growth rates of category values.",
+            "use_products": "Final use broken down by transaction, category, and product.",
+            "use_products_distribution": "Product values expressed as shares within each transaction-category group.",
+            "use_products_growth": "Year-on-year growth rates of product-level use values.",
+            "use_products_summary": "Per-(transaction, category) summary statistics aggregated over products.",
+            "price_layers": "Price layer values (gap between basic and purchasers' prices) by layer.",
+            "price_layers_rates": "Each price layer expressed as a rate relative to basic-price use.",
+            "price_layers_distribution": "Each price layer expressed as a share of total price layers.",
+            "price_layers_growth": "Year-on-year growth rates of price layer values.",
+        }
+        return _present_tables_description(self, descriptions)
 
 
 _FINAL_USE_INDEX_GROUPING: dict[str, list[str] | None] = {
@@ -154,6 +148,23 @@ class FinalUseInspection:
     Result of :func:`inspect_final_uses`.
 
     Raw DataFrames are available under ``result.data``.
+
+    The tables on the result itself are in current prices. When ``previous``
+    was given to :func:`inspect_final_uses`, two more inspections of this
+    same class are available (both ``None`` otherwise):
+
+    - ``result.previous`` holds the tables built from the previous-year-price
+      SUT: the value tables, distributions, rates and summaries. The
+      ``_growth`` tables are ``None`` there (growth between values in
+      previous-year prices would mix price bases).
+    - ``result.real`` holds chain-linked volumes in reference-year prices:
+      ``use``, ``use_categories``, ``use_products`` and ``price_layers``,
+      plus their ``_growth`` tables (real growth). Every row, including the
+      ``Total use`` row, is chained independently, so rows do not add up
+      except in the reference year. All other tables are ``None`` there
+      (shares and rates of chained volumes are not meaningful).
+
+    Tables that are ``None`` give ``None`` for their styled property.
 
     Attributes
     ----------
@@ -204,6 +215,8 @@ class FinalUseInspection:
     display_configuration: DisplayConfiguration = field(default_factory=_final_use_default_config)
     _all_rel: bool = field(default=False, repr=False)
     _price_layer_columns: list[str] = field(default_factory=list, repr=False)
+    previous: "FinalUseInspection | None" = None
+    real: "FinalUseInspection | None" = None
 
     def _pct_fmt(self):
         cfg = self.display_configuration
@@ -216,60 +229,70 @@ class FinalUseInspection:
         return _make_number_formatter(cfg.display_unit, cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def use(self) -> Styler:
         """Styled transaction-level use table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use, "use", self.display_configuration)
         return _style_final_use_use_table(df, self._number_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_distribution(self) -> Styler:
         """Styled transaction-level share distribution for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_distribution, "use_distribution", self.display_configuration)
         return _style_final_use_use_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_growth(self) -> Styler:
         """Styled transaction-level year-on-year growth for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_growth, "use_growth", self.display_configuration)
         return _style_final_use_use_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_categories(self) -> Styler:
         """Styled use table (by transaction+category) for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_categories, "use_categories", self.display_configuration)
         return _style_final_use_use_categories_table(df, self._number_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_categories_distribution(self) -> Styler:
         """Styled category share distribution for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_categories_distribution, "use_categories_distribution", self.display_configuration)
         return _style_final_use_use_categories_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_categories_growth(self) -> Styler:
         """Styled category year-on-year growth for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_categories_growth, "use_categories_growth", self.display_configuration)
         return _style_final_use_use_categories_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_products(self) -> Styler:
         """Styled use-detail table (with product breakdown) for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products, "use_products", self.display_configuration)
         return _style_final_use_use_products_table(df, self._number_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_products_distribution(self) -> Styler:
         """Styled use-products distribution table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_distribution, "use_products_distribution", self.display_configuration)
         return _style_final_use_use_products_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_products_growth(self) -> Styler:
         """Styled use-products year-on-year growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.use_products_growth, "use_products_growth", self.display_configuration)
         return _style_final_use_use_products_table(df, self._pct_fmt())
 
     @property
+    @_returns_none_if_table_absent
     def use_products_summary(self) -> Styler:
         """Styled per-(transaction, category) product summary statistics for display in a Jupyter notebook."""
         cfg = self.display_configuration
@@ -277,24 +300,28 @@ class FinalUseInspection:
         return _style_final_use_use_products_summary_table(df, "use", cfg.display_unit, cfg.rel_base, all_rel=self._all_rel, decimals=cfg.decimals)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers(self) -> Styler:
         """Styled price layer decomposition table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers, "price_layers", self.display_configuration)
         return _style_final_use_price_layers_table(df, self._number_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_rates(self) -> Styler:
         """Styled step-wise price layer rates for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_rates, "price_layers_rates", self.display_configuration)
         return _style_final_use_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_distribution(self) -> Styler:
         """Styled price layer distribution table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_distribution, "price_layers_distribution", self.display_configuration)
         return _style_final_use_price_layers_table(df, self._pct_fmt(), price_layer_columns=self._price_layer_columns)
 
     @property
+    @_returns_none_if_table_absent
     def price_layers_growth(self) -> Styler:
         """Styled price layer year-on-year growth table for display in a Jupyter notebook."""
         df = _apply_display_config(self.data.price_layers_growth, "price_layers_growth", self.display_configuration)
@@ -329,7 +356,7 @@ class FinalUseInspection:
             Must be a positive power of 10 (e.g. 1000, 1_000_000). ``None``
             disables division.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_unit(self.display_configuration, display_unit)), "set_display_unit", display_unit)
 
     def set_display_rel_base(self, rel_base: int) -> "FinalUseInspection":
         """Return a copy with ``rel_base`` set to the given value.
@@ -339,7 +366,7 @@ class FinalUseInspection:
         rel_base : int
             Must be 100, 1000, or 10000.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_rel_base(self.display_configuration, rel_base)), "set_display_rel_base", rel_base)
 
     def set_display_decimals(self, decimals: int) -> "FinalUseInspection":
         """Return a copy with ``decimals`` set to the given value.
@@ -350,7 +377,7 @@ class FinalUseInspection:
             Number of decimal places in formatted numbers and percentages.
             Must be a non-negative integer.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_decimals(self.display_configuration, decimals)), "set_display_decimals", decimals)
 
     def set_display_index(self, level: str, values) -> "FinalUseInspection":
         """Return a copy with ``values`` added (union) to the display filter for ``level``.
@@ -366,7 +393,7 @@ class FinalUseInspection:
         values : str, int, or list of str/int
             Values (or patterns) to keep.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_index(self.display_configuration, level, values)), "set_display_index", level, values)
 
     def set_display_sort_column(self, column: str | None, ascending: bool = False) -> "FinalUseInspection":
         """Return a copy with rows sorted by ``column`` within each index group.
@@ -378,7 +405,7 @@ class FinalUseInspection:
         ascending : bool
             Sort direction. Default ``False`` (descending).
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_column(self.display_configuration, column, ascending)), "set_display_sort_column", column, ascending)
 
     def set_display_sort_ids_ascending(self, ascending: bool = True) -> "FinalUseInspection":
         """Return a copy with id columns sorted ascending or descending.
@@ -392,7 +419,7 @@ class FinalUseInspection:
         ascending : bool
             ``True`` for ascending (default), ``False`` for descending.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_sort_ids_ascending(self.display_configuration, ascending)), "set_display_sort_ids_ascending", ascending)
 
     def set_display_values_n_largest(self, n: int, column: str) -> "FinalUseInspection":
         """Return a copy showing only the ``n`` rows with largest values for ``column``.
@@ -406,11 +433,11 @@ class FinalUseInspection:
         column : str
             Column name to rank by.
         """
-        return dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_set_display_values_n_largest(self.display_configuration, n, column)), "set_display_values_n_largest", n, column)
 
     def set_display_configuration_to_defaults(self) -> "FinalUseInspection":
         """Return a copy with all user-settable display settings reset to defaults."""
-        return dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration))
+        return _propagate_display_setter(self, dataclasses.replace(self, display_configuration=_cfg_reset_to_defaults(self.display_configuration)), "set_display_configuration_to_defaults")
 
     def get_index_values(self, table: str, levels: str | list[str], *, as_list: bool = False) -> pd.DataFrame | list:
         """Return unique index value combinations for a table after applying display config.
@@ -456,7 +483,10 @@ class FinalUseInspection:
         """Compare all tables in this inspection with another :class:`FinalUseInspection`.
 
         Computes element-wise differences and relative changes between
-        corresponding tables. Index alignment uses an outer join.
+        corresponding tables. Index alignment uses an outer join. When both
+        inspections have ``previous`` (or ``real``), those are compared the
+        same way and end up as ``.diff.previous`` / ``.rel.previous`` (or
+        ``.real``); if either side lacks one, that part is ``None``.
 
         Parameters
         ----------
@@ -479,16 +509,21 @@ class FinalUseInspection:
                 f"Expected FinalUseInspection, got {type(other).__name__}."
             )
         diff_fields, rel_fields = _compute_comparison_table_fields(self.data, other.data)
+        diff_previous, rel_previous, diff_real, rel_real = _compare_previous_and_real(self, other)
         diff = FinalUseInspection(
             data=FinalUseInspectionData(**diff_fields),
             display_configuration=self.display_configuration,
             _price_layer_columns=self._price_layer_columns,
+            previous=diff_previous,
+            real=diff_real,
         )
         rel = FinalUseInspection(
             data=FinalUseInspectionData(**rel_fields),
             display_configuration=self.display_configuration,
             _all_rel=True,
             _price_layer_columns=self._price_layer_columns,
+            previous=rel_previous,
+            real=rel_real,
         )
         return TablesComparison(
             diff=diff,
@@ -505,6 +540,8 @@ def inspect_final_uses(
     ids=None,
     percentiles: list[float] | None = None,
     coverage_thresholds: list[float] | None = None,
+    previous: SUT | None = None,
+    reference_id: int | str | None = None,
 ) -> FinalUseInspection:
     """
     Return inspection tables for one or more final use transactions.
@@ -538,12 +575,25 @@ def inspect_final_uses(
         threshold ``t``, the summary includes an ``n_products_p{int(t*100)}``
         row with the minimum number of products needed to cover ``t * total``.
         Default ``[0.5, 0.8, 0.95]``.
+    previous : SUT or None, optional
+        The same supply-use table collection in previous year's prices
+        (``price_basis = "previous_year"``). For year ``t`` it holds the
+        values of year ``t`` at the prices of year ``t-1``. The column names
+        in ``sut.metadata`` are used for both SUTs. When given, the result
+        also has ``result.previous`` (tables built from ``previous``) and
+        ``result.real`` (chain-linked volumes). See
+        :class:`FinalUseInspection`.
+    reference_id : value, optional
+        Reference year for the chained volumes in ``result.real``: they are
+        expressed in the prices of that year. Defaults to the first id. Only
+        allowed together with ``previous``.
 
     Returns
     -------
     FinalUseInspection
         A dataclass with inspection tables. Raw DataFrames are available
-        under ``result.data``.
+        under ``result.data``. ``result.previous`` and ``result.real`` are
+        ``None`` unless ``previous`` was given.
 
     Raises
     ------
@@ -559,7 +609,15 @@ def inspect_final_uses(
         If no transaction codes match the given ``transactions`` patterns.
     ValueError
         If any value in ``ids`` is not found in the collection.
+    ValueError
+        If ``reference_id`` is given without ``previous``, if
+        ``previous.price_basis`` is not ``"previous_year"``, if ``previous``
+        lacks required columns, or if the ids of ``sut`` and ``previous`` do
+        not fit together (see ``previous``).
     """
+    if previous is None and reference_id is not None:
+        raise ValueError("reference_id can only be used together with previous.")
+
     if sut.metadata is None:
         raise ValueError(
             "sut.metadata is required to call inspect_final_uses. "
@@ -634,9 +692,9 @@ def inspect_final_uses(
         trans_df["esa_code"].astype(str),
     ))
 
-    # Filter use data to matched transactions and (optionally) matched categories.
-    use_matched = sut.use[sut.use[cols.transaction].isin(matched_transactions)]
-
+    # Categories to keep (None = all). Resolved once from the current-price SUT
+    # and reused for the previous-year-price SUT.
+    matched_categories = None
     if categories is not None:
         if isinstance(categories, str):
             cat_patterns = [categories]
@@ -644,6 +702,7 @@ def inspect_final_uses(
             cat_patterns = list(categories)
 
         # Candidate categories: all non-empty category values across matched transactions.
+        use_matched = sut.use[sut.use[cols.transaction].isin(matched_transactions)]
         all_cats = sorted(
             [
                 c for c in use_matched[cols.category].dropna().unique().tolist()
@@ -653,17 +712,90 @@ def inspect_final_uses(
         )
         matched_categories = _match_codes(all_cats, cat_patterns)
 
-        # Include matched categories AND uncategorised rows (empty or NaN category).
-        is_uncategorised = use_matched[cols.category].isna() | (
-            use_matched[cols.category] == ""
-        )
-        use_filtered = use_matched[
-            is_uncategorised | use_matched[cols.category].isin(matched_categories)
-        ]
-    else:
-        use_filtered = use_matched
+    context = _FinalUseContext(
+        matched_transactions=matched_transactions,
+        matched_categories=matched_categories,
+        trans_names=trans_names,
+        trans_esa_codes=trans_esa_codes,
+        percentiles=percentiles,
+        coverage_thresholds=coverage_thresholds,
+    )
 
+    data = _build_final_use_tables(sut, context, all_ids)
+    current_inspection = FinalUseInspection(
+        data=data,
+        _price_layer_columns=_get_price_layer_columns(cols, sut.use),
+    )
+
+    if previous is None:
+        return current_inspection
+
+    # --- previous-year-price tables and chained volumes ---
+    previous_sut = _prepare_previous_sut(sut, previous, "inspect_final_uses")
+    previous_ids = _resolve_previous_ids(previous_sut, ids)
+    previous_data = _build_final_use_tables(previous_sut, context, previous_ids)
+
+    previous_inspection = FinalUseInspection(
+        data=dataclasses.replace(
+            previous_data,
+            use_growth=None,
+            use_categories_growth=None,
+            use_products_growth=None,
+            price_layers_growth=None,
+        ),
+        _price_layer_columns=_get_price_layer_columns(cols, previous_sut.use),
+    )
+    real_inspection = FinalUseInspection(
+        data=_build_real_final_use_data(data, previous_data, reference_id),
+        _price_layer_columns=current_inspection._price_layer_columns,
+    )
+
+    return dataclasses.replace(
+        current_inspection,
+        previous=previous_inspection,
+        real=real_inspection,
+    )
+
+
+@dataclass
+class _FinalUseContext:
+    """Everything the table builders need besides the SUT data and the ids.
+
+    Resolved once from the current-price SUT and its metadata, and reused
+    for the previous-year-price SUT so that both are inspected with the same
+    transactions, categories and labels.
+    """
+
+    matched_transactions: list[str]
+    matched_categories: list[str] | None
+    trans_names: dict[str, str]
+    trans_esa_codes: dict[str, str]
+    percentiles: list[float]
+    coverage_thresholds: list[float]
+
+
+def _build_final_use_tables(
+    sut: SUT,
+    context: _FinalUseContext,
+    all_ids: list,
+) -> FinalUseInspectionData:
+    """Build all tables of a :class:`FinalUseInspectionData` for one SUT."""
+    cols = sut.metadata.columns
     classifications = sut.metadata.classifications
+    matched_transactions = context.matched_transactions
+    trans_names = context.trans_names
+    trans_esa_codes = context.trans_esa_codes
+
+    # Filter use data to matched transactions and (optionally) matched categories.
+    use_filtered = sut.use[sut.use[cols.transaction].isin(matched_transactions)]
+    if context.matched_categories is not None:
+        # Include matched categories AND uncategorised rows (empty or NaN category).
+        is_uncategorised = use_filtered[cols.category].isna() | (
+            use_filtered[cols.category] == ""
+        )
+        use_filtered = use_filtered[
+            is_uncategorised | use_filtered[cols.category].isin(context.matched_categories)
+        ]
 
     use = _build_final_use_use_table(
         use_filtered=use_filtered,
@@ -702,7 +834,7 @@ def inspect_final_uses(
     use_products_distribution = _build_final_use_use_distribution(use_products)
     use_products_growth = _build_growth_table(use_products)
     use_products_summary = _build_final_use_use_products_summary(
-        use_products, percentiles, coverage_thresholds
+        use_products, context.percentiles, context.coverage_thresholds
     )
 
     price_layers = _build_final_use_price_layers_table(
@@ -725,7 +857,7 @@ def inspect_final_uses(
     price_layers_distribution = _build_final_use_price_layers_distribution(price_layers)
     price_layers_growth = _build_growth_table(price_layers)
 
-    data = FinalUseInspectionData(
+    return FinalUseInspectionData(
         use=use,
         use_distribution=use_distribution,
         use_growth=use_growth,
@@ -741,7 +873,45 @@ def inspect_final_uses(
         price_layers_distribution=price_layers_distribution,
         price_layers_growth=price_layers_growth,
     )
-    return FinalUseInspection(data=data, _price_layer_columns=_get_price_layer_columns(cols, sut.use))
+
+
+def _build_real_final_use_data(
+    current: FinalUseInspectionData,
+    previous: FinalUseInspectionData,
+    reference_id,
+) -> FinalUseInspectionData:
+    """Chain the value tables and return the tables of the real inspection.
+
+    Chained: ``use``, ``use_categories``, ``use_products`` and
+    ``price_layers``, each row independently (including the ``Total use``
+    row). The ``_growth`` tables are the volume growth from the chain. All
+    other tables are ``None``. A table that is empty in current prices stays
+    an empty DataFrame, as in the current-price result.
+    """
+    chained = {}
+    for name in ["use", "use_categories", "use_products", "price_layers"]:
+        series = _chain_value_table(getattr(current, name), getattr(previous, name), reference_id)
+        if series is None:
+            chained[name] = (pd.DataFrame(), pd.DataFrame())
+        else:
+            chained[name] = (series.volumes, series.volume_growth)
+
+    return FinalUseInspectionData(
+        use=chained["use"][0],
+        use_distribution=None,
+        use_growth=chained["use"][1],
+        use_categories=chained["use_categories"][0],
+        use_categories_distribution=None,
+        use_categories_growth=chained["use_categories"][1],
+        use_products=chained["use_products"][0],
+        use_products_distribution=None,
+        use_products_growth=chained["use_products"][1],
+        use_products_summary=None,
+        price_layers=chained["price_layers"][0],
+        price_layers_rates=None,
+        price_layers_distribution=None,
+        price_layers_growth=chained["price_layers"][1],
+    )
 
 
 # ---------------------------------------------------------------------------
