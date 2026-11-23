@@ -1755,71 +1755,77 @@ def _build_industry_price_layers_table(
                 .sum()
             )
 
-    blocks = []
+    # Build one wide table per layer (rows = industry x transaction, columns = ids)
+    # with grouped operations, then order the rows industry -> layer -> transaction.
+    industry_position = {industry: i for i, industry in enumerate(matched_industries)}
+    all_trans = sorted(use_p2[trans_col].unique().tolist(), key=_natural_sort_key)
+    trans_position = {trans: i for i, trans in enumerate(all_trans)}
 
-    for industry in matched_industries:
-        industry_txt = industry_names.get(industry, "")
+    pieces = []
+    for layer_position, layer_col in enumerate(layer_cols):
+        if layer_col not in layer_aggs:
+            continue
 
-        for layer_col in layer_cols:
-            if layer_col not in layer_aggs:
-                continue
+        wide = (
+            layer_aggs[layer_col]
+            .set_index([cat_col, trans_col, id_col])[layer_col]
+            .unstack(id_col)
+            .reindex(columns=all_ids)
+            .fillna(0)
+        )
 
-            ind_agg = layer_aggs[layer_col]
-            ind_agg = ind_agg[ind_agg[cat_col] == industry]
+        # Drop (industry, transaction) rows that are all zero across all ids.
+        wide = wide[(wide != 0).any(axis=1)]
+        if wide.empty:
+            continue
 
-            if ind_agg.empty:
-                continue
+        industries_of_rows = wide.index.get_level_values(cat_col)
+        trans_of_rows = wide.index.get_level_values(trans_col)
 
-            wide = ind_agg.pivot_table(
-                index=trans_col,
-                columns=id_col,
-                values=layer_col,
-                aggfunc="sum",
-                fill_value=0,
-            )
-            wide.columns.name = None
-            for id_val in all_ids:
-                if id_val not in wide.columns:
-                    wide[id_val] = 0
-            wide = wide[all_ids]
+        detail = wide.copy()
+        detail["_industry_pos"] = industries_of_rows.map(industry_position)
+        detail["_layer_pos"] = layer_position
+        detail["_trans_pos"] = trans_of_rows.map(trans_position)
+        detail["_industry"] = industries_of_rows
+        detail["_transaction"] = trans_of_rows
+        pieces.append(detail)
 
-            # Drop transactions that are all zero across all ids.
-            non_zero_mask = (wide != 0).any(axis=1)
-            wide = wide[non_zero_mask]
+        if show_total:
+            totals = wide.groupby(level=cat_col, dropna=False).sum()
+            total_rows = totals.copy()
+            total_rows["_industry_pos"] = totals.index.map(industry_position)
+            total_rows["_layer_pos"] = layer_position
+            total_rows["_trans_pos"] = len(all_trans)  # Total row sorts last in block
+            total_rows["_industry"] = totals.index
+            total_rows["_transaction"] = ""
+            pieces.append(total_rows)
 
-            if wide.empty:
-                continue
-
-            use_trans = sorted(wide.index.tolist(), key=_natural_sort_key)
-
-            row_labels = []
-            row_data = []
-
-            for trans in use_trans:
-                trans_txt = trans_names.get(trans, trans)
-                row_labels.append((industry, industry_txt, layer_col, trans, trans_txt))
-                row_data.append(wide.loc[trans, all_ids].tolist())
-
-            if show_total:
-                total = wide.loc[use_trans].sum()
-                row_labels.append((industry, industry_txt, layer_col, "", "Total"))
-                row_data.append(total.tolist())
-
-            block = pd.DataFrame(
-                row_data,
-                index=pd.MultiIndex.from_tuples(
-                    row_labels,
-                    names=["industry", "industry_txt", "price_layer",
-                           "transaction", "transaction_txt"],
-                ),
-                columns=all_ids,
-            )
-            blocks.append(block)
-
-    if not blocks:
+    if not pieces:
         return pd.DataFrame()
 
-    return pd.concat(blocks)
+    combined = pd.concat(pieces, ignore_index=True)
+    combined = combined.sort_values(["_industry_pos", "_layer_pos", "_trans_pos"], kind="stable")
+
+    industry_labels = combined["_industry"].map(lambda code: industry_names.get(code, ""))
+    price_layers = [layer_cols[pos] for pos in combined["_layer_pos"]]
+    transaction_labels = [
+        "Total" if trans == "" else trans_names.get(trans, trans)
+        for trans in combined["_transaction"]
+    ]
+    index = pd.MultiIndex.from_arrays(
+        [
+            combined["_industry"],
+            industry_labels,
+            price_layers,
+            combined["_transaction"],
+            transaction_labels,
+        ],
+        names=["industry", "industry_txt", "price_layer", "transaction", "transaction_txt"],
+    )
+    result = combined[all_ids].copy()
+    result.index = index
+    result.columns = all_ids
+    return result
 
 
 def _build_industry_price_layers_rates(

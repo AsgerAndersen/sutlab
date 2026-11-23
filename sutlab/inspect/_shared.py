@@ -557,36 +557,34 @@ def _build_summary_table(
         + [f"share_{_percentile_label(p)}" for p in sorted_percentiles_desc]
     )
 
-    blocks = []
-    for group in ordered_groups:
-        row_data = [
-            totals_wide.loc[group].tolist(),
-            n_items_wide.loc[group].tolist(),
-        ]
-        for t in sorted_thresholds:
-            if t in coverage_wide and group in coverage_wide[t].index:
-                row_data.append(coverage_wide[t].loc[group].tolist())
-            else:
-                row_data.append([float("nan")] * len(id_cols))
-        for p in sorted_percentiles_desc:
-            row_data.append(value_quantiles[p].loc[group].tolist())
-        for p in sorted_percentiles_desc:
-            row_data.append(share_quantiles[p].loc[group].tolist())
+    # Reindex every statistic to the ordered groups, then interleave them so each
+    # group gets one block of rows in the order given by summary_labels.
+    group_index = pd.MultiIndex.from_tuples(ordered_groups, names=group_levels)
+    nan_table = pd.DataFrame(float("nan"), index=group_index, columns=id_cols)
 
-        row_labels = [(*group, label) for label in summary_labels]
-        block = pd.DataFrame(
-            row_data,
-            index=pd.MultiIndex.from_tuples(
-                row_labels, names=group_levels + ["summary"]
-            ),
-            columns=id_cols,
-        )
-        blocks.append(block)
+    statistics = [totals_wide, n_items_wide]
+    for t in sorted_thresholds:
+        statistics.append(coverage_wide.get(t, nan_table))
+    for p in sorted_percentiles_desc:
+        statistics.append(value_quantiles[p])
+    for p in sorted_percentiles_desc:
+        statistics.append(share_quantiles[p])
 
-    if not blocks:
-        return pd.DataFrame()
+    # Array of shape (groups, summary rows, ids), flattened to (groups * rows, ids).
+    stacked = np.stack(
+        [stat.reindex(group_index)[id_cols].to_numpy(dtype=float) for stat in statistics],
+        axis=1,
+    )
+    flat_values = stacked.reshape(len(ordered_groups) * len(summary_labels), len(id_cols))
 
-    return pd.concat(blocks)
+    row_labels = [
+        (*group, label) for group in ordered_groups for label in summary_labels
+    ]
+    return pd.DataFrame(
+        flat_values,
+        index=pd.MultiIndex.from_tuples(row_labels, names=group_levels + ["summary"]),
+        columns=id_cols,
+    )
 
 
 def _build_growth_table(df: pd.DataFrame) -> pd.DataFrame:
