@@ -145,8 +145,6 @@ def _apply_number_formats(
       regardless of field name or column name.
     - If ``field_name`` ends with ``_distribution``, ``_rates``, or ``_growth``
       all data cells receive the percentage format (``0.0%``).
-    - If ``field_name`` ends with ``_contributions``, the percentage format
-      has one more decimal than ``decimals`` (``0.00%`` by default).
     - Otherwise data cells receive the number format (``#,##0.0``), except
       columns whose name starts with ``rel_``, which receive ``0.0%``.
 
@@ -171,10 +169,6 @@ def _apply_number_formats(
     n_header_rows = df.columns.nlevels
     n_index_cols = df.index.nlevels
     data_cols = list(df.columns)
-
-    # Contributions to growth are small fractions, so they get one extra decimal.
-    if field_name.endswith("_contributions"):
-        decimals = decimals + 1
 
     is_all_percentage = all_rel or field_name.endswith(_PERCENTAGE_FIELD_SUFFIXES)
 

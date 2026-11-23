@@ -823,25 +823,25 @@ def test_gdp_industries_growth(sut):
     assert df.loc[("Production", "X"), 2022] == pytest.approx(40.7 / 37.0 - 1)
 
 
-def test_gdp_industries_contributions(sut):
-    df = inspect_gdp_nominal(sut).data.gdp_industries_contributions
+def test_gdp_industries_growth_contributions(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_growth_contributions
     assert df[2021].isna().all()
     assert df.loc[("Production", "X"), 2022] == pytest.approx(3.7 / 111.0)
     assert df.loc[("Production", "Y"), 2022] == pytest.approx(5.0 / 111.0)
     assert df.loc[("Production", "GDP"), 2022] == pytest.approx(11.1 / 111.0)
 
 
-def test_gdp_industries_contributions_sum_to_gdp_growth(sut):
-    df = inspect_gdp_nominal(sut).data.gdp_industries_contributions
+def test_gdp_industries_growth_contributions_sum_to_gdp_growth(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_growth_contributions
     industry_rows = [label for _, label in df.index if label in {"X", "Y"}]
     total = sum(df.loc[("Production", label), 2022] for label in industry_rows)
     total += df.loc[("Production", "Total product taxes, netto"), 2022]
     assert total == pytest.approx(df.loc[("Production", "GDP"), 2022])
 
 
-def test_gdp_contributions_structure_and_gdp_rows(sut):
+def test_gdp_growth_contributions_structure_and_gdp_rows(sut):
     result = inspect_gdp_nominal(sut).data
-    contributions = result.gdp_contributions
+    contributions = result.gdp_growth_contributions
     growth = result.gdp_growth
     assert contributions.index.equals(growth.index)
     assert "Balance" not in contributions.index.get_level_values(0)
@@ -852,8 +852,8 @@ def test_gdp_contributions_structure_and_gdp_rows(sut):
     assert contributions[2021].isna().all()
 
 
-def test_gdp_contributions_value(sut):
-    contributions = inspect_gdp_nominal(sut).data.gdp_contributions
+def test_gdp_growth_contributions_value(sut):
+    contributions = inspect_gdp_nominal(sut).data.gdp_growth_contributions
     # Gross Value Added: (95.7 - 87) / 111
     assert contributions.loc[("Production", "Gross Value Added"), 2022] == pytest.approx(8.7 / 111.0)
 
@@ -862,13 +862,13 @@ def test_industry_tables_in_description_and_styled(sut):
     result = inspect_gdp_nominal(sut)
     names = set(result.data.tables_description.index)
     for name in (
-        "gdp_contributions",
-        "gdp_contributions_distribution",
+        "gdp_growth_contributions",
+        "gdp_growth_contributions_distribution",
         "gdp_industries",
         "gdp_industries_growth",
         "gdp_industries_distribution",
-        "gdp_industries_contributions",
-        "gdp_industries_contributions_distribution",
+        "gdp_industries_growth_contributions",
+        "gdp_industries_growth_contributions_distribution",
     ):
         assert name in names
         assert getattr(result, name) is not None
@@ -882,8 +882,8 @@ def test_industry_tables_write_to_excel(sut, tmp_path):
     assert len(sheets) == 11
 
 
-def test_gdp_contributions_distribution_values(sut):
-    df = inspect_gdp_nominal(sut).data.gdp_contributions_distribution
+def test_gdp_growth_contributions_distribution_values(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_growth_contributions_distribution
     assert df[2021].isna().all()
     assert df.loc[("Production", "GDP"), 2022] == pytest.approx(1.0)
     assert df.loc[("Expenditure", "GDP"), 2022] == pytest.approx(1.0)
@@ -891,8 +891,8 @@ def test_gdp_contributions_distribution_values(sut):
     assert df.loc[("Production", "Gross Value Added"), 2022] == pytest.approx(8.7 / 11.1)
 
 
-def test_gdp_industries_contributions_distribution_values(sut):
-    df = inspect_gdp_nominal(sut).data.gdp_industries_contributions_distribution
+def test_gdp_industries_growth_contributions_distribution_values(sut):
+    df = inspect_gdp_nominal(sut).data.gdp_industries_growth_contributions_distribution
     assert df.loc[("Production", "X"), 2022] == pytest.approx(3.7 / 11.1)
     assert df.loc[("Production", "GDP"), 2022] == pytest.approx(1.0)
     parts = (
@@ -911,45 +911,5 @@ def test_contributions_distribution_zero_growth_gives_nan(sut):
         use=pd.concat([sut.use[sut.use["year"] == 2021], sut.use[sut.use["year"] == 2021].assign(year=2022)]),
         metadata=sut.metadata,
     )
-    df = inspect_gdp_nominal(sut_same).data.gdp_contributions_distribution
+    df = inspect_gdp_nominal(sut_same).data.gdp_growth_contributions_distribution
     assert df[2022].isna().all()
-
-
-def test_contributions_tables_use_one_extra_decimal(sut):
-    result = inspect_gdp_nominal(sut)
-    growth_html = result.gdp_growth.to_html()
-    contributions_html = result.gdp_contributions.to_html()
-    # Production GDP: growth 10.0%, contribution 10.00% (one more decimal)
-    assert "10,0%" in growth_html
-    assert "10,00%" in contributions_html
-    # Gross Value Added contribution 8.7/111 = 7.84%
-    assert "7,84%" in contributions_html
-    # Shares of growth keep the normal number of decimals
-    assert "78,4%" in result.gdp_contributions_distribution.to_html()
-
-
-def test_contributions_extra_decimal_follows_set_display_decimals(sut):
-    result = inspect_gdp_nominal(sut).set_display_decimals(0)
-    assert "10,0%" in result.gdp_contributions.to_html()
-    assert "10,0%" not in result.gdp_growth.to_html()
-
-
-def test_contributions_excel_percentage_format_has_extra_decimal(sut, tmp_path):
-    from openpyxl import load_workbook
-
-    path = tmp_path / "gdp.xlsx"
-    inspect_gdp_nominal(sut).write_to_excel(path)
-    workbook = load_workbook(path)
-    contributions_sheet = workbook["gdp_contributions"]
-    growth_sheet = workbook["gdp_growth"]
-
-    def _formats(ws):
-        return {
-            cell.number_format
-            for row in ws.iter_rows(min_row=2, min_col=3)
-            for cell in row
-            if isinstance(cell.value, (int, float))
-        }
-
-    assert _formats(contributions_sheet) == {"0.00%"}
-    assert _formats(growth_sheet) == {"0.0%"}

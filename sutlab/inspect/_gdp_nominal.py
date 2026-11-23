@@ -67,13 +67,13 @@ class GdpNominalData:
     gdp: pd.DataFrame
     gdp_growth: pd.DataFrame
     gdp_distribution: pd.DataFrame
-    gdp_contributions: pd.DataFrame
-    gdp_contributions_distribution: pd.DataFrame
+    gdp_growth_contributions: pd.DataFrame
+    gdp_growth_contributions_distribution: pd.DataFrame
     gdp_industries: pd.DataFrame
     gdp_industries_growth: pd.DataFrame
     gdp_industries_distribution: pd.DataFrame
-    gdp_industries_contributions: pd.DataFrame
-    gdp_industries_contributions_distribution: pd.DataFrame
+    gdp_industries_growth_contributions: pd.DataFrame
+    gdp_industries_growth_contributions_distribution: pd.DataFrame
 
     @property
     def tables_description(self) -> pd.DataFrame:
@@ -98,13 +98,13 @@ class GdpNominalData:
                     "gdp",
                     "gdp_growth",
                     "gdp_distribution",
-                    "gdp_contributions",
-                    "gdp_contributions_distribution",
+                    "gdp_growth_contributions",
+                    "gdp_growth_contributions_distribution",
                     "gdp_industries",
                     "gdp_industries_growth",
                     "gdp_industries_distribution",
-                    "gdp_industries_contributions",
-                    "gdp_industries_contributions_distribution",
+                    "gdp_industries_growth_contributions",
+                    "gdp_industries_growth_contributions_distribution",
                 ],
                 name="name",
             ),
@@ -138,15 +138,15 @@ class GdpNominalInspection:
         shares of Production GDP; Expenditure block rows as shares of
         Expenditure GDP. Values are fractions (e.g. ``0.10`` for 10%).
         The GDP rows themselves are included and always equal 1.0.
-    data.gdp_contributions : pd.DataFrame
+    data.gdp_growth_contributions : pd.DataFrame
         Contribution of each component to GDP growth, as a fraction
         (e.g. ``0.01`` for one percentage point). Each value is the change
         in the component since the previous id divided by the previous id's
         GDP in the same block. Same structure as ``data.gdp_growth``. The
         GDP rows equal GDP growth in the respective block. The first id
         column is ``NaN`` throughout.
-    data.gdp_contributions_distribution : pd.DataFrame
-        ``data.gdp_contributions`` divided by the GDP growth contribution of
+    data.gdp_growth_contributions_distribution : pd.DataFrame
+        ``data.gdp_growth_contributions`` divided by the GDP growth contribution of
         the same block, so shares add up to 100% within a block (GDP rows are
         1.0). Unstable when GDP growth is close to zero and sign-flipped when
         it is negative.
@@ -163,12 +163,12 @@ class GdpNominalInspection:
         Each row of ``data.gdp_industries`` as a share of GDP. Industry
         shares add up to GVA's share of GDP; the remainder is net product
         taxes.
-    data.gdp_industries_contributions : pd.DataFrame
+    data.gdp_industries_growth_contributions : pd.DataFrame
         Contribution of each row of ``data.gdp_industries`` to GDP growth
         (change divided by previous id's GDP).
-    data.gdp_industries_contributions_distribution : pd.DataFrame
-        ``data.gdp_industries_contributions`` divided by GDP growth. Same
-        caveats as ``data.gdp_contributions_distribution``.
+    data.gdp_industries_growth_contributions_distribution : pd.DataFrame
+        ``data.gdp_industries_growth_contributions`` divided by GDP growth. Same
+        caveats as ``data.gdp_growth_contributions_distribution``.
     """
 
     data: GdpNominalData
@@ -177,13 +177,13 @@ class GdpNominalInspection:
             "gdp",
             "gdp_growth",
             "gdp_distribution",
-            "gdp_contributions",
-            "gdp_contributions_distribution",
+            "gdp_growth_contributions",
+            "gdp_growth_contributions_distribution",
             "gdp_industries",
             "gdp_industries_growth",
             "gdp_industries_distribution",
-            "gdp_industries_contributions",
-            "gdp_industries_contributions_distribution",
+            "gdp_industries_growth_contributions",
+            "gdp_industries_growth_contributions_distribution",
         }),
         protected_index_values={},
         index_grouping={},
@@ -194,11 +194,6 @@ class GdpNominalInspection:
     def _pct_fmt(self):
         cfg = self.display_configuration
         return _make_percentage_formatter(cfg.rel_base, cfg.decimals)
-
-    def _contributions_fmt(self):
-        # Contributions to growth are small, so they get one more decimal.
-        cfg = self.display_configuration
-        return _make_percentage_formatter(cfg.rel_base, cfg.decimals + 1)
 
     def _number_fmt(self):
         cfg = self.display_configuration
@@ -225,15 +220,15 @@ class GdpNominalInspection:
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     @property
-    def gdp_contributions(self) -> Styler:
+    def gdp_growth_contributions(self) -> Styler:
         """Styled contributions-to-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_contributions, "gdp_contributions", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._contributions_fmt())
+        df = _apply_display_config(self.data.gdp_growth_contributions, "gdp_growth_contributions", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._pct_fmt())
 
     @property
-    def gdp_contributions_distribution(self) -> Styler:
+    def gdp_growth_contributions_distribution(self) -> Styler:
         """Styled contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_contributions_distribution, "gdp_contributions_distribution", self.display_configuration)
+        df = _apply_display_config(self.data.gdp_growth_contributions_distribution, "gdp_growth_contributions_distribution", self.display_configuration)
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     @property
@@ -255,15 +250,15 @@ class GdpNominalInspection:
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     @property
-    def gdp_industries_contributions(self) -> Styler:
+    def gdp_industries_growth_contributions(self) -> Styler:
         """Styled industry contributions-to-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries_contributions, "gdp_industries_contributions", self.display_configuration)
-        return _style_gdp_nominal_table(df, self._contributions_fmt())
+        df = _apply_display_config(self.data.gdp_industries_growth_contributions, "gdp_industries_growth_contributions", self.display_configuration)
+        return _style_gdp_nominal_table(df, self._pct_fmt())
 
     @property
-    def gdp_industries_contributions_distribution(self) -> Styler:
+    def gdp_industries_growth_contributions_distribution(self) -> Styler:
         """Styled industry contributions-as-share-of-GDP-growth table for display in a Jupyter notebook."""
-        df = _apply_display_config(self.data.gdp_industries_contributions_distribution, "gdp_industries_contributions_distribution", self.display_configuration)
+        df = _apply_display_config(self.data.gdp_industries_growth_contributions_distribution, "gdp_industries_growth_contributions_distribution", self.display_configuration)
         return _style_gdp_nominal_table(df, self._pct_fmt())
 
     def write_to_excel(self, path: str | Path, *, tables: str | list[str] | None = None) -> None:
@@ -561,8 +556,8 @@ def inspect_gdp_nominal(
 
     gdp_growth_df = _build_growth_table(gdp_without_balance)
     gdp_distribution_df = _build_gdp_distribution(gdp_without_balance)
-    gdp_contributions_df = _build_contributions_table(gdp_without_balance)
-    gdp_contributions_distribution_df = _build_contributions_distribution(gdp_contributions_df)
+    gdp_growth_contributions_df = _build_contributions_table(gdp_without_balance)
+    gdp_growth_contributions_distribution_df = _build_contributions_distribution(gdp_growth_contributions_df)
 
     # --- Industry GVA tables ---
     gdp_industries_df = _build_gdp_industries(
@@ -570,9 +565,9 @@ def inspect_gdp_nominal(
     )
     gdp_industries_growth_df = _build_growth_table(gdp_industries_df)
     gdp_industries_distribution_df = _build_gdp_distribution(gdp_industries_df)
-    gdp_industries_contributions_df = _build_contributions_table(gdp_industries_df)
-    gdp_industries_contributions_distribution_df = _build_contributions_distribution(
-        gdp_industries_contributions_df
+    gdp_industries_growth_contributions_df = _build_contributions_table(gdp_industries_df)
+    gdp_industries_growth_contributions_distribution_df = _build_contributions_distribution(
+        gdp_industries_growth_contributions_df
     )
 
     return GdpNominalInspection(
@@ -580,13 +575,13 @@ def inspect_gdp_nominal(
             gdp=gdp_df,
             gdp_growth=gdp_growth_df,
             gdp_distribution=gdp_distribution_df,
-            gdp_contributions=gdp_contributions_df,
-            gdp_contributions_distribution=gdp_contributions_distribution_df,
+            gdp_growth_contributions=gdp_growth_contributions_df,
+            gdp_growth_contributions_distribution=gdp_growth_contributions_distribution_df,
             gdp_industries=gdp_industries_df,
             gdp_industries_growth=gdp_industries_growth_df,
             gdp_industries_distribution=gdp_industries_distribution_df,
-            gdp_industries_contributions=gdp_industries_contributions_df,
-            gdp_industries_contributions_distribution=gdp_industries_contributions_distribution_df,
+            gdp_industries_growth_contributions=gdp_industries_growth_contributions_df,
+            gdp_industries_growth_contributions_distribution=gdp_industries_growth_contributions_distribution_df,
         )
     )
 
