@@ -387,7 +387,7 @@ def make_final_annual_sut_paths(
     years: list[int],
     drive: str,
     price_basis: Literal["current_year", "previous_year"],
-) -> list[str]:
+) -> list[Path]:
     """
     Build the paths to the final annual SUT files for a list of years.
 
@@ -396,8 +396,8 @@ def make_final_annual_sut_paths(
     (with ``years`` as the ``id_values``).
 
     The path for 2019 in current year's prices on drive ``"r"`` is
-    ``"r:/afstem19/ta/ta19l"``. In previous year's prices the file name ends
-    with the previous year's two digits: ``"r:/afstem19/ta/ta19f18"``.
+    ``Path("r:/afstem19/ta/ta19l")``. In previous year's prices the file name ends
+    with the previous year's two digits: ``Path("r:/afstem19/ta/ta19f18")``.
 
     Parameters
     ----------
@@ -411,7 +411,7 @@ def make_final_annual_sut_paths(
 
     Returns
     -------
-    list of str
+    list of Path
         One path per year, in the same order as ``years``.
 
     Raises
@@ -433,5 +433,5 @@ def make_final_annual_sut_paths(
             path += "l"
         else:
             path += "f" + str(year - 1)[-2:]
-        paths.append(path)
+        paths.append(Path(path))
     return paths

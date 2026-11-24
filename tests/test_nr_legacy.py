@@ -380,23 +380,23 @@ class TestMakeFinalAnnualSutPaths:
 
     def test_current_year(self):
         assert make_final_annual_sut_paths([2019], "r", "current_year") == [
-            "r:/afstem19/ta/ta19l"
+            Path("r:/afstem19/ta/ta19l")
         ]
 
     def test_previous_year(self):
         assert make_final_annual_sut_paths([2019], "r", "previous_year") == [
-            "r:/afstem19/ta/ta19f18"
+            Path("r:/afstem19/ta/ta19f18")
         ]
 
     def test_multiple_years_keep_order(self):
         assert make_final_annual_sut_paths([2021, 2019], "x", "current_year") == [
-            "x:/afstem21/ta/ta21l",
-            "x:/afstem19/ta/ta19l",
+            Path("x:/afstem21/ta/ta21l"),
+            Path("x:/afstem19/ta/ta19l"),
         ]
 
     def test_century_boundary_previous_year(self):
         assert make_final_annual_sut_paths([2000], "r", "previous_year") == [
-            "r:/afstem00/ta/ta00f99"
+            Path("r:/afstem00/ta/ta00f99")
         ]
 
     def test_error_invalid_price_basis(self):
