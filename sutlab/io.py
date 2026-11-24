@@ -1043,6 +1043,179 @@ def load_sut_from_combined_excel(
     return _assemble_sut(df, metadata, price_basis)
 
 
+# Fixed-width layout of the legacy Statistics Denmark SUT file format.
+# Character positions are (start, end) with end exclusive. Everything after
+# position 140 (status flags, user initials, timestamps) is ignored.
+_FWF_KEY_POSITIONS: list[tuple[int, int]] = [
+    (0, 7),     # product
+    (16, 20),   # transaction
+    (30, 36),   # category
+]
+
+# Six value fields of 16 characters each, starting at position 44.
+# The roles are given in the order the fields appear in the file.
+_FWF_VALUE_ROLES: list[str] = [
+    "price_basic",
+    "wholesale_margins",
+    "retail_margins",
+    "product_taxes_less_subsidies",
+    "vat",
+    "price_purchasers",
+]
+_FWF_VALUE_START = 44
+_FWF_VALUE_WIDTH = 16
+
+
+def load_sut_from_separated_fwf(
+    id_values: list[str | int],
+    paths: list[str | Path],
+    metadata: SUTMetadata,
+    price_basis: Literal["current_year", "previous_year"],
+    *,
+    encoding: str = "latin-1",
+    print_paths: bool = False,
+) -> SUT:
+    """
+    Load a SUT collection from legacy fixed-width files.
+
+    This is the old Statistics Denmark SUT file format: no header, no id
+    column, fixed character positions, and extra columns (status flags, user
+    initials, timestamps) after position 140 which are ignored. Each file
+    holds both supply and use rows for one collection member (typically one
+    year). The corresponding entry in ``id_values`` is added as the id column
+    on load. Supply and use rows are split using the ``table`` column of
+    ``metadata.classifications.transactions``.
+
+    The layout is fixed and not configurable:
+
+    - characters 0-7: product
+    - characters 16-20: transaction
+    - characters 30-36: category (blank for many rows)
+    - characters 44-140: six value fields of 16 characters each, in the
+      order basic prices, wholesale margins, retail margins, taxes less
+      subsidies on products, VAT, purchasers' prices
+
+    Columns are named after the actual column names in ``metadata.columns``.
+    The metadata must therefore define the roles ``wholesale_margins``,
+    ``retail_margins``, ``product_taxes_less_subsidies`` and ``vat``.
+
+    Supply rows only have a value in basic prices; the other value fields are
+    blank and end up as NaN (and are dropped from the supply table).
+
+    Rows are sorted by id, product, transaction, category after loading.
+
+    Parameters
+    ----------
+    id_values : list of str or int
+        Id values for each collection member, one per file. The type is
+        preserved.
+    paths : list of str or Path
+        Paths to the files, in the same order as ``id_values``.
+    metadata : SUTMetadata
+        Metadata for the SUT. ``metadata.classifications.transactions`` must
+        be present — it is used to split supply and use rows.
+    price_basis : {"current_year", "previous_year"}
+        Price basis for the collection.
+    encoding : str, optional
+        File encoding. Defaults to ``"latin-1"``, which can read any byte
+        sequence (the ignored trailing columns may contain non-UTF-8
+        characters).
+    print_paths : bool, optional
+        If ``True``, print the paths being read before loading. Defaults to
+        ``False``.
+
+    Returns
+    -------
+    SUT
+        SUT with supply and use DataFrames populated and ``metadata`` set.
+        ``balancing_id`` is ``None``.
+
+    Raises
+    ------
+    ValueError
+        If ``id_values`` and ``paths`` have different lengths.
+    ValueError
+        If ``metadata.classifications.transactions`` is absent.
+    ValueError
+        If the metadata does not define all four price layer roles used by
+        the format.
+    ValueError
+        If any transaction code in the data is not found in
+        ``metadata.classifications.transactions``.
+    """
+    if len(id_values) != len(paths):
+        raise ValueError(
+            f"id_values and paths must have the same length. "
+            f"Got {len(id_values)} id values and {len(paths)} paths."
+        )
+
+    if metadata.classifications is None or metadata.classifications.transactions is None:
+        raise ValueError(
+            "metadata.classifications.transactions is required to split supply "
+            "and use rows. Load metadata using load_metadata_from_excel, which "
+            "requires a 'transactions' sheet."
+        )
+
+    cols = metadata.columns
+    missing_roles = [
+        role for role in _FWF_VALUE_ROLES if getattr(cols, role) is None
+    ]
+    if missing_roles:
+        raise ValueError(
+            f"The fixed-width format has value fields for {_FWF_VALUE_ROLES}, "
+            f"but the metadata does not define the role(s): {missing_roles}."
+        )
+
+    extra_roles = [
+        role for role in _PRICE_LAYER_ROLES
+        if role not in _FWF_VALUE_ROLES and getattr(cols, role) is not None
+    ]
+    if extra_roles:
+        raise ValueError(
+            f"The metadata defines price layer role(s) {extra_roles} which the "
+            f"fixed-width format has no value field for."
+        )
+
+    if print_paths:
+        basis = _format_price_basis(price_basis)
+        n = len(paths)
+        print(f"Loading SUT ({basis}, {n} member{'s' if n != 1 else ''}):")
+        for id_value, path in zip(id_values, paths):
+            print(f"  {id_value}: {path}")
+
+    key_names = [cols.product, cols.transaction, cols.category]
+    value_names = [getattr(cols, role) for role in _FWF_VALUE_ROLES]
+
+    value_positions = [
+        (
+            _FWF_VALUE_START + i * _FWF_VALUE_WIDTH,
+            _FWF_VALUE_START + (i + 1) * _FWF_VALUE_WIDTH,
+        )
+        for i in range(len(_FWF_VALUE_ROLES))
+    ]
+    colspecs = _FWF_KEY_POSITIONS + value_positions
+    dtypes = {name: str for name in key_names}
+    dtypes.update({name: float for name in value_names})
+
+    frames = []
+    for id_value, path in zip(id_values, paths):
+        df = pd.read_fwf(
+            path,
+            colspecs=colspecs,
+            header=None,
+            names=key_names + value_names,
+            dtype=dtypes,
+            encoding=encoding,
+        )
+        # Rows without a product are not data (e.g. a stray trailing line)
+        df = df.dropna(subset=[cols.product])
+        df.insert(0, cols.id, id_value)
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    return _assemble_sut(combined, metadata, price_basis)
+
+
 def load_sut_from_dataframe(
     df: pd.DataFrame,
     metadata: SUTMetadata,

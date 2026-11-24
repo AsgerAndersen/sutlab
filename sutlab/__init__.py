@@ -8,6 +8,7 @@ from sutlab.io import (
     load_sut_from_combined_csv,
     load_sut_from_separated_excel,
     load_sut_from_combined_excel,
+    load_sut_from_separated_fwf,
     write_sut_to_separated_parquet,
     write_sut_to_combined_parquet,
     write_sut_to_separated_csv,
