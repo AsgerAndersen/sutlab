@@ -217,6 +217,12 @@ must match the actual data column names. Extra columns are silently ignored.
 - `load_sut_from_combined_excel(path, metadata, price_basis)` → `SUT`
 
 "Separated" = one file per member, id supplied by caller; "combined" = single file for all members, id column already present. All six loaders sort by id, product, transaction, category. CSV/Excel loaders read product/transaction/category as str and convert price columns to numeric.
+
+Statistics Denmark legacy fixed-width format (in `sutlab/nr_legacy.py`, not `io.py`; layout hardcoded, see CLAUDE.md):
+- `load_sut_from_separated_nr_legacy_fwf(id_values, paths, metadata, price_basis, *, encoding, print_paths)` → `SUT`
+- `write_sut_to_separated_nr_legacy_fwf(sut, id_values, paths, *, encoding, print_paths)`
+- `make_final_annual_sut_paths(years, drive, price_basis)` → `list[Path]`
+
 - `load_balancing_targets_from_separated_excel(id_values, paths, metadata)` → `BalancingTargets`
 - `load_balancing_targets_from_combined_excel(path, metadata)` → `BalancingTargets`
 - `load_balancing_config_from_excel(metadata, *, tolerances_path, locks_path)` → `BalancingConfig`
