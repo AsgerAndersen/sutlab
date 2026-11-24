@@ -33,6 +33,7 @@ from sutlab.io import (
     write_sut_to_combined_parquet,
     write_sut_to_separated_csv,
     write_sut_to_separated_excel,
+    write_sut_to_separated_fwf,
     write_sut_to_separated_parquet,
 )
 from sutlab.sut import (
@@ -3528,3 +3529,155 @@ class TestLoadSutFromSeparatedFwf:
         path = _write_fwf(tmp_path / "bad", lines)
         with pytest.raises(ValueError, match="9999"):
             load_sut_from_separated_fwf([2021], [path], metadata, "current_year")
+
+
+# ---------------------------------------------------------------------------
+# Tests for write_sut_to_separated_fwf
+# ---------------------------------------------------------------------------
+
+
+class TestWriteSutToSeparatedFwf:
+
+    @pytest.fixture
+    def metadata(self):
+        return _fwf_metadata()
+
+    @pytest.fixture
+    def sut(self, metadata, tmp_path):
+        path = _write_fwf(tmp_path / "in", FWF_LINES)
+        return load_sut_from_separated_fwf([2021, 2022], [path, path], metadata, "current_year")
+
+    def test_writes_one_file_per_id(self, sut, tmp_path):
+        paths = [tmp_path / "a", tmp_path / "b"]
+        write_sut_to_separated_fwf(sut, [2021, 2022], paths)
+        assert all(p.exists() for p in paths)
+
+    def test_roundtrip(self, sut, metadata, tmp_path):
+        paths = [tmp_path / "a", tmp_path / "b"]
+        write_sut_to_separated_fwf(sut, [2021, 2022], paths)
+        result = load_sut_from_separated_fwf([2021, 2022], paths, metadata, "current_year")
+        pd.testing.assert_frame_equal(result.supply, sut.supply)
+        pd.testing.assert_frame_equal(result.use, sut.use)
+
+    def test_only_selected_ids_written(self, sut, metadata, tmp_path):
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2022], [path])
+        result = load_sut_from_separated_fwf([2022], [path], metadata, "current_year")
+        assert len(result.supply) == 2
+        assert len(result.use) == 3
+
+    def test_exact_line_format(self, sut, tmp_path):
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2021], [path])
+        lines = path.read_text(encoding="latin-1").split("\n")
+        expected = [
+            _fwf_line("A000001", "0100", "100010", [100]),
+            _fwf_line("A000001", "0700", "", [50]),
+            _fwf_line("A000001", "2000", "100010", [80, 5, 3, -2, 4, 90]),
+            _fwf_line("A000001", "3110", "01120", [40, 0, 0, 0, 10, 50]),
+            _fwf_line("B000002", "6001", "", [20, 1, 0, 0, 0, 21]),
+        ]
+        assert lines[:-1] == expected
+        assert lines[-1] == ""
+
+    def test_supply_line_ends_after_basic_price(self, sut, tmp_path):
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2021], [path])
+        supply_line = path.read_text(encoding="latin-1").split("\n")[0]
+        assert len(supply_line) == 60
+
+    def test_values_rounded_to_whole_numbers(self, sut, metadata, tmp_path):
+        use = sut.use.copy()
+        use.loc[use["trans"] == "3110", "bas"] = 40.4
+        use.loc[use["trans"] == "3110", "koeb"] = 50.6
+        sut = SUT(price_basis="current_year", supply=sut.supply, use=use, metadata=metadata)
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2021], [path])
+        result = load_sut_from_separated_fwf([2021], [path], metadata, "current_year")
+        row = result.use[result.use["trans"] == "3110"].iloc[0]
+        assert row["bas"] == 40
+        assert row["koeb"] == 51
+
+    def test_nan_in_use_row_written_as_zero(self, sut, metadata, tmp_path):
+        use = sut.use.copy()
+        use.loc[use["trans"] == "3110", "eng"] = float("nan")
+        sut = SUT(price_basis="current_year", supply=sut.supply, use=use, metadata=metadata)
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2021], [path])
+        result = load_sut_from_separated_fwf([2021], [path], metadata, "current_year")
+        row = result.use[result.use["trans"] == "3110"].iloc[0]
+        assert row["eng"] == 0
+
+    def test_rows_sorted_across_supply_and_use(self, sut, tmp_path):
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2021], [path])
+        lines = path.read_text(encoding="latin-1").split("\n")[:-1]
+        keys = [(l[0:7], l[16:20], l[30:36].strip()) for l in lines]
+        assert keys == sorted(keys)
+
+    def test_print_paths(self, sut, tmp_path, capsys):
+        path = tmp_path / "a"
+        write_sut_to_separated_fwf(sut, [2021], [path], print_paths=True)
+        out = capsys.readouterr().out
+        assert "Writing SUT (current year" in out
+        assert str(path) in out
+
+    def test_sut_method_delegates(self, sut, metadata, tmp_path):
+        path = tmp_path / "a"
+        sut.write_to_separated_fwf([2021], [path])
+        result = load_sut_from_separated_fwf([2021], [path], metadata, "current_year")
+        assert len(result.use) == 3
+
+    def test_error_mismatched_lengths(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="same length"):
+            write_sut_to_separated_fwf(sut, [2021, 2022], [tmp_path / "a"])
+
+    def test_error_id_not_in_sut(self, sut, tmp_path):
+        with pytest.raises(ValueError, match="9999"):
+            write_sut_to_separated_fwf(sut, [9999], [tmp_path / "a"])
+
+    def test_error_missing_metadata(self, sut, tmp_path):
+        no_metadata = SUT(price_basis="current_year", supply=sut.supply, use=sut.use)
+        with pytest.raises(ValueError, match="metadata"):
+            write_sut_to_separated_fwf(no_metadata, [2021], [tmp_path / "a"])
+
+    def test_error_missing_layer_role(self, sut, tmp_path):
+        columns = SUTColumns(
+            id="year", product="nrnr", transaction="trans", category="brch",
+            price_basic="bas", price_purchasers="koeb",
+            wholesale_margins="eng", retail_margins="det", vat="moms",
+        )
+        bad = SUT(
+            price_basis="current_year", supply=sut.supply, use=sut.use,
+            metadata=_fwf_metadata(columns),
+        )
+        with pytest.raises(ValueError, match="product_taxes_less_subsidies"):
+            write_sut_to_separated_fwf(bad, [2021], [tmp_path / "a"])
+
+    def test_error_product_too_long(self, sut, metadata, tmp_path):
+        supply = sut.supply.copy()
+        supply.loc[supply.index[0], "nrnr"] = "TOOLONG99"
+        bad = SUT(price_basis="current_year", supply=supply, use=sut.use, metadata=metadata)
+        with pytest.raises(ValueError, match="TOOLONG99"):
+            write_sut_to_separated_fwf(bad, [2021], [tmp_path / "a"])
+
+    def test_error_transaction_too_long(self, sut, metadata, tmp_path):
+        supply = sut.supply.copy()
+        supply.loc[supply.index[0], "trans"] = "01000"
+        bad = SUT(price_basis="current_year", supply=supply, use=sut.use, metadata=metadata)
+        with pytest.raises(ValueError, match="01000"):
+            write_sut_to_separated_fwf(bad, [2021], [tmp_path / "a"])
+
+    def test_error_category_too_long(self, sut, metadata, tmp_path):
+        use = sut.use.copy()
+        use.loc[use.index[0], "brch"] = "1234567"
+        bad = SUT(price_basis="current_year", supply=sut.supply, use=use, metadata=metadata)
+        with pytest.raises(ValueError, match="1234567"):
+            write_sut_to_separated_fwf(bad, [2021], [tmp_path / "a"])
+
+    def test_error_value_too_wide(self, sut, metadata, tmp_path):
+        use = sut.use.copy()
+        use.loc[use.index[0], "bas"] = 1e17
+        bad = SUT(price_basis="current_year", supply=sut.supply, use=use, metadata=metadata)
+        with pytest.raises(ValueError, match="'bas'"):
+            write_sut_to_separated_fwf(bad, [2021], [tmp_path / "a"])

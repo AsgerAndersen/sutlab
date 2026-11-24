@@ -15,6 +15,7 @@ from sutlab.io import (
     write_sut_to_combined_csv,
     write_sut_to_separated_excel,
     write_sut_to_combined_excel,
+    write_sut_to_separated_fwf,
     load_balancing_targets_from_separated_parquet,
     load_balancing_targets_from_combined_parquet,
     load_balancing_targets_from_separated_csv,
@@ -76,6 +77,7 @@ SUT.write_to_separated_csv.__doc__ = write_sut_to_separated_csv.__doc__
 SUT.write_to_combined_csv.__doc__ = write_sut_to_combined_csv.__doc__
 SUT.write_to_separated_excel.__doc__ = write_sut_to_separated_excel.__doc__
 SUT.write_to_combined_excel.__doc__ = write_sut_to_combined_excel.__doc__
+SUT.write_to_separated_fwf.__doc__ = write_sut_to_separated_fwf.__doc__
 SUT.compute_totals.__doc__ = compute_totals.__doc__
 SUT.inspect_unbalanced_products.__doc__ = inspect_unbalanced_products.__doc__
 SUT.inspect_unbalanced_targets.__doc__ = inspect_unbalanced_targets.__doc__

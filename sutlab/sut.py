@@ -854,6 +854,18 @@ class SUT:
         from sutlab.io import write_sut_to_combined_excel
         write_sut_to_combined_excel(self, path, print_paths=print_paths)
 
+    def write_to_separated_fwf(
+        self,
+        id_values: list[str | int],
+        paths: list[str | Path],
+        *,
+        encoding: str = "latin-1",
+        print_paths: bool = False,
+    ) -> None:
+        """Delegates to :func:`~sutlab.io.write_sut_to_separated_fwf`."""
+        from sutlab.io import write_sut_to_separated_fwf
+        write_sut_to_separated_fwf(self, id_values, paths, encoding=encoding, print_paths=print_paths)
+
 
 def set_balancing_id(sut: SUT, balancing_id: str | int) -> SUT:
     """
