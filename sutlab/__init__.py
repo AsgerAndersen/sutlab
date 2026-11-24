@@ -8,14 +8,12 @@ from sutlab.io import (
     load_sut_from_combined_csv,
     load_sut_from_separated_excel,
     load_sut_from_combined_excel,
-    load_sut_from_separated_fwf,
     write_sut_to_separated_parquet,
     write_sut_to_combined_parquet,
     write_sut_to_separated_csv,
     write_sut_to_combined_csv,
     write_sut_to_separated_excel,
     write_sut_to_combined_excel,
-    write_sut_to_separated_fwf,
     load_balancing_targets_from_separated_parquet,
     load_balancing_targets_from_combined_parquet,
     load_balancing_targets_from_separated_csv,
@@ -55,6 +53,11 @@ from sutlab.inspect import (
     inspect_sut_comparison,
     inspect_gdp,
 )
+from sutlab.nr_legacy import (
+    load_sut_from_separated_nr_legacy_fwf,
+    write_sut_to_separated_nr_legacy_fwf,
+    make_final_annual_sut_paths,
+)
 from sutlab.derive import compute_price_layer_rates, compute_totals
 from sutlab.balancing import balance_columns, balance_products_use, resolve_target_tolerances, filter_free_cells
 from sutlab.adjust import adjust_add_sut, adjust_subtract_sut, adjust_substitute_sut
@@ -77,7 +80,7 @@ SUT.write_to_separated_csv.__doc__ = write_sut_to_separated_csv.__doc__
 SUT.write_to_combined_csv.__doc__ = write_sut_to_combined_csv.__doc__
 SUT.write_to_separated_excel.__doc__ = write_sut_to_separated_excel.__doc__
 SUT.write_to_combined_excel.__doc__ = write_sut_to_combined_excel.__doc__
-SUT.write_to_separated_fwf.__doc__ = write_sut_to_separated_fwf.__doc__
+SUT.write_to_separated_nr_legacy_fwf.__doc__ = write_sut_to_separated_nr_legacy_fwf.__doc__
 SUT.compute_totals.__doc__ = compute_totals.__doc__
 SUT.inspect_unbalanced_products.__doc__ = inspect_unbalanced_products.__doc__
 SUT.inspect_unbalanced_targets.__doc__ = inspect_unbalanced_targets.__doc__
