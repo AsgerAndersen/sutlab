@@ -129,6 +129,10 @@ def _excel_percentage_format(decimals: int) -> str:
 # a small margin.
 _EXCEL_VALUE_COLUMN_WIDTH = 13
 
+# Maximum width of the text columns in the ``tables_description`` sheet.
+# Longer descriptions are wrapped onto several lines.
+_EXCEL_TEXT_COLUMN_MAX_WIDTH = 100
+
 
 def _apply_number_formats(
     ws,
@@ -360,6 +364,41 @@ def _fit_index_column_widths(ws, n_index_cols: int) -> None:
             if cell.value is not None:
                 max_len = max(max_len, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = max_len + 2
+
+
+def _fit_text_column_widths(ws, n_index_cols: int, n_data_cols: int) -> None:
+    """Fit text value columns to their widest cell, capped and wrapped.
+
+    Used for sheets whose value columns hold text (``tables_description``)
+    rather than numbers. Each column is widened to its longest cell plus a
+    padding of two characters, but never beyond
+    ``_EXCEL_TEXT_COLUMN_MAX_WIDTH``. Cells in a column that hits the cap
+    get text wrapping so the full text stays readable.
+
+    Parameters
+    ----------
+    ws : openpyxl.worksheet.worksheet.Worksheet
+        The worksheet to modify, in place.
+    n_index_cols : int
+        Number of leading columns that represent index levels (skipped).
+    n_data_cols : int
+        Number of text columns to fit.
+    """
+    for col_idx in range(n_index_cols + 1, n_index_cols + n_data_cols + 1):
+        col_letter = openpyxl.utils.get_column_letter(col_idx)
+        max_len = 0
+        for cell in ws[col_letter]:
+            if cell.value is not None:
+                max_len = max(max_len, len(str(cell.value)))
+        wanted_width = max_len + 2
+        capped = wanted_width > _EXCEL_TEXT_COLUMN_MAX_WIDTH
+        ws.column_dimensions[col_letter].width = min(wanted_width, _EXCEL_TEXT_COLUMN_MAX_WIDTH)
+        if capped:
+            for cell in ws[col_letter]:
+                alignment = copy(cell.alignment)
+                alignment.wrap_text = True
+                alignment.vertical = "top"
+                cell.alignment = alignment
 
 
 def _percentile_label(p: float) -> str:
@@ -699,7 +738,10 @@ def _write_inspection_to_excel(inspection_obj: Any, path: str | Path, display_un
             _center_header_cells(ws, raw)
             _apply_freeze_and_filter(ws, raw)
             _fit_index_column_widths(ws, raw.index.nlevels)
-            _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
+            if name == "tables_description":
+                _fit_text_column_widths(ws, raw.index.nlevels, len(raw.columns))
+            else:
+                _set_value_column_widths(ws, raw.index.nlevels, len(raw.columns))
             _apply_number_formats(ws, raw, name, display_unit, rel_base, all_rel, decimals)
 
 

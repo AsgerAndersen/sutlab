@@ -716,6 +716,35 @@ def test_write_to_excel_falls_back_to_raw_when_styling_fails(
 # ---------------------------------------------------------------------------
 
 
+def test_fit_text_column_widths_fits_and_caps(tmp_path):
+    """Text columns fit their content; over-long ones are capped and wrapped."""
+    from sutlab.inspect._shared import _EXCEL_TEXT_COLUMN_MAX_WIDTH, _fit_text_column_widths
+
+    df = pd.DataFrame(
+        {"short": ["abcdefghijklmnopqrstuvwxyz"], "long": ["x" * 300]},
+        index=pd.Index(["t"], name="table"),
+    )
+    path = tmp_path / "out.xlsx"
+    df.to_excel(path, merge_cells=False)
+    wb = openpyxl.load_workbook(path)
+    ws = wb.active
+    _fit_text_column_widths(ws, 1, 2)
+    assert ws.column_dimensions["B"].width == len("abcdefghijklmnopqrstuvwxyz") + 2
+    assert ws.column_dimensions["C"].width == _EXCEL_TEXT_COLUMN_MAX_WIDTH
+    assert ws["C2"].alignment.wrap_text is True
+    assert not ws["B2"].alignment.wrap_text
+
+
+def test_write_to_excel_tables_description_column_fits_text(
+    tmp_path, balancing_result_with_violations
+):
+    """The description column in tables_description is wider than the default value width."""
+    path = tmp_path / "out.xlsx"
+    balancing_result_with_violations.write_to_excel(path)
+    ws = openpyxl.load_workbook(path)["tables_description"]
+    assert ws.column_dimensions["B"].width > 13
+
+
 def test_write_to_excel_tables_description_always_first(
     tmp_path, balancing_result_with_violations
 ):
