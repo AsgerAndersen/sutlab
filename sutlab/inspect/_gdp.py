@@ -494,6 +494,10 @@ def inspect_gdp(
     (P2) to get Gross Value Added, then adds product taxes and import
     duties to reach GDP.
 
+    Industries listed in ``classifications.unspec_industries`` (so-called
+    unspecified industries) are left out of the P1, P2 and GVA rows and the
+    industry tables, but still count towards product taxes and subsidies.
+
     The Expenditure block sums domestic final use (all use-side
     transactions except P2 and P6), then adds net exports (P6 minus P7)
     to reach GDP.
@@ -781,6 +785,24 @@ def _get_product_tax_columns(cols, use_df: pd.DataFrame) -> list[str]:
     return [col for col in use_df.columns if col in tax_cols_set]
 
 
+def _get_unspec_industry_codes(sut: SUT) -> set:
+    """Return the set of unspecified industry codes (empty if none defined)."""
+    classifications = sut.metadata.classifications
+    if classifications is None or classifications.unspec_industries is None:
+        return set()
+    category_col = sut.metadata.columns.category
+    return set(classifications.unspec_industries[category_col])
+
+
+def _without_unspec_industries(
+    df: pd.DataFrame, category_col: str, unspec_codes: set
+) -> pd.DataFrame:
+    """Return ``df`` without rows whose category is an unspecified industry."""
+    if not unspec_codes:
+        return df
+    return df[~df[category_col].isin(unspec_codes)]
+
+
 def _build_production_rows(
     sut: SUT,
     cols,
@@ -805,10 +827,16 @@ def _build_production_rows(
     """
     rows = []
 
+    # Unspecified industries are left out of P1, P2 and GVA, but product
+    # taxes below are still summed over all use rows.
+    unspec_codes = _get_unspec_industry_codes(sut)
+    supply_specified = _without_unspec_industries(sut.supply, cols.category, unspec_codes)
+    use_specified = _without_unspec_industries(sut.use, cols.category, unspec_codes)
+
     # --- P1: Output (supply, basic prices, as-is) ---
     p1_trans = trans_info[trans_info["esa_code"] == _ESA_OUTPUT]
     p1_rows = _sum_gdp_rows(
-        df=sut.supply,
+        df=supply_specified,
         value_col=cols.price_basic,
         trans_subset=p1_trans,
         trans_col=trans_col,
@@ -820,7 +848,7 @@ def _build_production_rows(
     # --- P2: Intermediate consumption (use, purchasers' prices, × -1) ---
     p2_trans = trans_info[trans_info["esa_code"] == _ESA_INTERMEDIATE]
     p2_rows = _sum_gdp_rows(
-        df=sut.use,
+        df=use_specified,
         value_col=cols.price_purchasers,
         trans_subset=p2_trans,
         trans_col=trans_col,
@@ -1067,7 +1095,8 @@ def _build_gdp_industries(
     prices), summed over the P1 and P2 transactions that carry a
     ``gdp_decomp`` label (the same transactions as in ``gdp_df``). Industries
     are identified by the category column. Missing P1 or P2 values count as
-    zero as long as the other is present.
+    zero as long as the other is present. Unspecified industries (from
+    ``classifications.unspec_industries``) are excluded.
 
     Rows: one per industry (sorted by code), ``Gross Value Added`` (sum of the
     industries), ``Total product taxes, netto`` (copied from ``gdp_df``) and
@@ -1079,15 +1108,19 @@ def _build_gdp_industries(
     p1_codes = labelled.loc[labelled["esa_code"] == _ESA_OUTPUT, trans_col]
     p2_codes = labelled.loc[labelled["esa_code"] == _ESA_INTERMEDIATE, trans_col]
 
+    unspec_codes = _get_unspec_industry_codes(sut)
+    supply_specified = _without_unspec_industries(sut.supply, category_col, unspec_codes)
+    use_specified = _without_unspec_industries(sut.use, category_col, unspec_codes)
+
     p1_by_industry = (
-        sut.supply[sut.supply[trans_col].isin(p1_codes)]
+        supply_specified[supply_specified[trans_col].isin(p1_codes)]
         .groupby([category_col, id_col], dropna=False)[cols.price_basic]
         .sum(min_count=1)
         .unstack(id_col)
         .reindex(columns=id_values)
     )
     p2_by_industry = (
-        sut.use[sut.use[trans_col].isin(p2_codes)]
+        use_specified[use_specified[trans_col].isin(p2_codes)]
         .groupby([category_col, id_col], dropna=False)[cols.price_purchasers]
         .sum(min_count=1)
         .unstack(id_col)

@@ -140,6 +140,17 @@ class SUTClassifications:
         products are excluded from :func:`~sutlab.inspect.inspect_unbalanced_products`
         since their supply-use balance is governed by a different mechanism.
         ``None`` if the table is not supplied.
+    unspec_industries : DataFrame or None
+        Table of so-called unspecified industries: industries that only
+        produce and consume the aggregate "unspecified products" (small,
+        miscellaneous intermediate consumption that normal industries buy
+        instead of many individual goods). Their P1 minus P2 is always
+        (close to) zero. Columns are the actual category column name (e.g.
+        ``'brch'``) and optionally that name with ``'_txt'`` suffix. These
+        industries are left out of the production, intermediate consumption
+        and GVA rows in :func:`~sutlab.inspect.inspect_gdp`, but still count
+        towards product taxes and subsidies. ``None`` if the table is not
+        supplied.
     """
 
     classification_names: pd.DataFrame | None = None
@@ -149,6 +160,7 @@ class SUTClassifications:
     individual_consumption: pd.DataFrame | None = None
     collective_consumption: pd.DataFrame | None = None
     margin_products: pd.DataFrame | None = None
+    unspec_industries: pd.DataFrame | None = None
 
 
 @dataclass

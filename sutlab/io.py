@@ -207,7 +207,7 @@ def _load_metadata_classifications_from_excel(
 
     Known sheets: ``classifications``, ``products``, ``transactions``,
     ``industries``, ``individual_consumption``, ``collective_consumption``,
-    ``margin_products``.
+    ``margin_products``, ``unspec_industries``.
     Unknown sheets are silently ignored. Each known sheet is optional; its
     corresponding field is set to ``None`` if the sheet is absent.
 
@@ -223,6 +223,8 @@ def _load_metadata_classifications_from_excel(
     - ``margin_products``: ``{columns.product}``, optionally
       ``{columns.product}_txt``, and ``price_layer`` (actual price layer
       column name, validated against the price layer columns in ``columns``)
+    - ``unspec_industries``: ``{columns.category}``, optionally
+      ``{columns.category}_txt``
 
     If the ``transactions`` sheet is present, it must have a ``table`` column
     with values ``"supply"`` or ``"use"`` for every row, and an ``esa_code``
@@ -355,6 +357,17 @@ def _load_metadata_classifications_from_excel(
             keep_cols = [prod_col, prod_txt_col, "price_layer"]
         margin_products = df[keep_cols].copy()
 
+    unspec_industries = None
+    if "unspec_industries" in all_sheets:
+        df = all_sheets["unspec_industries"]
+        _validate_required_columns(
+            df, [cat_col], source="'unspec_industries' sheet"
+        )
+        keep_cols = [cat_col]
+        if cat_txt_col in df.columns:
+            keep_cols = [cat_col, cat_txt_col]
+        unspec_industries = df[keep_cols].copy()
+
     return SUTClassifications(
         classification_names=classification_names,
         products=products,
@@ -363,6 +376,7 @@ def _load_metadata_classifications_from_excel(
         individual_consumption=individual_consumption,
         collective_consumption=collective_consumption,
         margin_products=margin_products,
+        unspec_industries=unspec_industries,
     )
 
 

@@ -1196,3 +1196,67 @@ def test_tables_comparison_display_setters_reach_nested_inspections(sut, previou
     comparison = first.inspect_tables_comparison(first).set_display_decimals(3)
     assert comparison.diff.real.display_configuration.decimals == 3
     assert comparison.rel.previous.display_configuration.decimals == 3
+
+
+# ---------------------------------------------------------------------------
+# Unspecified industries
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sut_with_unspec(sut):
+    """The base sut plus an unspecified industry 'U' with P1 = P2 (purchasers) = 500."""
+    extra_supply = pd.DataFrame({
+        "year": [2021, 2022], "nrnr": ["Z", "Z"], "trans": ["0100", "0100"],
+        "brch": ["U", "U"], "bas": [500.0, 600.0], "koeb": [500.0, 600.0],
+    })
+    extra_use = pd.DataFrame({
+        "year": [2021, 2022], "nrnr": ["A", "A"], "trans": ["2000", "2000"],
+        "brch": ["U", "U"], "bas": [450.0, 540.0], "ava": [0.0, 0.0],
+        "moms": [50.0, 60.0], "koeb": [500.0, 600.0],
+    })
+    classifications = SUTClassifications(
+        transactions=sut.metadata.classifications.transactions,
+        unspec_industries=pd.DataFrame({"brch": ["U"]}),
+    )
+    return SUT(
+        price_basis="current_year",
+        supply=pd.concat([sut.supply, extra_supply], ignore_index=True),
+        use=pd.concat([sut.use, extra_use], ignore_index=True),
+        metadata=SUTMetadata(columns=sut.metadata.columns, classifications=classifications),
+    )
+
+
+def test_unspec_industries_excluded_from_output_and_intermediate(sut, sut_with_unspec):
+    base = inspect_gdp(sut).data.gdp
+    result = inspect_gdp(sut_with_unspec).data.gdp
+    for row in [("Production", "Market output"), ("Production", "Intermediate consumption")]:
+        assert result.loc[row].tolist() == base.loc[row].tolist()
+
+
+def test_unspec_industries_excluded_from_gva(sut, sut_with_unspec):
+    base = inspect_gdp(sut).data.gdp
+    result = inspect_gdp(sut_with_unspec).data.gdp
+    row = ("Production", "Gross Value Added")
+    assert result.loc[row].tolist() == base.loc[row].tolist()
+
+
+def test_unspec_industries_still_count_in_product_taxes(sut, sut_with_unspec):
+    base = inspect_gdp(sut).data.gdp
+    result = inspect_gdp(sut_with_unspec).data.gdp
+    row = ("Production", "Moms")
+    assert result.loc[row, 2021] == base.loc[row, 2021] + 50.0
+    assert result.loc[row, 2022] == base.loc[row, 2022] + 60.0
+
+
+def test_unspec_industries_excluded_from_industries_table(sut_with_unspec):
+    result = inspect_gdp(sut_with_unspec).data.gdp_industries
+    labels = result.index.get_level_values(1).tolist()
+    assert "U" not in labels
+    assert "X" in labels
+
+
+def test_without_unspec_industries_result_is_unchanged(sut):
+    # No unspec_industries defined: behaviour is as before
+    assert sut.metadata.classifications.unspec_industries is None
+    assert "Gross Value Added" in inspect_gdp(sut).data.gdp.index.get_level_values(1)

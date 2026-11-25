@@ -23,6 +23,38 @@ from sutlab.aggregate._shared import (
 _ESA_CODES = ["P1", "P2"]
 
 
+def _remap_unspec_industries(
+    unspec_industries: pd.DataFrame,
+    mapping: pd.DataFrame,
+    category_col: str,
+) -> pd.DataFrame:
+    """Remap unspecified industry codes through the aggregation mapping.
+
+    Raises if a target code would combine unspecified and normal industries.
+    """
+    unspec_codes = set(unspec_industries[category_col])
+    new_codes = []
+    for to_code, group in mapping.groupby("to"):
+        from_codes = set(group["from"])
+        unspec_subset = from_codes & unspec_codes
+        normal_subset = from_codes - unspec_codes
+        if unspec_subset and normal_subset:
+            raise ValueError(
+                f"Cannot aggregate into industry '{to_code}': some source "
+                f"industries are unspecified industries ({sorted(unspec_subset)}) "
+                f"and some are not ({sorted(normal_subset)}). Keep unspecified "
+                f"and normal industries in separate mappings."
+            )
+        if unspec_subset:
+            new_codes.append(to_code)
+
+    passthrough = [
+        code for code in unspec_industries[category_col]
+        if code not in set(mapping["from"])
+    ]
+    return pd.DataFrame({category_col: new_codes + passthrough})
+
+
 def aggregate_classification_industries(
     sut: SUT,
     mapping: pd.DataFrame,
@@ -194,9 +226,15 @@ def aggregate_classification_industries(
         new_cls_names = _update_classification_names(
             old_cls.classification_names, cat_col, classification_name
         )
+        new_unspec = (
+            _remap_unspec_industries(old_cls.unspec_industries, mapping, cat_col)
+            if old_cls.unspec_industries is not None
+            else None
+        )
         new_cls = replace(
             old_cls,
             industries=new_industries_cls,
+            unspec_industries=new_unspec,
             classification_names=new_cls_names,
         )
 

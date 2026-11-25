@@ -5,6 +5,7 @@ Tests for sutlab/aggregate/ — aggregate_classification_*.
 import math
 
 import pytest
+from dataclasses import replace
 import pandas as pd
 
 from sutlab.aggregate import (
@@ -829,6 +830,27 @@ def ind_mapping():
 # ===========================================================================
 
 class TestAggregateClassificationIndustries:
+
+    def test_unspec_industries_remapped(self, sut_cat):
+        cls = replace(
+            sut_cat.metadata.classifications,
+            unspec_industries=pd.DataFrame({"brch": ["I3"]}),
+        )
+        sut = replace(sut_cat, metadata=replace(sut_cat.metadata, classifications=cls))
+        mapping = pd.DataFrame({"from": ["I1", "I2", "I3"], "to": ["AGG", "AGG", "U"]})
+        result = aggregate_classification_industries(sut, mapping)
+        assert result.metadata.classifications.unspec_industries["brch"].tolist() == ["U"]
+
+    def test_unspec_mixed_with_normal_raises(self, sut_cat):
+        cls = replace(
+            sut_cat.metadata.classifications,
+            unspec_industries=pd.DataFrame({"brch": ["I2"]}),
+        )
+        sut = replace(sut_cat, metadata=replace(sut_cat.metadata, classifications=cls))
+        with pytest.raises(ValueError, match="unspecified"):
+            aggregate_classification_industries(sut, pd.DataFrame(
+                {"from": ["I1", "I2", "I3"], "to": ["AGG", "AGG", "B"]}
+            ))
 
     def test_supply_industries_remapped(self, sut_cat, ind_mapping):
         result = aggregate_classification_industries(sut_cat, ind_mapping)

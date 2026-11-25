@@ -230,6 +230,27 @@ class TestLoadMetadataColumnsFromExcel:
 
 class TestLoadMetadataClassificationsFromExcel:
 
+    def test_unspec_industries_loaded(self, tmp_path):
+        path = write_classifications_file(
+            tmp_path, {"unspec_industries": pd.DataFrame({"brch": ["U1", "U2"]})}
+        )
+        result = _load_metadata_classifications_from_excel(path, minimal_columns())
+        assert result.unspec_industries["brch"].tolist() == ["U1", "U2"]
+
+    def test_unspec_industries_absent_is_none(self, tmp_path):
+        path = write_classifications_file(
+            tmp_path, {"products": pd.DataFrame({"nrnr": ["A"], "nrnr_txt": ["a"]})}
+        )
+        result = _load_metadata_classifications_from_excel(path, minimal_columns())
+        assert result.unspec_industries is None
+
+    def test_unspec_industries_missing_column_raises(self, tmp_path):
+        path = write_classifications_file(
+            tmp_path, {"unspec_industries": pd.DataFrame({"wrong": ["U1"]})}
+        )
+        with pytest.raises(ValueError, match="unspec_industries"):
+            _load_metadata_classifications_from_excel(path, minimal_columns())
+
     def test_returns_sut_classifications(self):
         result = _load_metadata_classifications_from_excel(CLASSIFICATIONS_FILE, minimal_columns())
         assert isinstance(result, SUTClassifications)
