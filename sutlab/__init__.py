@@ -43,6 +43,9 @@ from sutlab.sut import (
     get_codes_collective_consumption,
     get_ids,
     BalancingTargets,
+    BalancingConfig,
+    TargetTolerances,
+    Locks,
 )
 from sutlab.inspect import (
     inspect_products,
