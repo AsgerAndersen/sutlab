@@ -18,3 +18,7 @@ build/
 
 # Reference documents (copyrighted)
 docs/reference/
+
+# Example notebooks: real SUT data and files written by the notebooks
+docs/examples/data/
+docs/examples/output/

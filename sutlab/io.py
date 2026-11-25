@@ -229,7 +229,7 @@ def _load_metadata_classifications_from_excel(
     If the ``transactions`` sheet is present, it must have a ``table`` column
     with values ``"supply"`` or ``"use"`` for every row, and an ``esa_code``
     column mapping each transaction to a standardised ESA code. Valid ESA
-    codes: ``P1``, ``P2``, ``P3``, ``P31``, ``P32``, ``P51g``, ``P52``,
+    codes: ``D2121``, ``P1``, ``P2``, ``P3``, ``P31``, ``P32``, ``P51g``, ``P52``,
     ``P53``, ``P6``, ``P7``.
 
     Leading and trailing whitespace is stripped from all values in all sheets.

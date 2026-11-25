@@ -97,7 +97,7 @@ class IndustryInspectionData:
             "use_products_growth": "Year-on-year growth rates of use product values.",
             "use_products_summary": "Per-transaction statistics summarising the use product breakdown (totals, counts, percentiles).",
             "price_layers": "Price layer values (gap between basic and purchasers' prices) by layer.",
-            "price_layers_rates": "Each price layer expressed as a rate relative to basic-price use.",
+            "price_layers_rates": "Each price layer expressed as a rate relative to basic prices plus the preceding price layers.",
             "price_layers_distribution": "Each price layer expressed as a share of total price layers.",
             "price_layers_growth": "Year-on-year growth rates of price layer values.",
         }

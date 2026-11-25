@@ -108,7 +108,7 @@ class ProductInspectionData:
             "price_layers": "Price layer values (gap between basic and purchasers' prices) by layer.",
             "price_layers_distribution": "Each price layer expressed as a share of total price layers.",
             "price_layers_growth": "Year-on-year growth rates of price layer values.",
-            "price_layers_rates": "Each price layer expressed as a rate relative to basic-price supply.",
+            "price_layers_rates": "Each price layer expressed as a rate relative to basic prices plus the preceding price layers.",
         }
         return _present_tables_description(self, descriptions)
 
