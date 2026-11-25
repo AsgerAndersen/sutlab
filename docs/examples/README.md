@@ -13,11 +13,9 @@ Notebooks that show how `sutlab` is used. They give an overall idea and do not c
 
 ## Data
 
-The notebooks use real supply and use tables, which are **not** part of this repository. Copy these files to `docs/examples/data/` before you run them:
+The notebooks load the final annual supply and use tables for 2016-2019 directly from Statistics Denmark's network drive. Set `drive` at the top of each notebook to the letter of the drive you use.
 
-- `ta_l_2016.parquet` to `ta_l_2019.parquet` (current prices)
-- `ta_d_2016.parquet` to `ta_d_2019.parquet` (previous year's prices)
-- `ta_columns.xlsx` and `ta_classifications.xlsx` (metadata)
+The metadata files `ta_columns.xlsx` and `ta_classifications.xlsx` must be in `docs/examples/data/`. Neither the tables nor the metadata are part of this repository.
 
 Files written by the notebooks in this folder end up in `docs/examples/output/`. Git ignores `data/` and `output/`.
 
@@ -30,6 +28,16 @@ Open a notebook in VS Code, choose a Python environment as the kernel, and run t
 The location is the absolute path `sutlab_folder` in the first code cell. `data/` and `config/` are found from it as well, so a notebook can be copied to another folder and still run. If `sutlab` is moved, change `sutlab_folder` in all the notebooks.
 
 Output files are written to a folder `output/` in the working directory, which is normally the folder of the notebook. Git only ignores the one in `docs/examples/`, so do not commit copies or their outputs, as they contain real figures.
+
+## Testing the notebooks without the network drive
+
+For developers of `sutlab`: the notebooks can be tested on a Windows machine without access to the network drive. This needs local copies of the tables in `docs/examples/data/`, as `ta_l_2016.parquet` to `ta_l_2019.parquet` (current prices) and `ta_d_2016.parquet` to `ta_d_2019.parquet` (previous year's prices). Then run
+
+```
+uv run python docs/examples/run_on_test_data.py
+```
+
+It writes the tables in the fixed-width format to a temporary folder, maps the folder to a drive letter, and runs copies of all the notebooks. The notebooks themselves are not changed.
 
 ## Clear the outputs before you commit
 
