@@ -19,13 +19,17 @@ The notebooks use real supply and use tables, which are **not** part of this rep
 - `ta_d_2016.parquet` to `ta_d_2019.parquet` (previous year's prices)
 - `ta_columns.xlsx` and `ta_classifications.xlsx` (metadata)
 
-Files written by the notebooks end up in `docs/examples/output/`. Git ignores `data/` and `output/`.
+Files written by the notebooks in this folder end up in `docs/examples/output/`. Git ignores `data/` and `output/`.
 
 The folder `config/` holds invented revisions, tolerances and locks, and is part of the repository.
 
 ## Running the notebooks
 
-Run `uv sync` in the project root. Then open a notebook in VS Code, choose the Python environment in `.venv` as the kernel, and run the cells from the top.
+Open a notebook in VS Code, choose a Python environment as the kernel, and run the cells from the top. The environment needs Python 3.12 or newer and the packages `pandas`, `openpyxl`, `pyarrow`, `jinja2` and `ipykernel`. `sutlab` itself does not need to be installed: the first code cell adds its location to `sys.path`. The project's own environment, created with `uv sync`, also works.
+
+The location is the absolute path `sutlab_folder` in the first code cell. `data/` and `config/` are found from it as well, so a notebook can be copied to another folder and still run. If `sutlab` is moved, change `sutlab_folder` in all the notebooks.
+
+Output files are written to a folder `output/` in the working directory, which is normally the folder of the notebook. Git only ignores the one in `docs/examples/`, so do not commit copies or their outputs, as they contain real figures.
 
 ## Clear the outputs before you commit
 
