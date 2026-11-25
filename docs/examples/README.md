@@ -13,7 +13,7 @@ Notebooks that show how `sutlab` is used. They give an overall idea and do not c
 
 ## Data
 
-The notebooks load the final annual supply and use tables for 2016-2019 directly from Statistics Denmark's network drive. Set `drive` at the top of each notebook to the letter of the drive you use.
+The notebooks load the final annual supply and use tables for 2016-2019 directly from Statistics Denmark's network drive. This uses the full network path, so it does not matter which letter your drive has.
 
 The metadata files `ta_columns.xlsx` and `ta_classifications.xlsx` must be in `docs/examples/data/`. Neither the tables nor the metadata are part of this repository.
 
@@ -31,13 +31,13 @@ Output files are written to a folder `output/` in the working directory, which i
 
 ## Testing the notebooks without the network drive
 
-For developers of `sutlab`: the notebooks can be tested on a Windows machine without access to the network drive. This needs local copies of the tables in `docs/examples/data/`, as `ta_l_2016.parquet` to `ta_l_2019.parquet` (current prices) and `ta_d_2016.parquet` to `ta_d_2019.parquet` (previous year's prices). Then run
+For developers of `sutlab`: the notebooks can be tested without access to the network drive. This needs local copies of the tables in `docs/examples/data/`, as `ta_l_2016.parquet` to `ta_l_2019.parquet` (current prices) and `ta_d_2016.parquet` to `ta_d_2019.parquet` (previous year's prices). Then run
 
 ```
 uv run python docs/examples/run_on_test_data.py
 ```
 
-It writes the tables in the fixed-width format to a temporary folder, maps the folder to a drive letter, and runs copies of all the notebooks. The notebooks themselves are not changed.
+It writes the tables in the fixed-width format to a temporary folder, and runs copies of all the notebooks that load the tables from that folder. The notebooks themselves are not changed.
 
 ## Clear the outputs before you commit
 

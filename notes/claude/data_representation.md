@@ -221,7 +221,7 @@ must match the actual data column names. Extra columns are silently ignored.
 Statistics Denmark legacy fixed-width format (in `sutlab/nr_legacy.py`, not `io.py`; layout hardcoded, see CLAUDE.md):
 - `load_sut_from_separated_nr_legacy_fwf(id_values, paths, metadata, price_basis, *, encoding, print_paths)` → `SUT`
 - `write_sut_to_separated_nr_legacy_fwf(sut, id_values, paths, *, encoding, print_paths)`
-- `make_final_annual_sut_paths(years, drive, price_basis)` → `list[Path]`
+- `make_final_annual_sut_paths(years, price_basis, *, root=<network folder>)` → `list[Path]`
 
 - `load_balancing_targets_from_separated_excel(id_values, paths, metadata)` → `BalancingTargets`
 - `load_balancing_targets_from_combined_excel(path, metadata)` → `BalancingTargets`

@@ -379,26 +379,32 @@ class TestWriteSutToSeparatedFwf:
 class TestMakeFinalAnnualSutPaths:
 
     def test_current_year(self):
-        assert make_final_annual_sut_paths([2019], "r", "current_year") == [
-            Path("r:/afstem19/ta/ta19l")
+        paths = make_final_annual_sut_paths([2023], "current_year")
+        # Compared as text, since Path comparison ignores case on Windows.
+        assert [str(path) for path in paths] == [
+            r"\\06kt03\tilanv16\xtrdrv\tilanv24\Afstem23\TA\ta23l"
         ]
 
     def test_previous_year(self):
-        assert make_final_annual_sut_paths([2019], "r", "previous_year") == [
-            Path("r:/afstem19/ta/ta19f18")
+        assert make_final_annual_sut_paths([2023], "previous_year") == [
+            Path(r"\\06kt03\tilanv16\xtrdrv\tilanv24\Afstem23\TA\ta23f22")
         ]
 
     def test_multiple_years_keep_order(self):
-        assert make_final_annual_sut_paths([2021, 2019], "x", "current_year") == [
-            Path("x:/afstem21/ta/ta21l"),
-            Path("x:/afstem19/ta/ta19l"),
+        paths = make_final_annual_sut_paths([2021, 2019], "current_year", root="y:/")
+        assert paths == [
+            Path("y:/Afstem21/TA/ta21l"),
+            Path("y:/Afstem19/TA/ta19l"),
         ]
 
     def test_century_boundary_previous_year(self):
-        assert make_final_annual_sut_paths([2000], "r", "previous_year") == [
-            Path("r:/afstem00/ta/ta00f99")
-        ]
+        paths = make_final_annual_sut_paths([2000], "previous_year", root="y:/")
+        assert paths == [Path("y:/Afstem00/TA/ta00f99")]
+
+    def test_root_as_path(self, tmp_path):
+        paths = make_final_annual_sut_paths([2019], "current_year", root=tmp_path)
+        assert paths == [tmp_path / "Afstem19" / "TA" / "ta19l"]
 
     def test_error_invalid_price_basis(self):
         with pytest.raises(ValueError, match="price_basis"):
-            make_final_annual_sut_paths([2019], "r", "l")
+            make_final_annual_sut_paths([2019], "l")

@@ -18,6 +18,10 @@ from sutlab.io import _PRICE_LAYER_ROLES, _assemble_sut, _format_price_basis
 from sutlab.sut import SUT, SUTColumns, SUTMetadata
 
 
+# Network folder that holds the final annual SUTs. A network path is used so
+# that the paths do not depend on which letter each user's drive has.
+_FINAL_ANNUAL_SUT_ROOT = r"\\06kt03\tilanv16\xtrdrv\tilanv24"
+
 # Fixed-width layout of the legacy Statistics Denmark SUT file format.
 # Character positions are (start, end) with end exclusive. Everything after
 # position 140 (status flags, user initials, timestamps) is ignored.
@@ -385,29 +389,32 @@ def write_sut_to_separated_nr_legacy_fwf(
 
 def make_final_annual_sut_paths(
     years: list[int],
-    drive: str,
     price_basis: Literal["current_year", "previous_year"],
+    *,
+    root: str | Path = _FINAL_ANNUAL_SUT_ROOT,
 ) -> list[Path]:
-    """
+    r"""
     Build the paths to the final annual SUT files for a list of years.
 
     The final annual SUTs are stored in the legacy fixed-width format, so the
     paths can be passed to :func:`load_sut_from_separated_nr_legacy_fwf`
     (with ``years`` as the ``id_values``).
 
-    The path for 2019 in current year's prices on drive ``"r"`` is
-    ``Path("r:/afstem19/ta/ta19l")``. In previous year's prices the file name ends
-    with the previous year's two digits: ``Path("r:/afstem19/ta/ta19f18")``.
+    The path for 2019 in current year's prices is
+    ``Path(r"\\06kt03\tilanv16\xtrdrv\tilanv24\Afstem19\TA\ta19l")``. In previous year's
+    prices the file name ends with the previous year's two digits:
+    ``ta19f18``.
 
     Parameters
     ----------
     years : list of int
         The years to build paths for.
-    drive : str
-        The drive letter the SUTs are stored on, without a colon (e.g.
-        ``"r"``).
     price_basis : {"current_year", "previous_year"}
         Which of the two files to point to for each year.
+    root : str or Path, optional
+        The folder that holds the ``Afstem`` folders. Defaults to the network
+        folder of the final annual SUTs. A drive must be given with a slash
+        after the colon (e.g. ``"y:/"``).
 
     Returns
     -------
@@ -428,10 +435,10 @@ def make_final_annual_sut_paths(
     paths = []
     for year in years:
         yy = str(year)[-2:]
-        path = f"{drive}:/afstem{yy}/ta/ta{yy}"
         if price_basis == "current_year":
-            path += "l"
+            file_name = f"ta{yy}l"
         else:
-            path += "f" + str(year - 1)[-2:]
-        paths.append(Path(path))
+            previous_yy = str(year - 1)[-2:]
+            file_name = f"ta{yy}f{previous_yy}"
+        paths.append(Path(root) / f"Afstem{yy}" / "TA" / file_name)
     return paths
