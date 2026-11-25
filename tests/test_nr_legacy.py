@@ -74,7 +74,7 @@ def _fwf_metadata(columns: SUTColumns = FWF_COLUMNS) -> SUTMetadata:
     )
 
 
-def _write_fwf(path: Path, lines: list[str], encoding: str = "latin-1") -> Path:
+def _write_fwf(path: Path, lines: list[str], encoding: str = "cp1252") -> Path:
     path.write_bytes(("\n".join(lines) + "\n").encode(encoding))
     return path
 
@@ -157,16 +157,16 @@ class TestLoadSutFromSeparatedFwf:
 
     def test_trailing_blank_line_ignored(self, metadata, tmp_path):
         path = tmp_path / "blank"
-        path.write_bytes(("\n".join(FWF_LINES) + "\n\n").encode("latin-1"))
+        path.write_bytes(("\n".join(FWF_LINES) + "\n\n").encode("cp1252"))
         result = load_sut_from_separated_nr_legacy_fwf([2021], [path], metadata, "current_year")
         assert len(result.supply) + len(result.use) == len(FWF_LINES)
 
     def test_non_utf8_trailer_is_ignored(self, metadata, tmp_path):
         lines = list(FWF_LINES)
         lines[2] = _fwf_line(
-            "A000001", "2000", "100010", [80, 5, 3, -2, 4, 90], trailer="   Søren"
+            "A000001", "2000", "100010", [80, 5, 3, -2, 4, 90], trailer="   Søren €"
         )
-        path = _write_fwf(tmp_path / "latin", lines, encoding="latin-1")
+        path = _write_fwf(tmp_path / "cp1252", lines, encoding="cp1252")
         result = load_sut_from_separated_nr_legacy_fwf([2021], [path], metadata, "current_year")
         assert len(result.use) == 3
 
@@ -256,7 +256,7 @@ class TestWriteSutToSeparatedFwf:
     def test_exact_line_format(self, sut, tmp_path):
         path = tmp_path / "a"
         write_sut_to_separated_nr_legacy_fwf(sut, [2021], [path])
-        lines = path.read_text(encoding="latin-1").split("\n")
+        lines = path.read_text(encoding="cp1252").split("\n")
         expected = [
             _fwf_line("A000001", "0100", "100010", [100]),
             _fwf_line("A000001", "0700", "", [50]),
@@ -270,7 +270,7 @@ class TestWriteSutToSeparatedFwf:
     def test_supply_line_ends_after_basic_price(self, sut, tmp_path):
         path = tmp_path / "a"
         write_sut_to_separated_nr_legacy_fwf(sut, [2021], [path])
-        supply_line = path.read_text(encoding="latin-1").split("\n")[0]
+        supply_line = path.read_text(encoding="cp1252").split("\n")[0]
         assert len(supply_line) == 60
 
     def test_values_rounded_to_whole_numbers(self, sut, metadata, tmp_path):
@@ -298,7 +298,7 @@ class TestWriteSutToSeparatedFwf:
     def test_rows_sorted_across_supply_and_use(self, sut, tmp_path):
         path = tmp_path / "a"
         write_sut_to_separated_nr_legacy_fwf(sut, [2021], [path])
-        lines = path.read_text(encoding="latin-1").split("\n")[:-1]
+        lines = path.read_text(encoding="cp1252").split("\n")[:-1]
         keys = [(l[0:7], l[16:20], l[30:36].strip()) for l in lines]
         assert keys == sorted(keys)
 

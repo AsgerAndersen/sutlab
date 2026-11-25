@@ -78,7 +78,7 @@ def load_sut_from_separated_nr_legacy_fwf(
     metadata: SUTMetadata,
     price_basis: Literal["current_year", "previous_year"],
     *,
-    encoding: str = "latin-1",
+    encoding: str = "cp1252",
     print_paths: bool = False,
 ) -> SUT:
     """
@@ -123,9 +123,9 @@ def load_sut_from_separated_nr_legacy_fwf(
     price_basis : {"current_year", "previous_year"}
         Price basis for the collection.
     encoding : str, optional
-        File encoding. Defaults to ``"latin-1"``, which can read any byte
-        sequence (the ignored trailing columns may contain non-UTF-8
-        characters).
+        File encoding. Defaults to ``"cp1252"`` (Windows "ANSI"). Only the
+        first 140 characters of each line are used; the ignored trailing
+        columns may contain non-ASCII characters.
     print_paths : bool, optional
         If ``True``, print the paths being read before loading. Defaults to
         ``False``.
@@ -282,7 +282,7 @@ def write_sut_to_separated_nr_legacy_fwf(
     id_values: list[str | int],
     paths: list[str | Path],
     *,
-    encoding: str = "latin-1",
+    encoding: str = "cp1252",
     print_paths: bool = False,
 ) -> None:
     """
@@ -313,7 +313,7 @@ def write_sut_to_separated_nr_legacy_fwf(
     paths : list of str or Path
         Output file paths, in the same order as ``id_values``.
     encoding : str, optional
-        File encoding. Defaults to ``"latin-1"``.
+        File encoding. Defaults to ``"cp1252"`` (Windows "ANSI").
     print_paths : bool, optional
         If ``True``, print the paths being written before writing. Defaults to
         ``False``.

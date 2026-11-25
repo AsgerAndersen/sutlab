@@ -871,7 +871,7 @@ class SUT:
         id_values: list[str | int],
         paths: list[str | Path],
         *,
-        encoding: str = "latin-1",
+        encoding: str = "cp1252",
         print_paths: bool = False,
     ) -> None:
         """Delegates to :func:`~sutlab.nr_legacy.write_sut_to_separated_nr_legacy_fwf`."""
