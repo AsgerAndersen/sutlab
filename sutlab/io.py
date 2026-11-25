@@ -255,6 +255,9 @@ def _load_metadata_classifications_from_excel(
         If the ``transactions`` sheet has missing or invalid ``table`` values.
     ValueError
         If the ``transactions`` sheet has missing or invalid ``esa_code`` values.
+    ValueError
+        If the ``unspec_industries`` sheet contains codes that are not in the
+        ``industries`` sheet (checked only when both sheets are present).
     """
     all_sheets = pd.read_excel(path, sheet_name=None, dtype=str)
     all_sheets = {name: _strip_whitespace(df) for name, df in all_sheets.items()}
@@ -367,6 +370,14 @@ def _load_metadata_classifications_from_excel(
         if cat_txt_col in df.columns:
             keep_cols = [cat_col, cat_txt_col]
         unspec_industries = df[keep_cols].copy()
+        if industries is not None:
+            unknown_codes = sorted(set(df[cat_col]) - set(industries[cat_col]))
+            if unknown_codes:
+                unknown_str = ", ".join(f"'{v}'" for v in unknown_codes)
+                raise ValueError(
+                    f"'unspec_industries' sheet contains codes that are not in "
+                    f"the 'industries' sheet: {unknown_str}."
+                )
 
     return SUTClassifications(
         classification_names=classification_names,

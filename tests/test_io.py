@@ -237,6 +237,22 @@ class TestLoadMetadataClassificationsFromExcel:
         result = _load_metadata_classifications_from_excel(path, minimal_columns())
         assert result.unspec_industries["brch"].tolist() == ["U1", "U2"]
 
+    def test_unspec_industries_codes_not_in_industries_raises(self, tmp_path):
+        path = write_classifications_file(tmp_path, {
+            "industries": pd.DataFrame({"brch": ["X"], "brch_txt": ["x"]}),
+            "unspec_industries": pd.DataFrame({"brch": ["X", "U9"]}),
+        })
+        with pytest.raises(ValueError, match="U9"):
+            _load_metadata_classifications_from_excel(path, minimal_columns())
+
+    def test_unspec_industries_codes_in_industries_ok(self, tmp_path):
+        path = write_classifications_file(tmp_path, {
+            "industries": pd.DataFrame({"brch": ["X", "U"], "brch_txt": ["x", "u"]}),
+            "unspec_industries": pd.DataFrame({"brch": ["U"]}),
+        })
+        result = _load_metadata_classifications_from_excel(path, minimal_columns())
+        assert result.unspec_industries["brch"].tolist() == ["U"]
+
     def test_unspec_industries_absent_is_none(self, tmp_path):
         path = write_classifications_file(
             tmp_path, {"products": pd.DataFrame({"nrnr": ["A"], "nrnr_txt": ["a"]})}
