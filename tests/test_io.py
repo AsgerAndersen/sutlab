@@ -19,6 +19,7 @@ from sutlab.io import (
     load_balancing_targets_from_separated_excel,
     load_balancing_targets_from_combined_excel,
     load_balancing_targets_from_dataframe,
+    load_metadata_from_dataframes,
     load_metadata_from_excel,
     load_sut_from_combined_csv,
     load_sut_from_combined_excel,
@@ -485,6 +486,151 @@ class TestLoadMetadataFromExcel:
         )
         with pytest.raises(ValueError, match=re.escape(str(classifications_path))):
             load_metadata_from_excel(COLUMNS_FILE, classifications_path)
+
+
+# ---------------------------------------------------------------------------
+# Tests for load_metadata_from_dataframes
+# ---------------------------------------------------------------------------
+
+
+class TestLoadMetadataFromDataframes:
+
+    @pytest.fixture
+    def columns(self):
+        return pd.read_excel(COLUMNS_FILE, dtype=str)
+
+    @pytest.fixture
+    def tables(self):
+        sheets = pd.read_excel(CLASSIFICATIONS_FILE, sheet_name=None, dtype=str)
+        known = {
+            "products", "transactions", "industries", "individual_consumption",
+            "collective_consumption", "margin_products", "unspec_industries",
+        }
+        tables = {name: df for name, df in sheets.items() if name in known}
+        if "classifications" in sheets:
+            tables["classification_names"] = sheets["classifications"]
+        return tables
+
+    def load_products(self, columns, tables, products):
+        result = load_metadata_from_dataframes(
+            columns, transactions=tables["transactions"], products=products
+        )
+        return result.classifications.products
+
+    def test_same_result_as_excel_loader(self, columns, tables):
+        result = load_metadata_from_dataframes(columns, **tables)
+        expected = load_metadata_from_excel(COLUMNS_FILE, CLASSIFICATIONS_FILE)
+        assert result.columns == expected.columns
+        for name, expected_table in vars(expected.classifications).items():
+            result_table = getattr(result.classifications, name)
+            if expected_table is None:
+                assert result_table is None
+            else:
+                pd.testing.assert_frame_equal(result_table, expected_table)
+
+    def test_exported_from_sutlab(self):
+        import sutlab
+        assert sutlab.load_metadata_from_dataframes is load_metadata_from_dataframes
+
+    def test_only_transactions_gives_none_for_the_rest(self, columns, tables):
+        result = load_metadata_from_dataframes(columns, transactions=tables["transactions"])
+        for name, table in vars(result.classifications).items():
+            if name != "transactions":
+                assert table is None
+
+    def test_classification_names(self, columns, tables):
+        names = pd.DataFrame({"dimension": ["product"], "classification": [" NR07 "]})
+        result = load_metadata_from_dataframes(
+            columns, transactions=tables["transactions"], classification_names=names
+        )
+        assert result.classifications.classification_names["classification"].tolist() == ["NR07"]
+
+    def test_classification_names_error_uses_argument_name(self, columns, tables):
+        with pytest.raises(ValueError, match="'classification_names' DataFrame"):
+            load_metadata_from_dataframes(
+                columns,
+                transactions=tables["transactions"],
+                classification_names=pd.DataFrame({"dimension": ["product"]}),
+            )
+
+    def test_margin_products_and_unspec_industries(self, columns, tables):
+        cols = load_metadata_from_dataframes(
+            columns, transactions=tables["transactions"]
+        ).columns
+        result = load_metadata_from_dataframes(
+            columns,
+            transactions=tables["transactions"],
+            margin_products=pd.DataFrame({cols.product: [1], "price_layer": [cols.vat]}),
+            unspec_industries=pd.DataFrame({cols.category: [2]}),
+        )
+        assert result.classifications.margin_products[cols.product].tolist() == ["1"]
+        assert result.classifications.unspec_industries[cols.category].tolist() == ["2"]
+
+    @pytest.mark.parametrize("codes", [
+        [1, 2],
+        pd.array([1, 2], dtype="Int64"),
+        pd.Categorical(["1", "2"]),
+        [" 1", "2 "],
+    ])
+    def test_codes_become_stripped_strings(self, columns, tables, codes):
+        products = pd.DataFrame({"nrnr": codes, "nrnr_txt": ["A", "B"]}, index=[7, 7])
+        result = self.load_products(columns, tables, products)
+        assert result["nrnr"].tolist() == ["1", "2"]
+
+    def test_missing_and_blank_values_become_missing(self, columns, tables):
+        products = pd.DataFrame({
+            "nrnr": ["1", "2", "3", "4"],
+            "nrnr_txt": ["A", None, float("nan"), " "],
+        })
+        result = self.load_products(columns, tables, products)
+        assert result["nrnr_txt"].isna().tolist() == [False, True, True, True]
+
+    def test_all_missing_float_column_allowed(self, columns, tables):
+        products = pd.DataFrame({"nrnr": ["1"], "nrnr_txt": [float("nan")]})
+        result = self.load_products(columns, tables, products)
+        assert result["nrnr_txt"].isna().all()
+
+    def test_extra_columns_dropped_even_when_float(self, columns, tables):
+        products = pd.DataFrame({"nrnr": ["1"], "nrnr_txt": ["A"], "weight": [0.5]})
+        result = self.load_products(columns, tables, products)
+        assert list(result.columns) == ["nrnr", "nrnr_txt"]
+
+    def test_float_codes_raise(self, columns, tables):
+        products = pd.DataFrame({"nrnr": [1, None], "nrnr_txt": ["A", "B"]})
+        with pytest.raises(ValueError, match="'products' DataFrame contains the float"):
+            self.load_products(columns, tables, products)
+
+    def test_input_not_changed(self, columns, tables):
+        products = pd.DataFrame({"nrnr": [1, 2], "nrnr_txt": [" A", "B"]})
+        before = products.copy()
+        self.load_products(columns, tables, products)
+        pd.testing.assert_frame_equal(products, before)
+
+    def test_transactions_none_raises(self, columns):
+        with pytest.raises(ValueError, match="'transactions' DataFrame is required"):
+            load_metadata_from_dataframes(columns, transactions=None)
+
+    def test_missing_column_error_mentions_dataframe(self, columns, tables):
+        with pytest.raises(ValueError, match="'transactions' DataFrame is missing"):
+            load_metadata_from_dataframes(
+                columns, transactions=tables["transactions"].drop(columns="table")
+            )
+
+    def test_missing_and_invalid_table_values_raise(self, columns, tables):
+        transactions = tables["transactions"].copy()
+        transactions["table"] = ["wrong", None] + transactions["table"].tolist()[2:]
+        with pytest.raises(ValueError, match="'transactions' DataFrame: .*'wrong'"):
+            load_metadata_from_dataframes(columns, transactions=transactions)
+
+    def test_unknown_role_raises(self, columns, tables):
+        bad = pd.concat([columns, pd.DataFrame({"column": ["x"], "role": ["made_up"]})])
+        with pytest.raises(ValueError, match="made_up"):
+            load_metadata_from_dataframes(bad, transactions=tables["transactions"])
+
+    def test_duplicate_role_error_mentions_dataframe(self, columns, tables):
+        bad = pd.concat([columns, pd.DataFrame({"column": ["x"], "role": ["id"]})])
+        with pytest.raises(ValueError, match="'columns' DataFrame: 'id'"):
+            load_metadata_from_dataframes(bad, transactions=tables["transactions"])
 
 
 # ---------------------------------------------------------------------------

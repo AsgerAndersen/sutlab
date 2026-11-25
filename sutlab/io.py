@@ -1,5 +1,5 @@
 """
-I/O functions for loading SUT data and metadata from files.
+I/O functions for loading SUT data and metadata from files and DataFrames.
 """
 
 from __future__ import annotations
@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 
 from sutlab.sut import (
@@ -144,27 +145,48 @@ def _load_metadata_columns_from_excel(path: str | Path) -> SUTColumns:
         If any role or column name value appears more than once.
     """
     df = pd.read_excel(path, dtype=str)
+    return _build_metadata_columns(df, source="columns file")
+
+
+def _build_metadata_columns(df: pd.DataFrame, source: str) -> SUTColumns:
+    """
+    Validate a column role table and convert it to a SUTColumns.
+
+    Shared by the Excel and DataFrame metadata loaders.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Table with ``column`` and ``role`` columns, all values strings.
+    source : str
+        Description of where ``df`` came from, used in error messages
+        (e.g. ``"columns file"``).
+
+    Returns
+    -------
+    SUTColumns
+    """
     df = _strip_whitespace(df)
 
-    _validate_required_columns(df, ["column", "role"], source="Columns file")
+    _validate_required_columns(df, ["column", "role"], source=f"The {source}")
 
     duplicate_roles = df["role"][df["role"].duplicated()].tolist()
     if duplicate_roles:
         dupes_str = ", ".join(f"'{r}'" for r in duplicate_roles)
         raise ValueError(
-            f"Duplicate role values in columns file: {dupes_str}"
+            f"Duplicate role values in {source}: {dupes_str}"
         )
 
     duplicate_columns = df["column"][df["column"].duplicated()].tolist()
     if duplicate_columns:
         dupes_str = ", ".join(f"'{c}'" for c in duplicate_columns)
         raise ValueError(
-            f"Duplicate column name values in columns file: {dupes_str}"
+            f"Duplicate column name values in {source}: {dupes_str}"
         )
 
     unknown_roles = set(df["role"]) - _ALL_KNOWN_ROLES
     if unknown_roles:
-        unknown_str = ", ".join(f"'{r}'" for r in sorted(unknown_roles))
+        unknown_str = ", ".join(f"'{r}'" for r in sorted(unknown_roles, key=str))
         known_str = ", ".join(f"'{r}'" for r in sorted(_ALL_KNOWN_ROLES))
         raise ValueError(
             f"Unknown role values: {unknown_str}. "
@@ -260,7 +282,46 @@ def _load_metadata_classifications_from_excel(
         ``industries`` sheet (checked only when both sheets are present).
     """
     all_sheets = pd.read_excel(path, sheet_name=None, dtype=str)
-    all_sheets = {name: _strip_whitespace(df) for name, df in all_sheets.items()}
+
+    # The sheet name differs from the field name for this one table. A sheet
+    # that happens to be called 'classification_names' is unknown and ignored.
+    tables = {
+        name: df for name, df in all_sheets.items() if name != "classification_names"
+    }
+    if "classifications" in tables:
+        tables["classification_names"] = tables.pop("classifications")
+
+    return _build_metadata_classifications(tables, columns, source_type="sheet")
+
+
+def _build_metadata_classifications(
+    tables: dict[str, pd.DataFrame],
+    columns: SUTColumns,
+    source_type: str,
+) -> SUTClassifications:
+    """
+    Validate classification tables and assemble them as SUTClassifications.
+
+    Shared by the Excel and DataFrame metadata loaders. See
+    :func:`_load_metadata_classifications_from_excel` for the checks.
+
+    Parameters
+    ----------
+    tables : dict of str to DataFrame
+        Classification tables keyed by SUTClassifications field name. All
+        names are optional and unknown names are ignored. Values in the known
+        columns must be strings or missing.
+    columns : SUTColumns
+        Column role mappings for the SUT.
+    source_type : str
+        What each table is called in error messages (``"sheet"`` or
+        ``"DataFrame"``).
+
+    Returns
+    -------
+    SUTClassifications
+    """
+    tables = {name: _strip_whitespace(df) for name, df in tables.items()}
 
     prod_col = columns.product
     prod_txt_col = f"{columns.product}_txt"
@@ -270,42 +331,49 @@ def _load_metadata_classifications_from_excel(
     cat_txt_col = f"{columns.category}_txt"
 
     classification_names = None
-    if "classifications" in all_sheets:
-        df = all_sheets["classifications"]
+    if "classification_names" in tables:
+        df = tables["classification_names"]
         _validate_required_columns(
-            df, ["dimension", "classification"], source="'classifications' sheet"
+            df,
+            ["dimension", "classification"],
+            # In the Excel file this table is the 'classifications' sheet
+            source=(
+                "'classifications' sheet"
+                if source_type == "sheet"
+                else f"'classification_names' {source_type}"
+            ),
         )
         classification_names = df[["dimension", "classification"]].copy()
 
     products = None
-    if "products" in all_sheets:
-        df = all_sheets["products"]
+    if "products" in tables:
+        df = tables["products"]
         _validate_required_columns(
-            df, [prod_col, prod_txt_col], source="'products' sheet"
+            df, [prod_col, prod_txt_col], source=f"'products' {source_type}"
         )
         products = df[[prod_col, prod_txt_col]].copy()
 
     transactions = None
-    if "transactions" in all_sheets:
-        df = all_sheets["transactions"]
+    if "transactions" in tables:
+        df = tables["transactions"]
         _validate_required_columns(
             df,
             [trans_col, trans_txt_col, "table", "esa_code"],
-            source="'transactions' sheet",
+            source=f"'transactions' {source_type}",
         )
         invalid_table_values = set(df["table"]) - _VALID_TABLE_VALUES
         if invalid_table_values:
-            invalid_str = ", ".join(f"'{v}'" for v in sorted(invalid_table_values))
+            invalid_str = ", ".join(f"'{v}'" for v in sorted(invalid_table_values, key=str))
             raise ValueError(
-                f"Invalid values in 'table' column of 'transactions' sheet: {invalid_str}. "
+                f"Invalid values in 'table' column of 'transactions' {source_type}: {invalid_str}. "
                 f"Each row must be 'supply' or 'use'."
             )
         invalid_esa_values = set(df["esa_code"]) - _VALID_ESA_CODES
         if invalid_esa_values:
-            invalid_str = ", ".join(f"'{v}'" for v in sorted(invalid_esa_values))
+            invalid_str = ", ".join(f"'{v}'" for v in sorted(invalid_esa_values, key=str))
             valid_str = ", ".join(sorted(_VALID_ESA_CODES))
             raise ValueError(
-                f"Invalid values in 'esa_code' column of 'transactions' sheet: {invalid_str}. "
+                f"Invalid values in 'esa_code' column of 'transactions' {source_type}: {invalid_str}. "
                 f"Valid values are: {valid_str}."
             )
         keep_cols = [trans_col, trans_txt_col, "table", "esa_code"]
@@ -314,34 +382,34 @@ def _load_metadata_classifications_from_excel(
         transactions = df[keep_cols].copy()
 
     industries = None
-    if "industries" in all_sheets:
-        df = all_sheets["industries"]
+    if "industries" in tables:
+        df = tables["industries"]
         _validate_required_columns(
-            df, [cat_col, cat_txt_col], source="'industries' sheet"
+            df, [cat_col, cat_txt_col], source=f"'industries' {source_type}"
         )
         industries = df[[cat_col, cat_txt_col]].copy()
 
     individual_consumption = None
-    if "individual_consumption" in all_sheets:
-        df = all_sheets["individual_consumption"]
+    if "individual_consumption" in tables:
+        df = tables["individual_consumption"]
         _validate_required_columns(
-            df, [cat_col, cat_txt_col], source="'individual_consumption' sheet"
+            df, [cat_col, cat_txt_col], source=f"'individual_consumption' {source_type}"
         )
         individual_consumption = df[[cat_col, cat_txt_col]].copy()
 
     collective_consumption = None
-    if "collective_consumption" in all_sheets:
-        df = all_sheets["collective_consumption"]
+    if "collective_consumption" in tables:
+        df = tables["collective_consumption"]
         _validate_required_columns(
-            df, [cat_col, cat_txt_col], source="'collective_consumption' sheet"
+            df, [cat_col, cat_txt_col], source=f"'collective_consumption' {source_type}"
         )
         collective_consumption = df[[cat_col, cat_txt_col]].copy()
 
     margin_products = None
-    if "margin_products" in all_sheets:
-        df = all_sheets["margin_products"]
+    if "margin_products" in tables:
+        df = tables["margin_products"]
         _validate_required_columns(
-            df, [prod_col, "price_layer"], source="'margin_products' sheet"
+            df, [prod_col, "price_layer"], source=f"'margin_products' {source_type}"
         )
         known_layer_cols = [
             getattr(columns, role) for role in _PRICE_LAYER_ROLES
@@ -352,7 +420,7 @@ def _load_metadata_classifications_from_excel(
             unknown_str = ", ".join(f"'{v}'" for v in unknown)
             known_str = ", ".join(f"'{c}'" for c in known_layer_cols)
             raise ValueError(
-                f"'margin_products' sheet contains unknown price layer column "
+                f"'margin_products' {source_type} contains unknown price layer column "
                 f"names: {unknown_str}. Known price layer columns from metadata: {known_str}"
             )
         keep_cols = [prod_col, "price_layer"]
@@ -361,22 +429,22 @@ def _load_metadata_classifications_from_excel(
         margin_products = df[keep_cols].copy()
 
     unspec_industries = None
-    if "unspec_industries" in all_sheets:
-        df = all_sheets["unspec_industries"]
+    if "unspec_industries" in tables:
+        df = tables["unspec_industries"]
         _validate_required_columns(
-            df, [cat_col], source="'unspec_industries' sheet"
+            df, [cat_col], source=f"'unspec_industries' {source_type}"
         )
         keep_cols = [cat_col]
         if cat_txt_col in df.columns:
             keep_cols = [cat_col, cat_txt_col]
         unspec_industries = df[keep_cols].copy()
         if industries is not None:
-            unknown_codes = sorted(set(df[cat_col]) - set(industries[cat_col]))
+            unknown_codes = sorted(set(df[cat_col]) - set(industries[cat_col]), key=str)
             if unknown_codes:
                 unknown_str = ", ".join(f"'{v}'" for v in unknown_codes)
                 raise ValueError(
-                    f"'unspec_industries' sheet contains codes that are not in "
-                    f"the 'industries' sheet: {unknown_str}."
+                    f"'unspec_industries' {source_type} contains codes that are not in "
+                    f"the 'industries' {source_type}: {unknown_str}."
                 )
 
     return SUTClassifications(
@@ -443,6 +511,161 @@ def load_metadata_from_excel(
         )
 
     return SUTMetadata(columns=columns, classifications=classifications)
+
+
+def _convert_text_columns(
+    df: pd.DataFrame,
+    text_columns: list[str],
+    table_name: str,
+) -> pd.DataFrame:
+    """Return a copy of df with the given columns converted to strings.
+
+    Columns in ``text_columns`` that are not in ``df``, and columns of ``df``
+    that are not in ``text_columns``, are left alone. Missing values and blank
+    strings become missing. Float values raise, because ``str(1.0)`` gives
+    ``"1.0"``, which does not match the code ``"1"``.
+    """
+    result = df.reset_index(drop=True)
+    for col in text_columns:
+        if col not in result.columns:
+            continue
+        converted = []
+        for value in result[col]:
+            if pd.isna(value):
+                converted.append(None)
+            elif isinstance(value, (float, np.floating)):
+                raise ValueError(
+                    f"Column '{col}' in '{table_name}' DataFrame contains the "
+                    f"float value {value}. Convert the column to strings first. "
+                    f"(Integer columns become float when they have missing values.)"
+                )
+            elif str(value).strip() == "":
+                converted.append(None)
+            else:
+                converted.append(str(value))
+        result[col] = pd.Series(converted, index=result.index, dtype="str")
+    return result
+
+
+def load_metadata_from_dataframes(
+    columns: pd.DataFrame,
+    *,
+    transactions: pd.DataFrame,
+    products: pd.DataFrame | None = None,
+    industries: pd.DataFrame | None = None,
+    individual_consumption: pd.DataFrame | None = None,
+    collective_consumption: pd.DataFrame | None = None,
+    margin_products: pd.DataFrame | None = None,
+    unspec_industries: pd.DataFrame | None = None,
+    classification_names: pd.DataFrame | None = None,
+) -> SUTMetadata:
+    """
+    Build full SUT metadata from DataFrames.
+
+    The DataFrames correspond to the columns Excel file and the sheets of the
+    classifications Excel file used by :func:`load_metadata_from_excel`. They
+    have the same columns and are checked in the same way.
+
+    Values are converted to strings, and leading and trailing whitespace is
+    stripped. Missing values stay missing, and blank strings become missing.
+    Columns that are not listed below are dropped. The input DataFrames are
+    not changed. Leading zeros in codes must be present already: the integer
+    ``100`` becomes ``"100"``, not ``"0100"``.
+
+    Below, ``{product}``, ``{transaction}`` and ``{category}`` stand for the
+    actual column names that ``columns`` gives these roles.
+
+    Parameters
+    ----------
+    columns : DataFrame
+        Column role mappings, with columns ``column`` and ``role``.
+    transactions : DataFrame
+        ``{transaction}``, ``{transaction}_txt``, ``table``, ``esa_code`` and
+        optionally ``gdp_decomp``. Required to split supply and use rows when
+        loading SUT data.
+    products : DataFrame, optional
+        ``{product}`` and ``{product}_txt``.
+    industries : DataFrame, optional
+        ``{category}`` and ``{category}_txt``.
+    individual_consumption : DataFrame, optional
+        ``{category}`` and ``{category}_txt``.
+    collective_consumption : DataFrame, optional
+        ``{category}`` and ``{category}_txt``.
+    margin_products : DataFrame, optional
+        ``{product}``, ``price_layer`` and optionally ``{product}_txt``.
+    unspec_industries : DataFrame, optional
+        ``{category}`` and optionally ``{category}_txt``.
+    classification_names : DataFrame, optional
+        ``dimension`` and ``classification``. Corresponds to the
+        ``classifications`` sheet in the Excel file.
+
+    Returns
+    -------
+    SUTMetadata
+
+    Raises
+    ------
+    ValueError
+        If a DataFrame is missing required columns.
+    ValueError
+        If ``columns`` has unknown, duplicate or missing roles, or duplicate
+        column names.
+    ValueError
+        If ``transactions`` is ``None``, or has missing or invalid ``table``
+        or ``esa_code`` values.
+    ValueError
+        If ``margin_products`` has price layers that are not in ``columns``.
+    ValueError
+        If ``unspec_industries`` contains codes that are not in ``industries``
+        (checked only when both are given).
+    ValueError
+        If a column listed above contains float values.
+    """
+    columns_text = _convert_text_columns(columns, ["column", "role"], "columns")
+    sut_columns = _build_metadata_columns(columns_text, source="'columns' DataFrame")
+
+    if transactions is None:
+        raise ValueError(
+            "The 'transactions' DataFrame is required to split supply and use "
+            "rows when loading SUT data."
+        )
+
+    dataframes = {
+        "classification_names": classification_names,
+        "products": products,
+        "transactions": transactions,
+        "industries": industries,
+        "individual_consumption": individual_consumption,
+        "collective_consumption": collective_consumption,
+        "margin_products": margin_products,
+        "unspec_industries": unspec_industries,
+    }
+
+    text_columns = [
+        sut_columns.product,
+        f"{sut_columns.product}_txt",
+        sut_columns.transaction,
+        f"{sut_columns.transaction}_txt",
+        sut_columns.category,
+        f"{sut_columns.category}_txt",
+        "table",
+        "esa_code",
+        "gdp_decomp",
+        "price_layer",
+        "dimension",
+        "classification",
+    ]
+
+    tables = {}
+    for name, df in dataframes.items():
+        if df is not None:
+            tables[name] = _convert_text_columns(df, text_columns, name)
+
+    classifications = _build_metadata_classifications(
+        tables, sut_columns, source_type="DataFrame"
+    )
+
+    return SUTMetadata(columns=sut_columns, classifications=classifications)
 
 
 def _assemble_sut(

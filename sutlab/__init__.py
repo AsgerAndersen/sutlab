@@ -2,6 +2,7 @@
 
 from sutlab.io import (
     load_metadata_from_excel,
+    load_metadata_from_dataframes,
     load_sut_from_separated_parquet,
     load_sut_from_combined_parquet,
     load_sut_from_separated_csv,
