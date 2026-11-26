@@ -89,6 +89,39 @@ def _make_percentage_formatter(rel_base: int = 100, decimals: int = 1):
     return _fmt
 
 
+# Table-level CSS that makes styled tables look the same in light and dark
+# editor themes (e.g. VS Code dark mode). Without it, the text colour comes
+# from the editor theme: dark themes use light text, which is unreadable on
+# the light pastel backgrounds used below. The table is therefore always drawn
+# with black text on a white background, like a light "card".
+#
+# Each selector is prefixed by pandas with the table's own id (``#T_xxx``), so
+# the rules only affect this table. The white background is set on the table
+# and its rows, not on the cells: cell-level background colours set via
+# ``Styler.apply`` / ``apply_index`` then still show on top of it. These rules
+# are not written to Excel (``Styler.to_excel`` ignores table styles).
+_THEME_INDEPENDENT_TABLE_STYLES = [
+    {"selector": "", "props": [("background-color", "white"), ("color", "black")]},
+    {"selector": "tr", "props": [("background-color", "white")]},
+    {"selector": "th", "props": [("color", "black")]},
+    {"selector": "td", "props": [("color", "black")]},
+    # Column headers are never coloured by the inspection styling (only row
+    # labels are), so they can safely get an explicit white background. This
+    # overrides editor themes that give header cells a dark background.
+    {"selector": "thead th", "props": [("background-color", "white")]},
+]
+
+
+def _new_styler(df: pd.DataFrame) -> Styler:
+    """Return ``df.style`` with black text on a white background.
+
+    Use this instead of ``df.style`` everywhere, so that styled tables are
+    readable in both light and dark editor themes.
+    """
+    styler = df.style.set_table_styles(_THEME_INDEPENDENT_TABLE_STYLES)
+    return styler
+
+
 # Cycling colour palettes for price layer blocks.
 # Each palette has two alternating light shades for transaction rows,
 # a more saturated shade for Total data cells, and a more saturated shade
@@ -211,7 +244,7 @@ def _style_balance_table(df: pd.DataFrame, format_func) -> Styler:
     Used by the ``balance``, ``balance_distribution``, and ``balance_growth``
     properties. ``format_func`` is applied to all data cells.
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -302,7 +335,7 @@ def _style_detail_table(
         Index level name for the inner label column. Default
         ``"category_txt"``.
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -466,7 +499,7 @@ def _style_products_summary_table(
     summary_vals = df.index.get_level_values("summary")
     unique_labels = list(dict.fromkeys(summary_vals))
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
-    styler = df.style.format(na_rep="")
+    styler = _new_styler(df).format(na_rep="")
     for label in unique_labels:
         mask = summary_vals == label
         row_positions = [i for i, m in enumerate(mask) if m]
@@ -597,7 +630,7 @@ def _style_categories_summary_table(
     summary_vals = df.index.get_level_values("summary")
     unique_labels = list(dict.fromkeys(summary_vals))
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
-    styler = df.style.format(na_rep="")
+    styler = _new_styler(df).format(na_rep="")
     for label in unique_labels:
         mask = summary_vals == label
         row_positions = [i for i, m in enumerate(mask) if m]
@@ -683,7 +716,7 @@ def _style_final_use_use_products_summary_table(
     summary_vals = df.index.get_level_values("summary")
     unique_labels = list(dict.fromkeys(summary_vals))
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
-    styler = df.style.format(na_rep="")
+    styler = _new_styler(df).format(na_rep="")
     for label in unique_labels:
         mask = summary_vals == label
         row_positions = [i for i, m in enumerate(mask) if m]
@@ -803,7 +836,7 @@ def _style_price_layers_table(
     outer_txt_level : str, optional
         Name of the label level for the outer dimension. Default ``"product_txt"``.
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -932,7 +965,7 @@ def _style_industry_balance_table(
         ``_format_percentage`` for the Input coefficient row.
     """
     # Format: uniform when format_func is given; mixed otherwise.
-    styler = df.style
+    styler = _new_styler(df)
     if format_func is not None:
         styler = styler.format(format_func, na_rep="")
     else:
@@ -1051,7 +1084,7 @@ def _style_final_use_use_table(df: pd.DataFrame, format_func) -> Styler:
     format_func : callable
         Applied to all data cells (e.g. ``_format_number``).
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -1129,7 +1162,7 @@ def _style_final_use_use_categories_table(df: pd.DataFrame, format_func) -> Styl
     format_func : callable
         Applied to all data cells (e.g. ``_format_number``).
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -1232,7 +1265,7 @@ def _style_final_use_use_products_table(df: pd.DataFrame, format_func) -> Styler
     format_func : callable
         Applied to all data cells (e.g. ``_format_number``).
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -1380,7 +1413,7 @@ def _style_final_use_price_layers_table(
         Ordered list of all price layer column names for stable palette
         assignment across tables.
     """
-    styler = df.style.format(format_func, na_rep="")
+    styler = _new_styler(df).format(format_func, na_rep="")
     if df.empty:
         return styler
 
@@ -1525,7 +1558,7 @@ def _style_imbalances_table(
     """
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
     number_fmt = _make_number_formatter(display_unit, decimals)
-    styler = df.style
+    styler = _new_styler(df)
     non_rel_cols = [c for c in df.columns if c != rel_col]
     if all_rel:
         styler = styler.format(pct_fmt, na_rep="")
@@ -1648,7 +1681,7 @@ def _style_balancing_targets_table(
     """
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
     number_fmt = _make_number_formatter(display_unit, decimals)
-    styler = df.style
+    styler = _new_styler(df)
     non_rel_cols = [c for c in df.columns if c != rel_col]
     if all_rel:
         styler = styler.format(pct_fmt, na_rep="")
@@ -1789,7 +1822,7 @@ def _style_comparison_table(
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
     number_fmt = _make_number_formatter(display_unit, decimals)
     non_rel_cols = [c for c in df.columns if c != rel_col]
-    styler = df.style
+    styler = _new_styler(df)
     if all_rel:
         styler = styler.format(pct_fmt, na_rep="")
     else:
@@ -1886,7 +1919,7 @@ def _style_comparison_layers_table(df: pd.DataFrame, display_unit: float | None 
     pct_fmt = _make_percentage_formatter(rel_base, decimals)
     number_fmt = _make_number_formatter(display_unit, decimals)
     non_rel_cols = [c for c in df.columns if c != "rel"]
-    styler = df.style
+    styler = _new_styler(df)
     if all_rel:
         styler = styler.format(pct_fmt, na_rep="")
     else:
@@ -2007,9 +2040,9 @@ def _style_summary_table(df: pd.DataFrame, all_rel: bool = False, decimals: int 
         ``n_changes`` as the sole column.
     """
     if all_rel:
-        styler = df.style.format(_make_percentage_formatter(100, decimals), na_rep="")
+        styler = _new_styler(df).format(_make_percentage_formatter(100, decimals), na_rep="")
     else:
-        styler = df.style.format(
+        styler = _new_styler(df).format(
             lambda v: "" if pd.isna(v) else str(int(v)), na_rep=""
         )
 
@@ -2101,9 +2134,9 @@ def _style_unbalanced_targets_summary(df: pd.DataFrame, display_unit: float | No
         return number_fmt(v)
 
     if all_rel:
-        styler = df.style.format(pct_fmt, na_rep="")
+        styler = _new_styler(df).format(pct_fmt, na_rep="")
     else:
-        styler = df.style.format(
+        styler = _new_styler(df).format(
             {col: (lambda v, c=col: _format_cell(v, c)) for col in df.columns},
             na_rep="",
         )
@@ -2190,7 +2223,7 @@ def _style_comparison_summary_table(df: pd.DataFrame, palette: str, display_unit
     rel_cols = [c for c in df.columns if c.startswith("rel_")]
 
     number_fmt = _make_number_formatter(display_unit, decimals)
-    styler = df.style.format(na_rep="")
+    styler = _new_styler(df).format(na_rep="")
     if all_rel:
         styler = styler.format(pct_fmt, na_rep="")
     else:
@@ -2293,7 +2326,7 @@ def _style_gdp_table(
         ``_make_number_formatter`` for the nominal table and
         ``_make_percentage_formatter`` for the growth table.
     """
-    styler = df.style.format(formatter, na_rep="")
+    styler = _new_styler(df).format(formatter, na_rep="")
     if df.empty:
         return styler
 
@@ -2433,9 +2466,9 @@ def _style_unbalanced_products_summary(df: pd.DataFrame, display_unit: float | N
         return number_fmt(v)
 
     if all_rel:
-        styler = df.style.format(pct_fmt, na_rep="")
+        styler = _new_styler(df).format(pct_fmt, na_rep="")
     else:
-        styler = df.style.format(
+        styler = _new_styler(df).format(
             {col: (lambda v, c=col: _format_cell(v, c)) for col in df.columns},
             na_rep="",
         )
@@ -2475,7 +2508,7 @@ def _style_tables_description(df: pd.DataFrame) -> Styler:
         Tables description DataFrame with ``name`` as index and a single
         ``description`` column.
     """
-    styler = df.style.set_properties(**{"text-align": "left"})
+    styler = _new_styler(df).set_properties(**{"text-align": "left"})
 
     if df.empty:
         return styler
